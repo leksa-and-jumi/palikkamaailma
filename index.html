@@ -16,10 +16,14 @@
     <section id="menu" class="screen">
       <div class="panel">
         <h1>🧱 Palikkamaailma</h1>
-        <p class="lead">Rakenna yhdessä omalla saarella!</p>
+        <p class="lead">Rakenna, louhi ja selviydy yhdessä loputtomassa maailmassa!</p>
 
         <h2>Kuka olet?</h2>
         <div id="avatars" class="avatars"></div>
+
+        <h2>Pelitapa</h2>
+        <div id="mode-choice" class="choice"></div>
+        <div id="difficulty-choice" class="choice"></div>
 
         <div class="menu-buttons">
           <button id="new-world" class="big">🌍 Uusi maailma</button>
@@ -62,7 +66,18 @@
       </div>
       <div id="players" class="top-right card"></div>
       <div id="flying" class="flying" hidden>🪽 Lennät</div>
+      <div id="vitals" class="vitals" hidden>
+        <div class="vitals-row">
+          <div id="armor-bar" class="bar"></div>
+          <div id="air-bar" class="bar right"></div>
+        </div>
+        <div class="vitals-row">
+          <div id="health-bar" class="bar"></div>
+          <div id="hunger-bar" class="bar right"></div>
+        </div>
+      </div>
       <div id="hotbar" class="hotbar"></div>
+      <div id="hurt-flash" class="hurt-flash"></div>
       <div id="block-name" class="block-name"></div>
       <div id="toast" class="toast" hidden></div>
       <div id="biome" class="biome"></div>
@@ -90,22 +105,43 @@
           <div><kbd>Vasen hiiri</kbd> riko palikka</div>
           <div><kbd>Oikea hiiri</kbd> laita palikka</div>
           <div><kbd>1</kbd>–<kbd>9</kbd> tai rulla: valitse palikka</div>
-          <div><kbd>E</kbd> kaikki palikat</div>
+          <div><kbd>E</kbd> reppu / kaikki palikat</div>
+          <div><kbd>Q</kbd> pudota esine</div>
           <div><kbd>T</kbd> tai <kbd>Enter</kbd> chatti</div>
           <div><kbd>B</kbd> ✨ taikarakentaja</div>
           <div><kbd>Z</kbd> kumoa taikarakennus</div>
         </div>
         <p id="pause-code" class="code-hint"></p>
+        <button id="switch-mode" class="secondary"></button>
         <button id="to-menu" class="secondary">🏠 Valikkoon</button>
       </div>
     </section>
 
-    <!-- Block picker -->
-    <section id="picker" class="screen" hidden>
-      <div class="panel wide">
-        <h2>🧱 Valitse palikka</h2>
-        <div id="picker-grid" class="picker-grid"></div>
-        <button id="picker-close" class="secondary">Valmis</button>
+    <!-- Inventory (E) -->
+    <section id="inventory" class="screen" hidden>
+      <div class="panel wide inventory-panel">
+        <h2 id="inventory-title">🎒 Reppu</h2>
+        <div id="creative-tabs" class="tabs"></div>
+        <div id="creative-grid" class="slot-grid catalog"></div>
+        <div class="inventory-top">
+          <div id="armor-slots" class="armor-slots"></div>
+          <div id="crafting-area" class="crafting-area"></div>
+        </div>
+        <div id="inventory-main" class="slot-grid"></div>
+        <div id="inventory-hotbar" class="slot-grid hotbar-row"></div>
+        <p class="hint">
+          Vasen klikkaus: koko pino · Oikea: puolet tai yksi · Shift: siirrä · E tai Esc: sulje
+        </p>
+      </div>
+      <div id="cursor-stack" class="cursor-stack" hidden></div>
+    </section>
+
+    <!-- Death -->
+    <section id="death" class="screen death" hidden>
+      <div class="panel small">
+        <h2>💀 Hups, kuolit!</h2>
+        <p id="death-reason" class="lead"></p>
+        <button id="respawn" class="big">❤️ Herää henkiin</button>
       </div>
     </section>
 

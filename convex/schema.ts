@@ -7,6 +7,10 @@ export default defineSchema({
   worlds: defineTable({
     code: v.string(),
     emoji: v.string(),
+    /** 'creative' or 'survival' (older worlds have none = creative). */
+    mode: v.optional(v.string()),
+    /** 'peaceful' | 'easy' | 'normal' | 'hard'. */
+    difficulty: v.optional(v.string()),
     createdAt: v.number(),
   }).index('by_code', ['code']),
   builds: defineTable({

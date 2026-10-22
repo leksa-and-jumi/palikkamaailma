@@ -3,6 +3,7 @@
 // knows the ready-made builds.
 
 import { ConvexHttpClient } from 'convex/browser';
+import type { Difficulty, GameMode } from '../config';
 import { api } from '../../convex/_generated/api';
 import { makeWorldCode, normalizeWorldCode } from '../logic/codes';
 import { findBlueprint } from '../logic/blueprints';
@@ -16,19 +17,25 @@ export const hasConvex = client !== null;
 export interface WorldInfo {
   code: string;
   emoji: string;
+  mode: GameMode;
+  difficulty: Difficulty;
 }
 
-export async function createWorld(emoji: string): Promise<WorldInfo> {
-  if (!client) return { code: makeWorldCode(), emoji };
-  return client.mutation(api.worlds.create, { emoji });
+export async function createWorld(
+  emoji: string,
+  mode: GameMode,
+  difficulty: Difficulty,
+): Promise<WorldInfo> {
+  if (!client) return { code: makeWorldCode(), emoji, mode, difficulty };
+  return client.mutation(api.worlds.create, { emoji, mode, difficulty }) as Promise<WorldInfo>;
 }
 
 /** The world for a typed code, or null if there is no such world. */
 export async function findWorld(typed: string): Promise<WorldInfo | null> {
   const code = normalizeWorldCode(typed);
   if (!code) return null;
-  if (!client) return { code, emoji: '🏝️' };
-  return client.query(api.worlds.get, { code });
+  if (!client) return { code, emoji: '🏝️', mode: 'creative', difficulty: 'easy' };
+  return client.query(api.worlds.get, { code }) as Promise<WorldInfo | null>;
 }
 
 export type BuildAnswer =

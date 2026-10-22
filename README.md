@@ -8,25 +8,29 @@ Suunnittelijat: **Julius ja Leo**. Koodi: Claude.
 
 ## Näin pelaat
 
-1. Valitse eläin 🦊🐻🐼🐸…
+1. Valitse eläin 🦊🐻🐼🐸… ja pelitapa:
+   - 🛠️ **Nikkaroija**: kaikki palikat ja tavarat käytössä, voit lentää, et satu.
+   - ⚔️ **Selviytyjä**: louhi itse, kerää tavarat, syö ja varo putoamista, laavaa ja hukkumista.
+   - Vaikeustaso: 😊 Rauhallinen, 🙂 Helppo, 😐 Normaali tai 😈 Vaikea.
 2. **🌍 Uusi maailma** tekee uuden saaren ja koodin. Kerro koodi kaverille!
 3. Kaveri kirjoittaa koodin kohtaan **Liity kaverin maailmaan**.
 4. **🧍 Pelaa yksin** toimii ilman nettiä, ja saari tallentuu tälle koneelle.
 
-| Näppäin                   | Mitä tapahtuu             |
-| ------------------------- | ------------------------- |
-| `W` `A` `S` `D`           | liiku                     |
-| `Välilyönti`              | hyppää                    |
-| `Välilyönti` 2 × nopeasti | lennä / lopeta lentäminen |
-| `Shift`                   | juokse / laskeudu         |
-| vasen hiiri               | riko palikka              |
-| oikea hiiri               | laita palikka             |
-| `1`–`9` tai rulla         | valitse palikka           |
-| `E`                       | kaikki palikat            |
-| `T` tai `Enter`           | chatti                    |
-| `B`                       | ✨ taikarakentaja         |
-| `Z`                       | kumoa taikarakennus       |
-| `Esc`                     | tauko                     |
+| Näppäin                   | Mitä tapahtuu                |
+| ------------------------- | ---------------------------- |
+| `W` `A` `S` `D`           | liiku                        |
+| `Välilyönti`              | hyppää                       |
+| `Välilyönti` 2 × nopeasti | lennä / lopeta lentäminen    |
+| `Shift`                   | juokse / laskeudu            |
+| vasen hiiri               | riko palikka                 |
+| oikea hiiri               | laita palikka / syö / ämpäri |
+| `1`–`9` tai rulla         | valitse palikka              |
+| `E`                       | reppu / kaikki tavarat       |
+| `Q` (`Ctrl+Q`)            | pudota yksi (koko pino)      |
+| `T` tai `Enter`           | chatti                       |
+| `B`                       | ✨ taikarakentaja            |
+| `Z`                       | kumoa taikarakennus          |
+| `Esc`                     | tauko                        |
 
 ## Turvallisuus
 

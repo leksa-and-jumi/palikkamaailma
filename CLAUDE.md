@@ -34,6 +34,11 @@ Tämä repo kuuluu Julius (7 v) ja Leo (10 v) -veljesten pelistudioon (GitHub-or
   - `worker/` – huonepalvelin. `convex/` – skeema ja funktiot; `convex/_generated` commitoidaan.
 - Uusi palikka: lisää id ja rivi `src/logic/blocks.ts`:ään (älä koskaan muuta vanhoja id:itä), tekstuurin nimi `TILE_NAMES`iin ja piirtäjä `src/render/textures.ts`:ään.
 - Maailma on loputon (±30 000 palikkaa, korkeus 96, meri y = 40): biomit (meri, ranta, niitty, metsä, aavikko, lumimaa, havumetsä, vuoret), luolat, laava, malmit syvyyden mukaan ja puut. Sama koodi antaa aina saman maailman (`seedFromCode`), joten vain muutokset tallennetaan. Kaukaiset chunkit unohdetaan muistista, muutokset säilyvät.
+- Esineet (`src/logic/items.ts`): jokainen palikka on esine (sama id), muut esineet id:stä 256 alkaen (työkalut 5 tasoa, haarniskat, ruoka, materiaalit). Nimet ja numerot kuten Minecraftissa. **Älä koskaan järjestä listaa uudelleen**: paikka on tallennettu id.
+- Louhinta (`src/logic/mining.ts`): kovuus, oikea työkalu, tarvittava hakkutaso ja pudotukset kuten Minecraftissa.
+- Pelitilat: 🛠️ Nikkaroija (creative) ja ⚔️ Selviytyjä (survival). Maailmalla on oletustila ja vaikeustaso (Convex `worlds`), pelaaja voi vaihtaa tilaa taukovalikosta. `SURVIVAL.keepInventory` = true (lapset eivät menetä tavaroitaan kuollessaan).
+- Reppu, terveys ja sijainti tallentuvat laitteelle maailmakohtaisesti (`STORAGE.player`). Maassa olevat esineet ovat huonepalvelimella (`items`-taulu), ja vain ensimmäinen poimija saa esineen.
+- Ämpärit: vesi + laava = obsidiaani.
 - Valo: aurinko ylhäältä + soihdut/laava/hehkukivi (flood fill `computeLight` mesherissä, kantama `LIGHT`). Muuttunut palikka piirtää myös naapurichunkit uudestaan.
 
 ## Ympäristömuuttujat

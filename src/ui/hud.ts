@@ -1,26 +1,23 @@
-// Everything drawn on top of the 3D world: hotbar, world code, players,
-// block picker and the magic builder window.
+// Everything drawn on top of the 3D world: hotbar, hearts and hunger, world
+// code, players, chat and the magic builder window.
 
-import { DEFAULT_HOTBAR, PLACEABLE_BLOCKS, getBlockType } from '../logic/blocks';
+import { SURVIVAL } from '../config';
 import { BLUEPRINTS } from '../logic/blueprints';
+import { HOTBAR_SIZE, type Inventory } from '../logic/inventory';
+import { getItem } from '../logic/items';
+import type { Vitals } from '../logic/survival';
 import type { RoomStatus } from '../net/room';
-import { drawBlockIcon } from '../render/textures';
+import { fillSlot } from './slots';
 
-const ICON_PIXELS = 48;
 const CHAT_LINES = 8;
 const CHAT_FADE_MS = 10_000;
 const TOAST_MS = 2600;
-const BLOCK_NAME_MS = 1400;
+const ITEM_NAME_MS = 1400;
+const HURT_FLASH_MS = 120;
+const ICON_PIXELS = 9;
 
 function $(id: string): HTMLElement {
   return document.getElementById(id)!;
-}
-
-function icon(blockId: number): HTMLCanvasElement {
-  const canvas = document.createElement('canvas');
-  canvas.width = canvas.height = ICON_PIXELS;
-  drawBlockIcon(canvas, blockId);
-  return canvas;
 }
 
 const STATUS_TEXT: Record<RoomStatus | 'solo', string> = {
@@ -32,22 +29,72 @@ const STATUS_TEXT: Record<RoomStatus | 'solo', string> = {
   solo: '🧍 Pelaat yksin',
 };
 
+// Tiny pixel icons for the bars: full, half and empty.
+const ICONS = {
+  heart: ['.rr.rr...', 'rRrrrrr..', 'rrrrrrr..', '.rrrrr...', '..rrr....', '...r.....'],
+  food: ['.....bb..', '....bbbb.', '...bbbbb.', '..mbbbb..', '.mm.bb...', 'mm.......', 'w........'],
+  armor: [
+    '.aaaaaaa.',
+    'aaaaaaaaa',
+    'aaaaaaaaa',
+    '.aaaaaaa.',
+    '.aaaaaaa.',
+    '..aaaaa..',
+    '...aaa...',
+  ],
+  bubble: ['..bbb....', '.b...b...', 'b.w...b..', 'b.....b..', '.b...b...', '..bbb....'],
+} as const;
+const COLORS: Record<string, string> = {
+  r: '#e02020',
+  R: '#ff9a9a',
+  b: '#b0703a',
+  m: '#e8d8c0',
+  w: '#ffffff',
+  a: '#d0d4da',
+};
+const EMPTY_COLOR = 'rgba(0,0,0,0.45)';
+
+function pixelIcon(kind: keyof typeof ICONS, fill: 'full' | 'half' | 'empty'): HTMLCanvasElement {
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = ICON_PIXELS;
+  const ctx = canvas.getContext('2d')!;
+  const rows = ICONS[kind];
+  rows.forEach((row, y) => {
+    [...row].forEach((c, x) => {
+      if (c === '.') return;
+      const lit = fill === 'full' || (fill === 'half' && x < 4);
+      ctx.fillStyle = lit ? (kind === 'bubble' ? '#7fc8ff' : COLORS[c]!) : EMPTY_COLOR;
+      ctx.fillRect(x, y + 1, 1, 1);
+    });
+  });
+  return canvas;
+}
+
+function fillBar(el: HTMLElement, kind: keyof typeof ICONS, value: number, max: number): void {
+  const icons: HTMLCanvasElement[] = [];
+  for (let i = 0; i < max / 2; i++) {
+    const left = value - i * 2;
+    icons.push(pixelIcon(kind, left >= 2 ? 'full' : left === 1 ? 'half' : 'empty'));
+  }
+  el.replaceChildren(...icons);
+}
+
 export class Hud {
-  readonly hotbar: number[] = [...DEFAULT_HOTBAR];
   selected = 0;
+  private inventory: Inventory | null = null;
   private toastTimer: ReturnType<typeof setTimeout> | null = null;
   private nameTimer: ReturnType<typeof setTimeout> | null = null;
-
-  constructor() {
-    this.renderHotbar();
-  }
-
-  get selectedBlock(): number {
-    return this.hotbar[this.selected]!;
-  }
+  private lastVitals = '';
 
   show(visible: boolean): void {
     $('hud').hidden = !visible;
+  }
+
+  /** The hotbar shows the first 9 slots of this inventory. */
+  setInventory(inventory: Inventory): void {
+    this.inventory = inventory;
+    inventory.onChange = () => this.renderHotbar();
+    this.renderHotbar();
   }
 
   setWorld(emoji: string, code: string, solo: boolean): void {
@@ -69,19 +116,32 @@ export class Hud {
     $('flying').hidden = !flying;
   }
 
-  select(index: number): void {
-    this.selected = ((index % this.hotbar.length) + this.hotbar.length) % this.hotbar.length;
-    this.renderHotbar();
-    this.flashBlockName();
+  /** Hearts, food, armor and air (survival only; null hides them). */
+  setVitals(v: Vitals | null, armorPoints: number, underwater: boolean): void {
+    $('vitals').hidden = v === null;
+    if (!v) return;
+    const air = underwater ? Math.ceil((v.air / SURVIVAL.maxAir) * 20) : 20;
+    const key = `${Math.ceil(v.health)},${v.hunger},${armorPoints},${air}`;
+    if (key === this.lastVitals) return;
+    this.lastVitals = key;
+    fillBar($('health-bar'), 'heart', Math.ceil(v.health), SURVIVAL.maxHealth);
+    fillBar($('hunger-bar'), 'food', v.hunger, SURVIVAL.maxHunger);
+    if (armorPoints > 0) fillBar($('armor-bar'), 'armor', armorPoints, 20);
+    else $('armor-bar').replaceChildren();
+    if (air < 20) fillBar($('air-bar'), 'bubble', air, 20);
+    else $('air-bar').replaceChildren();
   }
 
-  /** Puts a block in the selected slot (or selects it if already there). */
-  chooseBlock(blockId: number): void {
-    const existing = this.hotbar.indexOf(blockId);
-    if (existing >= 0) this.selected = existing;
-    else this.hotbar[this.selected] = blockId;
+  flashHurt(): void {
+    const el = $('hurt-flash');
+    el.classList.add('on');
+    setTimeout(() => el.classList.remove('on'), HURT_FLASH_MS);
+  }
+
+  select(index: number): void {
+    this.selected = ((index % HOTBAR_SIZE) + HOTBAR_SIZE) % HOTBAR_SIZE;
     this.renderHotbar();
-    this.flashBlockName();
+    this.flashItemName();
   }
 
   toast(text: string): void {
@@ -92,23 +152,26 @@ export class Hud {
     this.toastTimer = setTimeout(() => (el.hidden = true), TOAST_MS);
   }
 
-  private flashBlockName(): void {
+  private flashItemName(): void {
     const el = $('block-name');
-    el.textContent = getBlockType(this.selectedBlock).name;
+    const stack = this.inventory?.slots[this.selected];
+    el.textContent = stack ? (getItem(stack.id)?.name ?? '') : '';
     el.style.opacity = '1';
     if (this.nameTimer) clearTimeout(this.nameTimer);
-    this.nameTimer = setTimeout(() => (el.style.opacity = '0'), BLOCK_NAME_MS);
+    this.nameTimer = setTimeout(() => (el.style.opacity = '0'), ITEM_NAME_MS);
   }
 
-  private renderHotbar(): void {
+  renderHotbar(): void {
     const bar = $('hotbar');
+    const slots = this.inventory?.slots.slice(0, HOTBAR_SIZE) ?? [];
     bar.replaceChildren(
-      ...this.hotbar.map((blockId, i) => {
+      ...slots.map((stack, i) => {
         const slot = document.createElement('div');
         slot.className = `slot${i === this.selected ? ' selected' : ''}`;
+        fillSlot(slot, stack);
         const number = document.createElement('span');
         number.textContent = String(i + 1);
-        slot.append(icon(blockId), number);
+        slot.append(number);
         return slot;
       }),
     );
@@ -158,34 +221,15 @@ export class Hud {
     $('biome').textContent = text;
   }
 
-  // --- Block picker -------------------------------------------------------
+  // --- Death --------------------------------------------------------------
 
-  openPicker(onClose: () => void): void {
-    const grid = $('picker-grid');
-    grid.replaceChildren(
-      ...PLACEABLE_BLOCKS.map((blockId) => {
-        const button = document.createElement('button');
-        const name = document.createElement('div');
-        name.textContent = getBlockType(blockId).name;
-        button.append(icon(blockId), name);
-        button.addEventListener('click', () => {
-          this.chooseBlock(blockId);
-          close();
-        });
-        return button;
-      }),
-    );
-    const screen = $('picker');
-    const close = () => {
-      screen.hidden = true;
-      onClose();
+  showDeath(reason: string, onRespawn: () => void): void {
+    $('death-reason').textContent = reason;
+    $('death').hidden = false;
+    $('respawn').onclick = () => {
+      $('death').hidden = true;
+      onRespawn();
     };
-    $('picker-close').onclick = close;
-    screen.hidden = false;
-  }
-
-  get pickerOpen(): boolean {
-    return !$('picker').hidden;
   }
 
   // --- Magic builder ------------------------------------------------------

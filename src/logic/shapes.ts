@@ -34,9 +34,22 @@ function vec(v: unknown): Vec3 | null {
   return out.every((n) => n !== null) ? (out as Vec3) : null;
 }
 
+/** Words the AI might use for blocks with a longer key. */
+const BLOCK_ALIASES: Record<string, string> = {
+  gold: 'gold_block',
+  diamond: 'diamond_block',
+  iron: 'iron_block',
+  wood: 'planks',
+  oak_planks: 'planks',
+  oak_log: 'log',
+  stone_bricks: 'brick',
+  glowstone: 'lamp',
+};
+
 function blockKey(v: unknown): string | null {
   if (typeof v !== 'string') return null;
-  const key = v.trim().toLowerCase();
+  const typed = v.trim().toLowerCase();
+  const key = BLOCK_ALIASES[typed] ?? typed;
   return key === 'air' || blockIdFromKey(key) !== undefined ? key : null;
 }
 

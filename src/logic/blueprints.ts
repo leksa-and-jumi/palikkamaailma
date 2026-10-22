@@ -67,7 +67,7 @@ export const BLUEPRINTS: readonly Blueprint[] = [
       { shape: 'pyramid', block: 'blue', center: [14, 9, 14], radius: 2 },
       { shape: 'box', block: 'planks', from: [4, 0, 4], to: [10, 8, 10] },
       { shape: 'box', block: 'air', from: [7, 0, 4], to: [7, 1, 4] },
-      { shape: 'box', block: 'gold', from: [7, 9, 7], to: [7, 11, 7] },
+      { shape: 'box', block: 'gold_block', from: [7, 9, 7], to: [7, 11, 7] },
       { shape: 'box', block: 'red', from: [8, 11, 7], to: [9, 11, 7] },
     ],
   },
@@ -89,7 +89,7 @@ export const BLUEPRINTS: readonly Blueprint[] = [
     shapes: [
       { shape: 'pyramid', block: 'sand', center: [0, 0, 8], radius: 8 },
       { shape: 'box', block: 'air', from: [0, 0, 0], to: [0, 1, 4] },
-      { shape: 'box', block: 'gold', from: [0, 8, 8], to: [0, 8, 8] },
+      { shape: 'box', block: 'gold_block', from: [0, 8, 8], to: [0, 8, 8] },
     ],
   },
   {

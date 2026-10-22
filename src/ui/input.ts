@@ -10,18 +10,14 @@ export interface InputHandlers {
   onScroll(direction: number): void;
   onToggleFly(): void;
   /** Returns true if the key was used (then it is not typed into a text box). */
-  onKey(code: string): boolean;
+  onKey(code: string, event: KeyboardEvent): boolean;
   onLockChange(locked: boolean): void;
 }
-
-/** Holding a mouse button repeats breaking/placing this often (seconds). */
-const REPEAT_TIME = 0.25;
 
 export class Input {
   private readonly keys = new Set<string>();
   private lastSpace = -Infinity;
-  private held: 0 | 2 | null = null;
-  private holdTimer = 0;
+  private readonly buttons = new Set<number>();
   yawDelta = 0;
   pitchDelta = 0;
   enabled = false;
@@ -39,7 +35,7 @@ export class Input {
       this.pitchDelta -= e.movementY * PLAYER.mouseSensitivity;
     });
     canvas.addEventListener('mousedown', (e) => this.mouseDown(e));
-    document.addEventListener('mouseup', () => (this.held = null));
+    document.addEventListener('mouseup', (e) => this.buttons.delete(e.button));
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
     canvas.addEventListener('wheel', (e) => {
       if (this.enabled && this.locked) this.handlers.onScroll(Math.sign(e.deltaY));
@@ -48,7 +44,7 @@ export class Input {
       if (!this.enabled) return;
       if (!this.locked) {
         this.keys.clear();
-        this.held = null;
+        this.buttons.clear();
       }
       this.handlers.onLockChange(this.locked);
     });
@@ -78,15 +74,9 @@ export class Input {
     return p - n;
   }
 
-  /** Call every frame: repeats breaking/placing while a button is held. */
-  update(dt: number): void {
-    if (this.held === null || !this.locked) return;
-    this.holdTimer -= dt;
-    if (this.holdTimer <= 0) {
-      this.holdTimer = REPEAT_TIME;
-      if (this.held === 0) this.handlers.onBreak();
-      else this.handlers.onPlace();
-    }
+  /** Is this mouse button held down (0 = left, 2 = right)? */
+  isMouseDown(button: number): boolean {
+    return this.locked && this.buttons.has(button);
   }
 
   takeLook(): [number, number] {
@@ -99,7 +89,7 @@ export class Input {
   private keyDown(e: KeyboardEvent): void {
     if (!this.enabled) return;
     if (e.target instanceof HTMLInputElement) return;
-    if (this.handlers.onKey(e.code)) {
+    if (this.handlers.onKey(e.code, e)) {
       e.preventDefault();
       return;
     }
@@ -124,13 +114,10 @@ export class Input {
       this.lock();
       return;
     }
+    this.buttons.add(e.button);
     if (e.button === 0) {
-      this.held = 0;
-      this.holdTimer = REPEAT_TIME;
       this.handlers.onBreak();
     } else if (e.button === 2) {
-      this.held = 2;
-      this.holdTimer = REPEAT_TIME;
       this.handlers.onPlace();
     } else if (e.button === 1) {
       e.preventDefault();
