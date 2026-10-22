@@ -10,6 +10,12 @@ const SMOOTHING = 12;
 const WALK_SWING = 0.7;
 const WALK_SPEED = 9;
 const LABEL_HEIGHT = 0.55;
+/** Guess ahead at most this long after an update (a bit over one update gap). */
+const MAX_PREDICT_TIME = 0.3;
+/** Updates further apart than this (s) mean the player had stopped. */
+const MAX_PREDICT_GAP = 0.6;
+/** Faster than this is a teleport, not walking (blocks per second). */
+const MAX_PREDICT_SPEED = 20;
 
 interface Figure {
   group: THREE.Group;
@@ -19,6 +25,12 @@ interface Figure {
   rightArm: THREE.Mesh;
   head: THREE.Mesh;
   target: THREE.Vector3;
+  /** Speed worked out from the last two updates, to guess where they are now. */
+  velocity: THREE.Vector3;
+  lastUpdate: number;
+  /** Seconds predicted since the last update. */
+  predicted: number;
+  lastReported?: THREE.Vector3;
   targetYaw: number;
   targetPitch: number;
   walk: number;
@@ -124,6 +136,9 @@ export class OtherPlayers {
       rightArm,
       head,
       target: new THREE.Vector3(...player.p),
+      velocity: new THREE.Vector3(),
+      lastUpdate: performance.now(),
+      predicted: 0,
       targetYaw: player.yaw,
       targetPitch: player.pitch,
       walk: 0,
@@ -133,7 +148,23 @@ export class OtherPlayers {
   move(id: string, p: [number, number, number], yaw: number, pitch: number): void {
     const figure = this.figures.get(id);
     if (!figure) return;
-    figure.target.set(...p);
+    const now = performance.now();
+    const seconds = Math.max(0.05, (now - figure.lastUpdate) / 1000);
+    const next = new THREE.Vector3(...p);
+    // Only trust the speed if updates come regularly (not after standing still).
+    if (seconds < MAX_PREDICT_GAP) {
+      figure.velocity
+        .copy(next)
+        .sub(figure.lastReported ?? next)
+        .divideScalar(seconds);
+      figure.velocity.clampLength(0, MAX_PREDICT_SPEED);
+    } else {
+      figure.velocity.set(0, 0, 0);
+    }
+    figure.lastReported = next.clone();
+    figure.lastUpdate = now;
+    figure.predicted = 0;
+    figure.target.copy(next);
     figure.targetYaw = yaw;
     figure.targetPitch = pitch;
   }
@@ -155,6 +186,11 @@ export class OtherPlayers {
   update(dt: number): void {
     const t = 1 - Math.exp(-SMOOTHING * dt);
     for (const f of this.figures.values()) {
+      // Keep moving the way they were going until the next update arrives.
+      if (f.predicted < MAX_PREDICT_TIME) {
+        f.target.addScaledVector(f.velocity, dt);
+        f.predicted += dt;
+      }
       const before = f.group.position.clone();
       f.group.position.lerp(f.target, t);
       // Turn the short way round.

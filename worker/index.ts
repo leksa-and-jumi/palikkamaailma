@@ -16,6 +16,14 @@ import {
   type ServerMessage,
 } from '../src/logic/protocol';
 import type { Edit } from '../src/logic/world';
+import {
+  groupByChunk,
+  mergeEdits,
+  packEdits,
+  toChunkEdits,
+  unpackEdits,
+  type ChunkEdits,
+} from './editStore';
 
 export interface Env {
   WORLD_ROOM: DurableObjectNamespace<WorldRoom>;
@@ -68,20 +76,135 @@ interface Attachment {
   chatTimes?: number[];
 }
 
+/** Storage layout version; 2 = edits packed per chunk, items in one row. */
+const SCHEMA_VERSION = '2';
+
 export class WorldRoom extends DurableObject<Env> {
   private readonly sql: SqlStorage;
+  // Caches, so rows are read once while the room is awake (cleared on hibernation).
+  private readonly chunks = new Map<string, ChunkEdits>();
+  private allChunksLoaded = false;
+  private editCount: number | null = null;
+  private droppedItems: DroppedItem[] | null = null;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     this.sql = ctx.storage.sql;
-    this.sql.exec(`CREATE TABLE IF NOT EXISTS edits (
-      x INTEGER NOT NULL, y INTEGER NOT NULL, z INTEGER NOT NULL, b INTEGER NOT NULL,
-      PRIMARY KEY (x, y, z)
-    ) WITHOUT ROWID`);
     this.sql.exec('CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v TEXT NOT NULL)');
-    this.sql.exec(`CREATE TABLE IF NOT EXISTS items (
-      id TEXT PRIMARY KEY, data TEXT NOT NULL, time INTEGER NOT NULL
-    )`);
+    this.sql.exec(
+      'CREATE TABLE IF NOT EXISTS edit_chunks (chunk TEXT PRIMARY KEY, data BLOB NOT NULL)',
+    );
+    if (this.meta('schema') !== SCHEMA_VERSION) this.migrate();
+  }
+
+  private meta(key: string): string | undefined {
+    return this.sql.exec<{ v: string }>('SELECT v FROM meta WHERE k = ?', key).toArray()[0]?.v;
+  }
+
+  private setMeta(key: string, value: string): void {
+    this.sql.exec('INSERT OR REPLACE INTO meta (k, v) VALUES (?, ?)', key, value);
+  }
+
+  /** Moves worlds saved in the old one-row-per-block format to chunk rows (runs once). */
+  private migrate(): void {
+    const hasOld = (name: string) =>
+      this.sql
+        .exec("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?", name)
+        .toArray().length > 0;
+    let count = 0;
+    if (hasOld('edits')) {
+      const old = this.sql
+        .exec<{ x: number; y: number; z: number; b: number }>('SELECT x, y, z, b FROM edits')
+        .toArray()
+        .map((r): Edit => [r.x, r.y, r.z, r.b]);
+      for (const [key, edits] of groupByChunk(old)) {
+        const chunk = toChunkEdits(edits);
+        count += chunk.size;
+        this.writeChunk(key, chunk);
+      }
+      this.sql.exec('DROP TABLE edits');
+    }
+    if (hasOld('items')) {
+      const items = this.sql
+        .exec<{ data: string }>('SELECT data FROM items')
+        .toArray()
+        .map((r) => JSON.parse(r.data) as DroppedItem);
+      this.setMeta('items', JSON.stringify(items));
+      this.sql.exec('DROP TABLE items');
+    }
+    this.setMeta('editCount', String(count));
+    this.setMeta('schema', SCHEMA_VERSION);
+  }
+
+  // --- Changed blocks -----------------------------------------------------
+
+  private loadChunk(key: string): ChunkEdits {
+    let chunk = this.chunks.get(key);
+    if (!chunk) {
+      const row = this.sql
+        .exec<{ data: ArrayBuffer }>('SELECT data FROM edit_chunks WHERE chunk = ?', key)
+        .toArray()[0];
+      chunk = toChunkEdits(row ? unpackEdits(row.data) : []);
+      this.chunks.set(key, chunk);
+    }
+    return chunk;
+  }
+
+  private writeChunk(key: string, chunk: ChunkEdits): void {
+    this.sql.exec(
+      'INSERT OR REPLACE INTO edit_chunks (chunk, data) VALUES (?, ?)',
+      key,
+      packEdits(chunk.values()),
+    );
+  }
+
+  private getEditCount(): number {
+    this.editCount ??= Number(this.meta('editCount') ?? 0);
+    return this.editCount;
+  }
+
+  /** Saves edits: one read (first time) and one write per chunk, plus the counter. */
+  private storeEdits(edits: Edit[]): boolean {
+    if (this.getEditCount() + edits.length > NET.maxStoredEdits) return false;
+    let added = 0;
+    for (const [key, group] of groupByChunk(edits)) {
+      const chunk = this.loadChunk(key);
+      added += mergeEdits(chunk, group);
+      this.writeChunk(key, chunk);
+    }
+    if (added > 0) {
+      this.editCount = this.getEditCount() + added;
+      this.setMeta('editCount', String(this.editCount));
+    }
+    return true;
+  }
+
+  private loadAllChunks(): void {
+    if (this.allChunksLoaded) return;
+    for (const row of this.sql.exec<{ chunk: string; data: ArrayBuffer }>(
+      'SELECT chunk, data FROM edit_chunks',
+    )) {
+      if (!this.chunks.has(row.chunk))
+        this.chunks.set(row.chunk, toChunkEdits(unpackEdits(row.data)));
+    }
+    this.allChunksLoaded = true;
+  }
+
+  // --- Items on the ground ------------------------------------------------
+
+  /** Items still lying around (old ones disappear). Kept in one row. */
+  private items(): DroppedItem[] {
+    if (!this.droppedItems) {
+      const saved = this.meta('items');
+      this.droppedItems = saved ? (JSON.parse(saved) as DroppedItem[]) : [];
+    }
+    const oldest = Date.now() - DROPS.lifetime * 1000;
+    this.droppedItems = this.droppedItems.filter((d) => d.time >= oldest);
+    return this.droppedItems;
+  }
+
+  private saveItems(): void {
+    this.setMeta('items', JSON.stringify(this.items()));
   }
 
   async fetch(request: Request): Promise<Response> {
@@ -102,12 +225,11 @@ export class WorldRoom extends DurableObject<Env> {
   private async worldExists(code: string): Promise<boolean> {
     const site = this.env.CONVEX_SITE_URL;
     if (!site) return true;
-    const known = this.sql.exec<{ v: string }>("SELECT v FROM meta WHERE k = 'verified'").toArray();
-    if (known.length > 0) return true;
+    if (this.meta('verified')) return true;
     try {
       const response = await fetch(`${site}/world?code=${encodeURIComponent(code)}`);
       if (!response.ok) return false;
-      this.sql.exec("INSERT OR REPLACE INTO meta (k, v) VALUES ('verified', ?)", code);
+      this.setMeta('verified', code);
       return true;
     } catch {
       // If Convex cannot be reached, let the kids play anyway.
@@ -145,24 +267,14 @@ export class WorldRoom extends DurableObject<Env> {
       }
       case 'set': {
         if (!me.player) return;
-        const stored = this.sql.exec<{ n: number }>('SELECT COUNT(*) AS n FROM edits').one().n;
-        if (stored + msg.edits.length > NET.maxStoredEdits) return;
-        for (const [x, y, z, b] of msg.edits) {
-          this.sql.exec(
-            'INSERT OR REPLACE INTO edits (x, y, z, b) VALUES (?, ?, ?, ?)',
-            x,
-            y,
-            z,
-            b,
-          );
-        }
+        if (!this.storeEdits(msg.edits)) return;
         this.broadcast({ t: 'set', edits: msg.edits }, ws);
         return;
       }
       case 'drop': {
         if (!me.player) return;
-        const count = this.sql.exec<{ n: number }>('SELECT COUNT(*) AS n FROM items').one().n;
-        if (count >= DROPS.maxPerRoom) return;
+        const items = this.items();
+        if (items.length >= DROPS.maxPerRoom) return;
         const drop: DroppedItem = {
           id: crypto.randomUUID(),
           item: msg.item,
@@ -170,22 +282,19 @@ export class WorldRoom extends DurableObject<Env> {
           v: msg.v,
           time: Date.now(),
         };
-        this.sql.exec(
-          'INSERT INTO items (id, data, time) VALUES (?, ?, ?)',
-          drop.id,
-          JSON.stringify(drop),
-          drop.time,
-        );
+        items.push(drop);
+        this.saveItems();
         this.broadcast({ t: 'item', drop });
         return;
       }
       case 'pickup': {
         if (!me.player) return;
         // Only the first player to ask gets it.
-        const removed = this.sql
-          .exec('DELETE FROM items WHERE id = ? RETURNING id', msg.id)
-          .toArray();
-        if (removed.length === 0) return;
+        const items = this.items();
+        const index = items.findIndex((d) => d.id === msg.id);
+        if (index < 0) return;
+        items.splice(index, 1);
+        this.saveItems();
         this.broadcast({ t: 'picked', id: msg.id, by: me.id });
         return;
       }
@@ -227,25 +336,16 @@ export class WorldRoom extends DurableObject<Env> {
       .filter((p): p is PlayerInfo => !!p);
   }
 
-  /** Items still lying around (old ones disappear). */
-  private items(): DroppedItem[] {
-    this.sql.exec('DELETE FROM items WHERE time < ?', Date.now() - DROPS.lifetime * 1000);
-    return this.sql
-      .exec<{ data: string }>('SELECT data FROM items')
-      .toArray()
-      .map((row) => JSON.parse(row.data) as DroppedItem);
-  }
-
   private sendAllEdits(ws: WebSocket): void {
-    const rows = this.sql.exec<{ x: number; y: number; z: number; b: number }>(
-      'SELECT x, y, z, b FROM edits',
-    );
+    this.loadAllChunks();
     let page: Edit[] = [];
-    for (const row of rows) {
-      page.push([row.x, row.y, row.z, row.b]);
-      if (page.length >= NET.editsPerWelcomePage) {
-        this.send(ws, { t: 'edits', edits: page, done: false });
-        page = [];
+    for (const chunk of this.chunks.values()) {
+      for (const edit of chunk.values()) {
+        page.push(edit);
+        if (page.length >= NET.editsPerWelcomePage) {
+          this.send(ws, { t: 'edits', edits: page, done: false });
+          page = [];
+        }
       }
     }
     this.send(ws, { t: 'edits', edits: page, done: true });

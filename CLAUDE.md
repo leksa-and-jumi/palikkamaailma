@@ -41,6 +41,16 @@ Tämä repo kuuluu Julius (7 v) ja Leo (10 v) -veljesten pelistudioon (GitHub-or
 - Ämpärit: vesi + laava = obsidiaani.
 - Valo: aurinko ylhäältä + soihdut/laava/hehkukivi (flood fill `computeLight` mesherissä, kantama `LIGHT`). Muuttunut palikka piirtää myös naapurichunkit uudestaan.
 
+## Cloudflare-kiintiö (tärkeä)
+
+Ilmaisessa Durable Objects -tasossa on päiväkiintiöt (mm. 5 milj. luettua ja 100 000 kirjoitettua SQLite-riviä, 100 000 pyyntöä; WebSocket-viestit lasketaan pyynnöiksi). 2026-10-22 kiintiö täyttyi, koska jokainen palikan muutos teki `SELECT COUNT(*)` -kyselyn koko muutostauluun (11,8 milj. riviä tunnissa). Siksi:
+
+- **Muutetut palikat tallennetaan yksi rivi per chunk** (`edit_chunks`, pakattu Int32-lista, `worker/editStore.ts`). Palikan asetus = 1 rivin luku (vain ensimmäisellä kerralla, sitten välimuistissa) + 1 kirjoitus + laskuri.
+- Laskurit ja maassa olevat esineet ovat yhdessä `meta`-rivissä. **Älä koskaan lisää kyselyä, joka lukee kaikki rivit jokaisella viestillä** (COUNT(*), SELECT * ilman WHEREä).
+- Sijainti lähetetään 5 krt/s ja vain kun oikeasti liikkuu (`NET.moveSendRate`, `moveDeadZone`); muiden hahmot ennustetaan välissä (`src/render/avatars.ts`).
+- Huone nukkuu (hibernation), kun kukaan ei lähetä viestejä. Konstruktori ajetaan joka herätyksellä, joten siellä saa olla vain halpoja kyselyjä.
+- Käytön voi tarkistaa GraphQL-rajapinnasta (`durableObjectsPeriodicGroups`: rowsRead, rowsWritten; `durableObjectsInvocationsAdaptiveGroups`: requests) `.env.local`-tiedoston Cloudflare-tokenilla.
+
 ## Ympäristömuuttujat
 
 `.env.local` (pohja `.env.example`):
