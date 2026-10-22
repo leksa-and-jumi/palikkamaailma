@@ -86,7 +86,9 @@ export class Game {
   private target: RayHit | null = null;
   private lastFrame = performance.now();
   private moveTimer = 0;
-  private lastSent = '';
+  private moveIdle = 0;
+  /** Position and look last sent to the room: x, y, z, yaw, pitch. */
+  private lastSentMove: [number, number, number, number, number] | null = null;
   private running = true;
   private ready = false;
   private paused = true;
@@ -787,23 +789,28 @@ export class Game {
 
   // --- Multiplayer ------------------------------------------------------
 
+  /** Sends your position a few times a second, only when you really moved. */
   private sendMove(dt: number): void {
     if (!this.room?.isOpen) return;
     this.moveTimer -= dt;
+    this.moveIdle += dt;
     if (this.moveTimer > 0) return;
     this.moveTimer = 1 / NET.moveSendRate;
+    const p = this.player;
+    const last = this.lastSentMove;
+    if (last) {
+      const moved = Math.hypot(p.x - last[0], p.y - last[1], p.z - last[2]);
+      const turned = Math.abs(p.yaw - last[3]) + Math.abs(p.pitch - last[4]);
+      const small = moved < NET.moveDeadZone && turned < NET.turnDeadZone;
+      if (small && (moved === 0 || this.moveIdle < NET.moveKeepAlive)) return;
+    }
     const round = (v: number) => Math.round(v * 100) / 100;
-    const p: [number, number, number] = [
-      round(this.player.x),
-      round(this.player.y),
-      round(this.player.z),
-    ];
-    const yaw = round(this.player.yaw);
-    const pitch = round(this.player.pitch);
-    const key = `${p.join()},${yaw},${pitch}`;
-    if (key === this.lastSent) return;
-    this.lastSent = key;
-    this.room.send({ t: 'move', p, yaw, pitch });
+    const pos: [number, number, number] = [round(p.x), round(p.y), round(p.z)];
+    const yaw = round(p.yaw);
+    const pitch = round(p.pitch);
+    this.lastSentMove = [p.x, p.y, p.z, p.yaw, p.pitch];
+    this.moveIdle = 0;
+    this.room.send({ t: 'move', p: pos, yaw, pitch });
   }
 
   private onRoomStatus(status: RoomStatus): void {
@@ -828,7 +835,7 @@ export class Game {
         this.pickupsAsked.clear();
         for (const d of msg.items ?? []) this.drops.set(d.id, liveDrop(d));
         this.updatePlayerList();
-        this.lastSent = '';
+        this.lastSentMove = null;
         if (this.pending.length > 0) {
           this.sendEdits(this.pending);
           this.pending = [];

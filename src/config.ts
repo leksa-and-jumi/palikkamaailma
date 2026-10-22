@@ -163,8 +163,17 @@ export const RENDER = {
 
 // --- Multiplayer ----------------------------------------------------------
 export const NET = {
-  /** How often your position is sent to the others (per second). */
-  moveSendRate: 10,
+  /**
+   * How often your position is sent to the others (per second). Every message
+   * counts towards the Cloudflare quota; the others' figures are predicted in
+   * between, so 5 still looks smooth.
+   */
+  moveSendRate: 5,
+  /** Small moves (blocks / radians) are not sent at all. */
+  moveDeadZone: 0.05,
+  turnDeadZone: 0.03,
+  /** Send at least this often (s) while moving a little, so nobody drifts. */
+  moveKeepAlive: 2,
   maxPlayersPerRoom: 8,
   /** Block edits per message (the magic builder can send many). */
   maxEditsPerMessage: 4000,
