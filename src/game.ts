@@ -57,6 +57,8 @@ export interface GameOptions {
 
 /** Chunks around the spawn point that must be ready before playing. */
 const SPAWN_READY_RADIUS = 2;
+/** Start playing without the room server after this long (ms). */
+const ROOM_WAIT_MS = 6000;
 const SAVE_DELAY_MS = 1500;
 const PLAYER_SAVE_INTERVAL = 5;
 const MAX_PITCH = Math.PI / 2 - 0.01;
@@ -85,6 +87,7 @@ export class Game {
   private readonly avatars = new Map<string, string>();
   private target: RayHit | null = null;
   private lastFrame = performance.now();
+  private readonly startedAt = performance.now();
   private moveTimer = 0;
   private moveIdle = 0;
   /** Position and look last sent to the room: x, y, z, yaw, pitch. */
@@ -220,7 +223,9 @@ export class Game {
 
     this.renderer.updateChunks(this.player.x, this.player.z);
     if (!this.ready) {
-      const waiting = this.room?.waitingForWelcome ?? false;
+      // Don't wait for the room server forever: play now, changes are sent when it answers.
+      const waited = performance.now() - this.startedAt > ROOM_WAIT_MS;
+      const waiting = (this.room?.waitingForWelcome ?? false) && !waited;
       if (
         !waiting &&
         this.renderer.pendingChunks(this.player.x, this.player.z, SPAWN_READY_RADIUS) === 0
