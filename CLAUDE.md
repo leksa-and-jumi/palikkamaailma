@@ -51,7 +51,9 @@ Tämä repo kuuluu Julius (7 v) ja Leo (10 v) -veljesten pelistudioon (GitHub-or
 
 Paikallinen huonepalvelin lukee `.dev.vars`-tiedostosta `CONVEX_SITE_URL`:n (Convexin `.convex.site`-osoite).
 
-GitHub Actions -deploy käyttää secretejä `CONVEX_DEPLOY_KEY`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` ja repo-muuttujaa `ROOM_URL`. Puuttuvat osat ohitetaan, ja peli toimii silti (yksinpeli + valmiit rakennukset).
+GitHub Actions -deploy käyttää secretejä `CONVEX_DEPLOY_KEY`, `CLOUDFLARE_API_TOKEN` ja `CLOUDFLARE_ACCOUNT_ID` (asetettu 2026-10-22). Huonepalvelimen osoite on kirjoitettu `deploy.yml`:ään (repo-muuttuja `ROOM_URL` ohittaa sen; studion PAT ei saa asettaa muuttujia).
+
+Palvelut (2026-10-22): Convex-projekti `palikkamaailma` (dev `steady-pika-483`, prod `notable-possum-532`, eu-west-1), Cloudflare Worker `palikkamaailma-huoneet.mr-jaakko-virtanen.workers.dev`, OpenRouter-avain `palikkamaailma` ($5/kk, vanhenee 2027-10-22) Convexin env-muuttujana dev- ja prod-puolella. Puuttuvat osat ohitetaan, ja peli toimii silti (yksinpeli + valmiit rakennukset).
 
 ## Kehitysputki (aina sama)
 

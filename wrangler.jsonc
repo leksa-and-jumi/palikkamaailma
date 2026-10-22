@@ -12,7 +12,7 @@
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["WorldRoom"] }],
   "vars": {
     "ALLOWED_ORIGINS": "https://leksa-and-jumi.github.io,http://localhost:5178,http://127.0.0.1:5178",
-    // Set after Convex is set up, e.g. https://happy-otter-123.convex.site
-    "CONVEX_SITE_URL": "",
+    // Production Convex HTTP actions (local dev overrides this in .dev.vars).
+    "CONVEX_SITE_URL": "https://notable-possum-532.eu-west-1.convex.site",
   },
 }
