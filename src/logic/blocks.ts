@@ -76,6 +76,7 @@ export const TILE_NAMES = [
   'lapis_block',
   'redstone_block',
   'coal_block',
+  'sugar_cane',
 ] as const;
 export type TileName = (typeof TILE_NAMES)[number];
 
@@ -203,6 +204,7 @@ export const EMERALD_BLOCK = 57;
 export const LAPIS_BLOCK = 58;
 export const REDSTONE_BLOCK = 59;
 export const COAL_BLOCK = 60;
+export const SUGAR_CANE = 61;
 
 const LIST: BlockType[] = [
   block(AIR, 'air', 'Ilma', 'stone', { solid: false, transparent: true, placeable: false }),
@@ -218,8 +220,8 @@ const LIST: BlockType[] = [
   block(COBBLE, 'cobblestone', 'Mukulakivi', 'cobble'),
   block(BRICK, 'brick', 'Tiilet', 'brick'),
   block(SNOW, 'snow', 'Lumi', { top: 'snow', side: 'snow_side', bottom: 'dirt' }),
-  block(GOLD_BLOCK, 'gold', 'Kultapalikka', 'gold_block'),
-  block(DIAMOND_BLOCK, 'diamond', 'Timanttipalikka', 'diamond_block'),
+  block(GOLD_BLOCK, 'gold_block', 'Kultapalikka', 'gold_block'),
+  block(DIAMOND_BLOCK, 'diamond_block', 'Timanttipalikka', 'diamond_block'),
   block(WOOL_RED, 'red', 'Punainen villa', 'wool_red'),
   block(WOOL_BLUE, 'blue', 'Sininen villa', 'wool_blue'),
   block(WOOL_YELLOW, 'yellow', 'Keltainen villa', 'wool_yellow'),
@@ -315,6 +317,7 @@ const LIST: BlockType[] = [
   block(LAPIS_BLOCK, 'lapis_block', 'Lasuuripalikka', 'lapis_block'),
   block(REDSTONE_BLOCK, 'redstone_block', 'Punakivipalikka', 'redstone_block', { light: 7 }),
   block(COAL_BLOCK, 'coal_block', 'Hiilipalikka', 'coal_block'),
+  block(SUGAR_CANE, 'sugar_cane', 'Sokeriruoko', 'sugar_cane', PLANT),
 ];
 
 export const BLOCKS: readonly BlockType[] = LIST;

@@ -29,6 +29,7 @@ import {
   SPRUCE_LEAVES,
   SPRUCE_LOG,
   STONE,
+  SUGAR_CANE,
   TALL_GRASS,
   WATER,
   blockIdFromKey,
@@ -92,6 +93,7 @@ const EMERALD_CHANCE = 0.0015;
 const EMERALD_MAX_Y = 70;
 const CLAY_CHANCE = 0.06;
 const BEDROCK_LAYERS = 4;
+const SUGAR_CANE_CHANCE = 0.25;
 
 function smoothstep(edge0: number, edge1: number, x: number): number {
   const t = Math.min(1, Math.max(0, (x - edge0) / (edge1 - edge0)));
@@ -298,6 +300,20 @@ export class TerrainGenerator {
     }
   }
 
+  /** Sugar cane: on low dry land right next to water. */
+  sugarCaneAt(x: number, z: number): boolean {
+    const col = this.column(x, z);
+    if (col.cold || col.height !== SEA_LEVEL + 1 || col.biome === 'mountains') return false;
+    if (hash2(this.seed + 4, x, z) >= SUGAR_CANE_CHANCE) return false;
+    if (this.isCave(x, col.height, z, col)) return false;
+    return [
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1],
+    ].some(([dx, dz]) => this.heightAt(x + dx!, z + dz!) < SEA_LEVEL);
+  }
+
   /** Makes all blocks of one chunk. cx and cz are chunk coordinates. */
   generateChunk(cx: number, cz: number): Uint8Array {
     const blocks = new Uint8Array(CHUNK_VOLUME);
@@ -312,6 +328,14 @@ export class TerrainGenerator {
         const top = Math.max(col.height, SEA_LEVEL);
         for (let y = 0; y <= top; y++) {
           blocks[chunkIndex(lx, y, lz)] = this.groundBlock(x, y, z, col);
+        }
+        // Sugar cane grows on the shore next to water.
+        if (this.sugarCaneAt(x, z)) {
+          const tall = 1 + Math.floor(hash2(this.seed + 5, x, z) * 3);
+          for (let y = col.height + 1; y <= col.height + tall; y++) {
+            blocks[chunkIndex(lx, y, lz)] = SUGAR_CANE;
+          }
+          continue;
         }
         // Plants grow on grass (or sand in the desert) when nothing else is there.
         const plant = col.height > SEA_LEVEL ? this.plantAt(x, z) : AIR;

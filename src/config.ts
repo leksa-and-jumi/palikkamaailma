@@ -77,6 +77,70 @@ export const PLAYER = {
   mouseSensitivity: 0.0022,
 } as const;
 
+// --- Game modes and survival ---------------------------------------------
+/** Nikkaroija (creative) or selviytyjä (survival). */
+export type GameMode = 'creative' | 'survival';
+export type Difficulty = 'peaceful' | 'easy' | 'normal' | 'hard';
+
+export const GAME_MODES: Record<GameMode, { emoji: string; name: string }> = {
+  creative: { emoji: '🛠️', name: 'Nikkaroija' },
+  survival: { emoji: '⚔️', name: 'Selviytyjä' },
+};
+
+export const DIFFICULTIES: Record<
+  Difficulty,
+  {
+    emoji: string;
+    name: string;
+    /** Does hunger go down? */
+    hunger: boolean;
+    /** Starving stops hurting at this health. */
+    starveDownTo: number;
+    /** Monster damage multiplier (0 = no monsters). */
+    monsterDamage: number;
+  }
+> = {
+  peaceful: { emoji: '😊', name: 'Rauhallinen', hunger: false, starveDownTo: 20, monsterDamage: 0 },
+  easy: { emoji: '🙂', name: 'Helppo', hunger: true, starveDownTo: 10, monsterDamage: 0.5 },
+  normal: { emoji: '😐', name: 'Normaali', hunger: true, starveDownTo: 1, monsterDamage: 1 },
+  hard: { emoji: '😈', name: 'Vaikea', hunger: true, starveDownTo: 0, monsterDamage: 1.5 },
+};
+
+export const SURVIVAL = {
+  maxHealth: 20,
+  maxHunger: 20,
+  startSaturation: 5,
+  /** Seconds of breath under water. */
+  maxAir: 15,
+  airRefillSpeed: 5,
+  drownDamage: 2,
+  lavaDamage: 4,
+  lavaInterval: 0.5,
+  /** Blocks you can fall without getting hurt. */
+  safeFall: 3,
+  regenHunger: 18,
+  regenInterval: 4,
+  peacefulRegenInterval: 1,
+  starveInterval: 4,
+  exhaustionPerPoint: 4,
+  exhaustion: { sprintPerBlock: 0.1, jump: 0.05, mine: 0.005, attack: 0.1, hurt: 0.1, regen: 6 },
+  /** Kids keep their things when they die (Minecraft's keepInventory). */
+  keepInventory: true,
+  /** Hand reach is the same in both modes; creative breaks instantly. */
+  creativeBreakDelay: 0.2,
+} as const;
+
+/** Items lying on the ground. */
+export const DROPS = {
+  pickupDistance: 1.6,
+  /** Seconds before a dropped item can be picked up. */
+  pickupDelay: 0.6,
+  /** Items disappear after this many seconds. */
+  lifetime: 300,
+  maxPerRoom: 400,
+  gravity: 18,
+} as const;
+
 // --- Rendering ------------------------------------------------------------
 export const RENDER = {
   /** Chunks drawn around the player. */
@@ -225,4 +289,7 @@ export const STORAGE = {
   avatar: 'palikkamaailma.avatar',
   worlds: 'palikkamaailma.worlds',
   soloEdits: 'palikkamaailma.solo.edits',
+  /** Inventory, health and position per world (this device only). */
+  player: 'palikkamaailma.player',
+  soloSettings: 'palikkamaailma.solo.settings',
 } as const;

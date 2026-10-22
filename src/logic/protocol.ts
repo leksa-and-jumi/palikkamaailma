@@ -4,6 +4,7 @@
 
 import { AVATAR_EMOJIS, NET, WORLD_LIMIT } from '../config';
 import { getBlockType, isValidBlockId } from './blocks';
+import { parseStack, type ItemStack } from './inventory';
 import type { Edit } from './world';
 import { isInsideWorld } from './world';
 
@@ -16,14 +17,27 @@ export interface PlayerInfo {
   pitch: number;
 }
 
+/** An item lying on the ground. */
+export interface DroppedItem {
+  id: string;
+  item: ItemStack;
+  /** Where it was dropped and how fast it flew. */
+  p: [number, number, number];
+  v: [number, number, number];
+  /** When it was dropped (ms since 1970). */
+  time: number;
+}
+
 export type ClientMessage =
   | { t: 'hello'; avatar: string }
   | { t: 'move'; p: [number, number, number]; yaw: number; pitch: number }
   | { t: 'set'; edits: Edit[] }
-  | { t: 'chat'; text: string };
+  | { t: 'chat'; text: string }
+  | { t: 'drop'; item: ItemStack; p: [number, number, number]; v: [number, number, number] }
+  | { t: 'pickup'; id: string };
 
 export type ServerMessage =
-  | { t: 'welcome'; you: string; players: PlayerInfo[] }
+  | { t: 'welcome'; you: string; players: PlayerInfo[]; items: DroppedItem[] }
   /** Changed blocks, sent in pages after welcome. `done` is true on the last page. */
   | { t: 'edits'; edits: Edit[]; done: boolean }
   | { t: 'join'; player: PlayerInfo }
@@ -31,9 +45,13 @@ export type ServerMessage =
   | { t: 'move'; id: string; p: [number, number, number]; yaw: number; pitch: number }
   | { t: 'set'; edits: Edit[] }
   | { t: 'chat'; id: string; avatar: string; text: string }
+  | { t: 'item'; drop: DroppedItem }
+  /** Someone picked an item up; only the player `by` gets it. */
+  | { t: 'picked'; id: string; by: string }
   | { t: 'full' };
 
 const POSITION_LIMIT = WORLD_LIMIT + 100;
+const MAX_DROP_SPEED = 20;
 
 function isFiniteNumber(v: unknown, limit = POSITION_LIMIT): v is number {
   return typeof v === 'number' && Number.isFinite(v) && Math.abs(v) <= limit;
@@ -109,6 +127,17 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       const text = cleanChatText(msg.text);
       return text ? { t: 'chat', text } : null;
     }
+    case 'drop': {
+      const item = parseStack(msg.item);
+      const p = parseVec3(msg.p);
+      const vel = parseVec3(msg.v);
+      if (!item || !p || !vel || vel.some((n) => Math.abs(n) > MAX_DROP_SPEED)) return null;
+      return { t: 'drop', item, p, v: vel };
+    }
+    case 'pickup':
+      return typeof msg.id === 'string' && /^[a-z0-9-]{1,40}$/.test(msg.id)
+        ? { t: 'pickup', id: msg.id }
+        : null;
     default:
       return null;
   }

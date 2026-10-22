@@ -7,9 +7,14 @@
 // Only the game's own web pages may connect (ALLOWED_ORIGINS).
 
 import { DurableObject } from 'cloudflare:workers';
-import { NET } from '../src/config';
+import { DROPS, NET } from '../src/config';
 import { isValidWorldCode } from '../src/logic/codes';
-import { parseClientMessage, type PlayerInfo, type ServerMessage } from '../src/logic/protocol';
+import {
+  parseClientMessage,
+  type DroppedItem,
+  type PlayerInfo,
+  type ServerMessage,
+} from '../src/logic/protocol';
 import type { Edit } from '../src/logic/world';
 
 export interface Env {
@@ -74,6 +79,9 @@ export class WorldRoom extends DurableObject<Env> {
       PRIMARY KEY (x, y, z)
     ) WITHOUT ROWID`);
     this.sql.exec('CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v TEXT NOT NULL)');
+    this.sql.exec(`CREATE TABLE IF NOT EXISTS items (
+      id TEXT PRIMARY KEY, data TEXT NOT NULL, time INTEGER NOT NULL
+    )`);
   }
 
   async fetch(request: Request): Promise<Response> {
@@ -123,7 +131,7 @@ export class WorldRoom extends DurableObject<Env> {
         }
         me.player = { id: me.id, avatar: msg.avatar, p: [0, 0, 0], yaw: 0, pitch: 0 };
         ws.serializeAttachment(me);
-        this.send(ws, { t: 'welcome', you: me.id, players: others });
+        this.send(ws, { t: 'welcome', you: me.id, players: others, items: this.items() });
         this.sendAllEdits(ws);
         this.broadcast({ t: 'join', player: me.player }, ws);
         return;
@@ -149,6 +157,36 @@ export class WorldRoom extends DurableObject<Env> {
           );
         }
         this.broadcast({ t: 'set', edits: msg.edits }, ws);
+        return;
+      }
+      case 'drop': {
+        if (!me.player) return;
+        const count = this.sql.exec<{ n: number }>('SELECT COUNT(*) AS n FROM items').one().n;
+        if (count >= DROPS.maxPerRoom) return;
+        const drop: DroppedItem = {
+          id: crypto.randomUUID(),
+          item: msg.item,
+          p: msg.p,
+          v: msg.v,
+          time: Date.now(),
+        };
+        this.sql.exec(
+          'INSERT INTO items (id, data, time) VALUES (?, ?, ?)',
+          drop.id,
+          JSON.stringify(drop),
+          drop.time,
+        );
+        this.broadcast({ t: 'item', drop });
+        return;
+      }
+      case 'pickup': {
+        if (!me.player) return;
+        // Only the first player to ask gets it.
+        const removed = this.sql
+          .exec('DELETE FROM items WHERE id = ? RETURNING id', msg.id)
+          .toArray();
+        if (removed.length === 0) return;
+        this.broadcast({ t: 'picked', id: msg.id, by: me.id });
         return;
       }
       case 'chat': {
@@ -187,6 +225,15 @@ export class WorldRoom extends DurableObject<Env> {
       .getWebSockets()
       .map((ws) => (ws.deserializeAttachment() as Attachment | null)?.player)
       .filter((p): p is PlayerInfo => !!p);
+  }
+
+  /** Items still lying around (old ones disappear). */
+  private items(): DroppedItem[] {
+    this.sql.exec('DELETE FROM items WHERE time < ?', Date.now() - DROPS.lifetime * 1000);
+    return this.sql
+      .exec<{ data: string }>('SELECT data FROM items')
+      .toArray()
+      .map((row) => JSON.parse(row.data) as DroppedItem);
   }
 
   private sendAllEdits(ws: WebSocket): void {

@@ -378,30 +378,6 @@ kbd {
   font-weight: 700;
 }
 
-.picker-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(76px, 1fr));
-  gap: 8px;
-  margin-bottom: 16px;
-}
-
-.picker-grid button {
-  background: #fff;
-  color: var(--ink);
-  box-shadow: 0 4px 0 #d8d2c4;
-  padding: 6px 4px;
-  font-size: 0.7rem;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-}
-
-.picker-grid canvas {
-  width: 44px;
-  height: 44px;
-}
-
 .blueprints {
   display: flex;
   flex-wrap: wrap;
@@ -484,4 +460,223 @@ kbd {
   color: white;
   font-weight: 700;
   text-shadow: 0 2px 3px rgba(0, 0, 0, 0.6);
+}
+
+/* --- Vitals --- */
+
+.vitals {
+  position: absolute;
+  bottom: 76px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 492px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.vitals-row {
+  display: flex;
+  justify-content: space-between;
+}
+
+.bar {
+  display: flex;
+  gap: 1px;
+  min-height: 18px;
+}
+
+.bar.right {
+  flex-direction: row-reverse;
+}
+
+.bar canvas {
+  width: 18px;
+  height: 18px;
+  image-rendering: pixelated;
+}
+
+.hurt-flash {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(transparent 40%, rgba(220, 0, 0, 0.55));
+  opacity: 0;
+  transition: opacity 0.4s;
+}
+
+.hurt-flash.on {
+  opacity: 1;
+  transition: none;
+}
+
+.slot .count {
+  position: absolute;
+  right: 3px;
+  bottom: 0;
+  left: auto;
+  top: auto;
+  color: white;
+  font-weight: 800;
+  font-size: 0.8rem;
+  text-shadow: 1px 1px 0 #000;
+}
+
+.slot .durability {
+  position: absolute;
+  left: 5px;
+  right: 5px;
+  bottom: 3px;
+  height: 3px;
+  background: #222;
+}
+
+.slot .durability i {
+  display: block;
+  height: 100%;
+}
+
+.slot .glint {
+  position: absolute;
+  inset: 4px;
+  border-radius: 4px;
+  background: linear-gradient(120deg, transparent 30%, rgba(190, 120, 255, 0.45), transparent 70%);
+  pointer-events: none;
+}
+
+/* --- Inventory --- */
+
+.inventory-panel {
+  width: min(560px, 100%);
+}
+
+.slot-grid {
+  display: grid;
+  grid-template-columns: repeat(9, 48px);
+  gap: 4px;
+  justify-content: center;
+  margin: 6px 0;
+}
+
+.slot-grid.catalog {
+  max-height: 260px;
+  overflow-y: auto;
+  padding: 4px;
+  background: rgba(0, 0, 0, 0.06);
+  border-radius: 10px;
+}
+
+.slot-grid.hotbar-row {
+  margin-top: 12px;
+}
+
+.slot-grid .slot,
+.armor-slots .slot,
+.crafting-area .slot {
+  width: 48px;
+  height: 48px;
+  background: #8b8b8b;
+  border: 3px solid;
+  border-color: #555 #fff #fff #555;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.slot-grid .slot:hover,
+.armor-slots .slot:hover,
+.crafting-area .slot:hover {
+  background: #a8a8a8;
+}
+
+.slot .placeholder {
+  font-size: 1.4rem;
+  opacity: 0.35;
+}
+
+.inventory-top {
+  display: flex;
+  gap: 24px;
+  justify-content: center;
+  align-items: center;
+  margin: 8px 0;
+}
+
+.armor-slots {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+  margin-bottom: 6px;
+}
+
+.tabs button {
+  padding: 6px 10px;
+  font-size: 0.9rem;
+  background: #fff;
+  color: var(--ink);
+  box-shadow: 0 3px 0 #d8d2c4;
+}
+
+.tabs button.selected {
+  background: var(--accent);
+  color: white;
+}
+
+.cursor-stack {
+  position: fixed;
+  width: 48px;
+  height: 48px;
+  pointer-events: none;
+  z-index: 10;
+  transform: translate(-50%, -50%);
+}
+
+.hint {
+  font-size: 0.8rem;
+  color: var(--muted);
+  margin: 8px 0 0;
+}
+
+.choice {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+  margin-bottom: 8px;
+}
+
+.choice button {
+  background: #fff;
+  color: var(--ink);
+  box-shadow: 0 4px 0 #d8d2c4;
+  border: 3px solid transparent;
+}
+
+.choice button.selected {
+  border-color: var(--accent);
+  background: #eaf7e6;
+}
+
+.death {
+  background: rgba(120, 0, 0, 0.45);
+}
+
+@media (max-width: 600px) {
+  .slot-grid {
+    grid-template-columns: repeat(9, 34px);
+  }
+
+  .slot-grid .slot {
+    width: 34px;
+    height: 34px;
+  }
+
+  .vitals {
+    width: 340px;
+  }
 }

@@ -509,6 +509,27 @@ const PAINTERS: Record<TileName, Painter> = {
   lapis_block: shiny([40, 70, 180]),
   redstone_block: shiny([190, 20, 20]),
   coal_block: shiny([24, 24, 26]),
+  sugar_cane: sprite(
+    [
+      '..g......g......',
+      '..g...g..g...g..',
+      '..g...g..gg..g..',
+      '..G...g..g...g..',
+      '..g...G..g...G..',
+      '..g...g..G...g..',
+      '.gg...g..g...g..',
+      '..g...g..g..gg..',
+      '..G...g..g...g..',
+      '..g..gg..G...g..',
+      '..g...G..g...G..',
+      '..g...g..g...g..',
+      '..g...g..gg..g..',
+      '..G...g..g...g..',
+      '..g...G..G...g..',
+      '..g...g..g...g..',
+    ],
+    { g: [130, 190, 80], G: [90, 140, 60] },
+  ),
 };
 
 function paintTile(name: TileName, image: ImageData, ox: number, oy: number): void {
