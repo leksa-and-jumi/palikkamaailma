@@ -1,6 +1,6 @@
 # 🧱 Palikkamaailma
 
-Palikkapeli, jossa rakennetaan yhdessä omalla saarella. Kaverit pääsevät samaan maailmaan
+Palikkapeli, jossa rakennetaan yhdessä loputtomassa maailmassa: metsiä, aavikoita, lumisia vuoria, meriä ja pimeitä luolia, joissa on malmeja ja laavaa. Kaverit pääsevät samaan maailmaan
 maailman koodilla (esim. `KALA-PUU-42`). ✨ Taikarakentaja rakentaa linnan, talon tai melkein
 mitä vain, kun kirjoitat mitä haluat.
 
@@ -23,14 +23,15 @@ Suunnittelijat: **Julius ja Leo**. Koodi: Claude.
 | oikea hiiri               | laita palikka             |
 | `1`–`9` tai rulla         | valitse palikka           |
 | `E`                       | kaikki palikat            |
-| `T`                       | ✨ taikarakentaja         |
+| `T` tai `Enter`           | chatti                    |
+| `B`                       | ✨ taikarakentaja         |
 | `Z`                       | kumoa taikarakennus       |
 | `Esc`                     | tauko                     |
 
 ## Turvallisuus
 
 - Pelaajat ovat eläimiä, ei nimiä eikä muita tietoja.
-- Ei chattia eikä julkista maailmalistaa: samaan maailmaan pääsee vain koodilla.
+- Chatissa voi jutella saman maailman kavereiden kanssa. Julkista maailmalistaa ei ole: samaan maailmaan pääsee vain koodilla.
 - Taikarakentajan tekoäly vastaa vain palikoilla, ei tekstillä.
 
 ## Kehittäjälle

@@ -2,7 +2,8 @@
 // ("room"): it remembers the changed blocks and tells everyone in the room
 // where the others are and what they build.
 //
-// Safety: no chat, no names (players are animals), no list of rooms.
+// Players are animals (no names) and there is no list of rooms: you join with
+// a code. Chat is on (the parent decided so); it is rate limited per player.
 // Only the game's own web pages may connect (ALLOWED_ORIGINS).
 
 import { DurableObject } from 'cloudflare:workers';
@@ -58,6 +59,8 @@ interface Attachment {
   id: string;
   /** Null until the player says hello. */
   player: PlayerInfo | null;
+  /** When this player's recent chat messages were sent (ms). */
+  chatTimes?: number[];
 }
 
 export class WorldRoom extends DurableObject<Env> {
@@ -146,6 +149,16 @@ export class WorldRoom extends DurableObject<Env> {
           );
         }
         this.broadcast({ t: 'set', edits: msg.edits }, ws);
+        return;
+      }
+      case 'chat': {
+        if (!me.player) return;
+        const now = Date.now();
+        const recent = (me.chatTimes ?? []).filter((t) => now - t < NET.chatWindowMs);
+        if (recent.length >= NET.chatRateLimit) return;
+        me.chatTimes = [...recent, now];
+        ws.serializeAttachment(me);
+        this.broadcast({ t: 'chat', id: me.id, avatar: me.player.avatar, text: msg.text }, ws);
         return;
       }
     }

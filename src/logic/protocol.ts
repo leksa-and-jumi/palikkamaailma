@@ -2,7 +2,7 @@
 // Both sides use this file. Everything from the network is checked here, so
 // a broken or nasty message can never put strange data into the world.
 
-import { AVATAR_EMOJIS, NET } from '../config';
+import { AVATAR_EMOJIS, NET, WORLD_LIMIT } from '../config';
 import { getBlockType, isValidBlockId } from './blocks';
 import type { Edit } from './world';
 import { isInsideWorld } from './world';
@@ -19,7 +19,8 @@ export interface PlayerInfo {
 export type ClientMessage =
   | { t: 'hello'; avatar: string }
   | { t: 'move'; p: [number, number, number]; yaw: number; pitch: number }
-  | { t: 'set'; edits: Edit[] };
+  | { t: 'set'; edits: Edit[] }
+  | { t: 'chat'; text: string };
 
 export type ServerMessage =
   | { t: 'welcome'; you: string; players: PlayerInfo[] }
@@ -29,9 +30,10 @@ export type ServerMessage =
   | { t: 'leave'; id: string }
   | { t: 'move'; id: string; p: [number, number, number]; yaw: number; pitch: number }
   | { t: 'set'; edits: Edit[] }
+  | { t: 'chat'; id: string; avatar: string; text: string }
   | { t: 'full' };
 
-const POSITION_LIMIT = 10_000;
+const POSITION_LIMIT = WORLD_LIMIT + 100;
 
 function isFiniteNumber(v: unknown, limit = POSITION_LIMIT): v is number {
   return typeof v === 'number' && Number.isFinite(v) && Math.abs(v) <= limit;
@@ -65,6 +67,18 @@ export function parseEdits(v: unknown): Edit[] | null {
   return edits.length > 0 ? edits : null;
 }
 
+/** Cleans a chat message: no control characters, trimmed, not too long. */
+export function cleanChatText(v: unknown): string | null {
+  if (typeof v !== 'string') return null;
+  const text = v
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\u0000-\u001f\u007f]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (text.length === 0) return null;
+  return [...text].slice(0, NET.maxChatLength).join('');
+}
+
 /** Reads a message from a player. Returns null if it is not valid. */
 export function parseClientMessage(raw: unknown): ClientMessage | null {
   if (typeof raw !== 'string' || raw.length > 200_000) return null;
@@ -90,6 +104,10 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
     case 'set': {
       const edits = parseEdits(msg.edits);
       return edits ? { t: 'set', edits } : null;
+    }
+    case 'chat': {
+      const text = cleanChatText(msg.text);
+      return text ? { t: 'chat', text } : null;
     }
     default:
       return null;

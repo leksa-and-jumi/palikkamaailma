@@ -1,6 +1,7 @@
 // The whole block world: generated chunks plus the blocks players changed.
+// Chunks are made when needed and forgotten when far away; the edits stay.
 
-import { CHUNK_SIZE, WORLD_CHUNKS, WORLD_HEIGHT, WORLD_SIZE } from '../config';
+import { CHUNK_SIZE, WORLD_HEIGHT, WORLD_LIMIT } from '../config';
 import { AIR, BEDROCK, getBlockType } from './blocks';
 import { TerrainGenerator, chunkIndex } from './terrain';
 
@@ -16,33 +17,55 @@ export function editKey(x: number, y: number, z: number): string {
 }
 
 export function isInsideWorld(x: number, y: number, z: number): boolean {
-  return x >= 0 && z >= 0 && y >= 0 && x < WORLD_SIZE && z < WORLD_SIZE && y < WORLD_HEIGHT;
+  return y >= 0 && y < WORLD_HEIGHT && Math.abs(x) < WORLD_LIMIT && Math.abs(z) < WORLD_LIMIT;
 }
 
-export function isChunkInsideWorld(cx: number, cz: number): boolean {
-  return cx >= 0 && cz >= 0 && cx < WORLD_CHUNKS && cz < WORLD_CHUNKS;
+export function chunkOf(v: number): number {
+  return Math.floor(v / CHUNK_SIZE);
 }
 
 export class VoxelWorld {
   readonly terrain: TerrainGenerator;
   private readonly chunks = new Map<string, Uint8Array>();
-  /** Blocks changed by players, so they can be saved. */
-  readonly edits = new Map<string, Edit>();
+  /** Blocks changed by players, grouped by chunk. */
+  private readonly editsByChunk = new Map<string, Map<string, Edit>>();
   /** Chunks whose mesh must be rebuilt. */
   readonly dirtyChunks = new Set<string>();
+  private lastKey = '';
+  private lastChunk: Uint8Array | null = null;
 
   constructor(readonly seed: number) {
     this.terrain = new TerrainGenerator(seed);
   }
 
-  /** The chunk's blocks; generated the first time it is needed. */
+  /** Every changed block (for saving). */
+  *edits(): IterableIterator<Edit> {
+    for (const chunkEdits of this.editsByChunk.values()) yield* chunkEdits.values();
+  }
+
+  get editCount(): number {
+    let n = 0;
+    for (const chunkEdits of this.editsByChunk.values()) n += chunkEdits.size;
+    return n;
+  }
+
+  /** The chunk's blocks; generated (plus edits) the first time it is needed. */
   getChunk(cx: number, cz: number): Uint8Array {
     const key = chunkKey(cx, cz);
+    if (key === this.lastKey && this.lastChunk) return this.lastChunk;
     let chunk = this.chunks.get(key);
     if (!chunk) {
       chunk = this.terrain.generateChunk(cx, cz);
+      const edits = this.editsByChunk.get(key);
+      if (edits) {
+        for (const [x, y, z, id] of edits.values()) {
+          chunk[chunkIndex(x - cx * CHUNK_SIZE, y, z - cz * CHUNK_SIZE)] = id;
+        }
+      }
       this.chunks.set(key, chunk);
     }
+    this.lastKey = key;
+    this.lastChunk = chunk;
     return chunk;
   }
 
@@ -53,8 +76,8 @@ export class VoxelWorld {
   getBlock(x: number, y: number, z: number): number {
     if (y < 0) return BEDROCK;
     if (!isInsideWorld(x, y, z)) return AIR;
-    const cx = Math.floor(x / CHUNK_SIZE);
-    const cz = Math.floor(z / CHUNK_SIZE);
+    const cx = chunkOf(x);
+    const cz = chunkOf(z);
     const chunk = this.getChunk(cx, cz);
     return chunk[chunkIndex(x - cx * CHUNK_SIZE, y, z - cz * CHUNK_SIZE)]!;
   }
@@ -65,24 +88,31 @@ export class VoxelWorld {
     const old = this.getBlock(x, y, z);
     if (old === id) return false;
     if (!getBlockType(old).breakable) return false;
-    const cx = Math.floor(x / CHUNK_SIZE);
-    const cz = Math.floor(z / CHUNK_SIZE);
-    const lx = x - cx * CHUNK_SIZE;
-    const lz = z - cz * CHUNK_SIZE;
-    this.getChunk(cx, cz)[chunkIndex(lx, y, lz)] = id;
-    this.edits.set(editKey(x, y, z), [x, y, z, id]);
+    const cx = chunkOf(x);
+    const cz = chunkOf(z);
+    const key = chunkKey(cx, cz);
+    this.getChunk(cx, cz)[chunkIndex(x - cx * CHUNK_SIZE, y, z - cz * CHUNK_SIZE)] = id;
+    let edits = this.editsByChunk.get(key);
+    if (!edits) {
+      edits = new Map();
+      this.editsByChunk.set(key, edits);
+    }
+    edits.set(editKey(x, y, z), [x, y, z, id]);
 
-    this.dirtyChunks.add(chunkKey(cx, cz));
-    // A block on a chunk edge changes what the neighbour chunk shows too.
-    if (lx === 0) this.markDirty(cx - 1, cz);
-    if (lx === CHUNK_SIZE - 1) this.markDirty(cx + 1, cz);
-    if (lz === 0) this.markDirty(cx, cz - 1);
-    if (lz === CHUNK_SIZE - 1) this.markDirty(cx, cz + 1);
+    // Light and faces change up to LIGHT range away, so redraw the neighbours too.
+    this.dirtyChunks.add(key);
+    for (let dz = -1; dz <= 1; dz++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        if ((dx !== 0 || dz !== 0) && this.hasChunk(cx + dx, cz + dz)) {
+          this.dirtyChunks.add(chunkKey(cx + dx, cz + dz));
+        }
+      }
+    }
     return true;
   }
 
   /** Applies many edits (from the network or a save). Returns how many changed. */
-  applyEdits(edits: readonly Edit[]): number {
+  applyEdits(edits: Iterable<Edit>): number {
     let changed = 0;
     for (const [x, y, z, id] of edits) {
       if (this.setBlock(x, y, z, id)) changed++;
@@ -98,9 +128,15 @@ export class VoxelWorld {
     return -1;
   }
 
-  private markDirty(cx: number, cz: number): void {
-    if (isChunkInsideWorld(cx, cz) && this.hasChunk(cx, cz)) {
-      this.dirtyChunks.add(chunkKey(cx, cz));
+  /** Forgets generated chunks further than `distance` chunks away (edits are kept). */
+  unloadFarChunks(cx: number, cz: number, distance: number): void {
+    for (const key of this.chunks.keys()) {
+      const [x, z] = key.split(',').map(Number) as [number, number];
+      if (Math.max(Math.abs(x - cx), Math.abs(z - cz)) > distance) {
+        this.chunks.delete(key);
+        this.dirtyChunks.delete(key);
+        if (key === this.lastKey) this.lastChunk = null;
+      }
     }
   }
 }

@@ -1,6 +1,6 @@
 // Moves the player: walking, jumping, flying, swimming and bumping into blocks.
 
-import { PLAYER, WORLD_HEIGHT, WORLD_SIZE } from '../config';
+import { PLAYER, WORLD_HEIGHT, WORLD_LIMIT } from '../config';
 
 export interface PlayerState {
   /** Feet position (centre of the bottom of the player box). */
@@ -158,9 +158,10 @@ function step(world: BlockQuery, s: PlayerState, input: MoveInput, dt: number): 
   s.onGround = s.vy <= 0 && collides(world, s.x, s.y - GROUND_PROBE, s.z);
   if (s.onGround && s.flying) s.flying = false;
 
-  // Stay on the island and below the sky.
-  s.x = Math.min(WORLD_SIZE - HALF, Math.max(HALF, s.x));
-  s.z = Math.min(WORLD_SIZE - HALF, Math.max(HALF, s.z));
+  // Stay inside the world and below the sky.
+  const edge = WORLD_LIMIT - 1;
+  s.x = Math.min(edge, Math.max(-edge, s.x));
+  s.z = Math.min(edge, Math.max(-edge, s.z));
   s.y = Math.min(WORLD_HEIGHT + 8, s.y);
 }
 

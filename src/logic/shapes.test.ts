@@ -47,7 +47,7 @@ describe('shapes', () => {
       shapes: [
         { shape: 'box', block: 'stone', from: [0, 0, 0], to: [1, 1, 1] },
         { shape: 'rocket', block: 'stone' },
-        { shape: 'box', block: 'lava', from: [0, 0, 0], to: [1, 1, 1] },
+        { shape: 'box', block: 'rainbow', from: [0, 0, 0], to: [1, 1, 1] },
         { shape: 'box', block: 'stone', from: [0, 0, 0], to: [100, 1, 1] },
         { shape: 'sphere', block: 'gold', center: [0, 5, 0], radius: 500 },
       ],

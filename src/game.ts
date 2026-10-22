@@ -1,13 +1,15 @@
 // One play session in one world: moving, building, multiplayer and the magic builder.
 
-import { BUILDER, NET, PLAYER, SEA_LEVEL, WORLD_SIZE } from './config';
+import { BUILDER, NET, PLAYER, SEA_LEVEL } from './config';
 import { sounds } from './audio/sounds';
 import { loadLocalEdits, saveLocalEdits } from './data/storage';
 import { AIR, getBlockType, isSolid } from './logic/blocks';
 import { seedFromCode } from './logic/codes';
 import { createPlayer, overlapsBlock, stepPlayer, type PlayerState } from './logic/physics';
-import type { ServerMessage } from './logic/protocol';
+import { cleanChatText, type ServerMessage } from './logic/protocol';
 import { raycast, type RayHit } from './logic/raycast';
+import { findSpawn } from './logic/spawn';
+import { BIOME_NAMES } from './logic/terrain';
 import { centerBuild, expandShapes, facingFromYaw, placeBuild } from './logic/shapes';
 import { VoxelWorld, type Edit } from './logic/world';
 import { askBuilder } from './net/convex';
@@ -29,7 +31,6 @@ export interface GameOptions {
 const SPAWN_READY_RADIUS = 2;
 const SAVE_DELAY_MS = 1500;
 const MAX_PITCH = Math.PI / 2 - 0.01;
-const SPAWN_SEARCH_RADIUS = 60;
 
 const BUILDER_ERRORS: Record<string, string> = {
   'too-many': '😅 Nyt on taiottu tosi paljon. Odota hetki ja kokeile uudestaan!',
@@ -68,7 +69,7 @@ export class Game {
     renderer.setWorld(this.world);
     this.others = new OtherPlayers(renderer.scene);
 
-    const [sx, sy, sz] = this.findSpawn();
+    const [sx, sy, sz] = findSpawn(this.world);
     this.player = createPlayer(sx, sy, sz);
 
     this.input = new Input(renderer.renderer.domElement, {
@@ -161,6 +162,11 @@ export class Game {
       );
       this.input.update(dt);
       this.hud.setFlying(this.player.flying);
+      const biome = this.world.terrain.biomeAt(
+        Math.floor(this.player.x),
+        Math.floor(this.player.z),
+      );
+      this.hud.setBiome(BIOME_NAMES[biome]);
       this.sendMove(dt);
     }
 
@@ -264,7 +270,7 @@ export class Game {
   private flushSave(): void {
     if (this.saveTimer) clearTimeout(this.saveTimer);
     this.saveTimer = null;
-    if (!this.room) saveLocalEdits(this.options.code, this.world.edits.values());
+    if (!this.room) saveLocalEdits(this.options.code, this.world.edits());
   }
 
   // --- Magic builder ----------------------------------------------------
@@ -305,16 +311,29 @@ export class Game {
 
   // --- Keys and pausing -------------------------------------------------
 
-  private onKey(code: string): void {
-    if (!this.ready) return;
-    if (this.hud.pickerOpen || this.hud.builderOpen) return;
-    if (code === 'KeyE' || code === 'KeyB') {
+  /** Returns true when the key opened something (so it is not typed anywhere). */
+  private onKey(code: string): boolean {
+    if (!this.ready) return false;
+    if (this.hud.pickerOpen || this.hud.builderOpen || this.hud.chatOpen) return false;
+    if (code === 'KeyE') {
       this.openOverlay((done) => this.hud.openPicker(done));
-    } else if (code === 'KeyT') {
+    } else if (code === 'KeyB') {
       this.openOverlay((done) => this.hud.openBuilder((prompt) => this.magicBuild(prompt), done));
+    } else if (code === 'KeyT' || code === 'Enter') {
+      this.openOverlay((done) => this.hud.openChat((text) => this.sendChat(text), done));
     } else if (code === 'KeyZ' && this.input.locked) {
       this.undoBuild();
+    } else {
+      return false;
     }
+    return true;
+  }
+
+  private sendChat(raw: string): void {
+    const text = cleanChatText(raw);
+    if (!text) return;
+    this.hud.addChat(this.options.avatar, text);
+    this.room?.send({ t: 'chat', text });
   }
 
   /** Shows a window over the game; the mouse comes back when it closes. */
@@ -402,6 +421,9 @@ export class Game {
       case 'set':
         this.world.applyEdits(msg.edits);
         return;
+      case 'chat':
+        this.hud.addChat(msg.avatar, msg.text);
+        return;
       case 'full':
         this.hud.toast('⛔ Maailma on täynnä. Kokeile myöhemmin!');
         return;
@@ -410,24 +432,5 @@ export class Game {
 
   private updatePlayerList(): void {
     this.hud.setPlayers([...this.avatars.values()]);
-  }
-
-  // --- Spawning ---------------------------------------------------------
-
-  /** A dry spot near the middle of the island. */
-  private findSpawn(): [number, number, number] {
-    const mid = Math.floor(WORLD_SIZE / 2);
-    for (let r = 0; r < SPAWN_SEARCH_RADIUS; r++) {
-      for (let dz = -r; dz <= r; dz++) {
-        for (let dx = -r; dx <= r; dx++) {
-          if (Math.max(Math.abs(dx), Math.abs(dz)) !== r) continue;
-          const h = this.world.terrain.heightAt(mid + dx, mid + dz);
-          if (h > SEA_LEVEL && this.world.terrain.treeAt(mid + dx, mid + dz) === 0) {
-            return [mid + dx + 0.5, this.world.surfaceY(mid + dx, mid + dz) + 1, mid + dz + 0.5];
-          }
-        }
-      }
-    }
-    return [mid + 0.5, this.world.surfaceY(mid, mid) + 1, mid + 0.5];
   }
 }

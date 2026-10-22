@@ -7,6 +7,8 @@ import type { RoomStatus } from '../net/room';
 import { drawBlockIcon } from '../render/textures';
 
 const ICON_PIXELS = 48;
+const CHAT_LINES = 8;
+const CHAT_FADE_MS = 10_000;
 const TOAST_MS = 2600;
 const BLOCK_NAME_MS = 1400;
 
@@ -110,6 +112,50 @@ export class Hud {
         return slot;
       }),
     );
+  }
+
+  // --- Chat ---------------------------------------------------------------
+
+  addChat(avatar: string, text: string): void {
+    const log = $('chat-log');
+    const line = document.createElement('div');
+    line.className = 'chat-line';
+    line.textContent = `${avatar} ${text}`;
+    log.append(line);
+    while (log.children.length > CHAT_LINES) log.firstElementChild?.remove();
+    setTimeout(() => line.classList.add('faded'), CHAT_FADE_MS);
+  }
+
+  openChat(onSend: (text: string) => void, onClose: () => void): void {
+    const form = $('chat-form') as HTMLFormElement;
+    const input = $('chat-input') as HTMLInputElement;
+    const log = $('chat-log');
+    form.hidden = false;
+    log.classList.add('open');
+    input.value = '';
+    input.focus();
+    const close = () => {
+      form.hidden = true;
+      log.classList.remove('open');
+      input.onkeydown = null;
+      onClose();
+    };
+    form.onsubmit = (e) => {
+      e.preventDefault();
+      if (input.value.trim()) onSend(input.value);
+      close();
+    };
+    input.onkeydown = (e) => {
+      if (e.key === 'Escape') close();
+    };
+  }
+
+  get chatOpen(): boolean {
+    return !$('chat-form').hidden;
+  }
+
+  setBiome(text: string): void {
+    $('biome').textContent = text;
   }
 
   // --- Block picker -------------------------------------------------------

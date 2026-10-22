@@ -15,7 +15,7 @@ Tämä repo kuuluu Julius (7 v) ja Leo (10 v) -veljesten pelistudioon (GitHub-or
 ## Turvallisuus (älä riko näitä)
 
 - Pelaajat ovat eläimiä (`AVATARS` tiedostossa `src/config.ts`): **ei nimiä, ikää, kuvia tai muita henkilötietoja** peliin, Convexiin tai huonepalvelimelle.
-- **Ei chattia** eikä vapaata tekstiä pelaajalta toiselle. Ei julkista maailmalistaa: maailmaan pääsee vain koodilla. Ei mainoksia, seurantaa tai ostoja.
+- **Chatti on päällä** vanhemman päätöksellä (2026-10-22): peli on pojille kontrolloitu ympäristö, jossa vapaa chat on sallittu. Viestit menevät vain saman maailman pelaajille, niitä ei tallenneta, ja huonepalvelin rajoittaa viestien määrää (`NET.chatRateLimit`). Ei julkista maailmalistaa: maailmaan pääsee vain koodilla. Ei mainoksia, seurantaa tai ostoja.
 - Huonepalvelin hyväksyy vain sallitut sivut (`ALLOWED_ORIGINS` tiedostossa `wrangler.jsonc`) ja tarkistaa jokaisen viestin (`src/logic/protocol.ts`).
 - Taikarakentajan tekoäly palauttaa **vain muotoja** (JSON), ei tekstiä, jota näytettäisiin pojille. Kehote rajattu 60 merkkiin ja nopeusraja per maailma (`BUILDER` configissa).
 - Älä koskaan commitoi salaisuuksia: `.env.local` ja `.dev.vars` ovat gitignoressa. Avaimia ei tulosteta.
@@ -33,7 +33,8 @@ Tämä repo kuuluu Julius (7 v) ja Leo (10 v) -veljesten pelistudioon (GitHub-or
   - `src/net/` – huoneyhteys (WebSocket) ja Convex-asiakas. `src/ui/` – HUD ja ohjaus. `src/data/` – localStorage.
   - `worker/` – huonepalvelin. `convex/` – skeema ja funktiot; `convex/_generated` commitoidaan.
 - Uusi palikka: lisää id ja rivi `src/logic/blocks.ts`:ään (älä koskaan muuta vanhoja id:itä), tekstuurin nimi `TILE_NAMES`iin ja piirtäjä `src/render/textures.ts`:ään.
-- Maailma on 192 × 192 × 64 palikkaa (saari). Sama koodi antaa aina saman saaren (`seedFromCode`), joten vain muutokset tallennetaan.
+- Maailma on loputon (±30 000 palikkaa, korkeus 96, meri y = 40): biomit (meri, ranta, niitty, metsä, aavikko, lumimaa, havumetsä, vuoret), luolat, laava, malmit syvyyden mukaan ja puut. Sama koodi antaa aina saman maailman (`seedFromCode`), joten vain muutokset tallennetaan. Kaukaiset chunkit unohdetaan muistista, muutokset säilyvät.
+- Valo: aurinko ylhäältä + soihdut/laava/hehkukivi (flood fill `computeLight` mesherissä, kantama `LIGHT`). Muuttunut palikka piirtää myös naapurichunkit uudestaan.
 
 ## Ympäristömuuttujat
 
