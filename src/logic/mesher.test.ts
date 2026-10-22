@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { WORLD_HEIGHT } from '../config';
-import { AIR, GLASS, GOLD, getBlockType, LEAVES, STONE, WATER } from './blocks';
+import { AIR, GLASS, GOLD_BLOCK, getBlockType, LEAVES, STONE, WATER } from './blocks';
 import { buildChunkMesh, isFaceVisible } from './mesher';
 import { VoxelWorld } from './world';
 
@@ -24,7 +24,7 @@ function emptyWorld(): VoxelWorld {
 describe('mesher', () => {
   it('draws all 6 sides of a block floating in the air', () => {
     const world = emptyWorld();
-    world.setBlock(5, 30, 5, GOLD);
+    world.setBlock(5, 30, 5, GOLD_BLOCK);
     const mesh = buildChunkMesh(world, 0, 0);
     expect(mesh.solid.indices.length).toBe(6 * QUAD_INDICES);
     expect(mesh.solid.positions.length).toBe(6 * 4 * 3);
@@ -32,7 +32,7 @@ describe('mesher', () => {
 
   it('hides the sides where two blocks touch', () => {
     const world = emptyWorld();
-    world.setBlock(5, 30, 5, GOLD);
+    world.setBlock(5, 30, 5, GOLD_BLOCK);
     world.setBlock(6, 30, 5, STONE);
     const mesh = buildChunkMesh(world, 0, 0);
     expect(mesh.solid.indices.length).toBe(10 * QUAD_INDICES);

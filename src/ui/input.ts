@@ -9,7 +9,8 @@ export interface InputHandlers {
   onSlot(index: number): void;
   onScroll(direction: number): void;
   onToggleFly(): void;
-  onKey(code: string): void;
+  /** Returns true if the key was used (then it is not typed into a text box). */
+  onKey(code: string): boolean;
   onLockChange(locked: boolean): void;
 }
 
@@ -98,7 +99,10 @@ export class Input {
   private keyDown(e: KeyboardEvent): void {
     if (!this.enabled) return;
     if (e.target instanceof HTMLInputElement) return;
-    this.handlers.onKey(e.code);
+    if (this.handlers.onKey(e.code)) {
+      e.preventDefault();
+      return;
+    }
     if (!this.locked) return;
     if (e.code === 'Space' && !e.repeat) {
       const now = performance.now() / 1000;

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { NET, WORLD_SIZE } from '../config';
-import { BEDROCK, GOLD } from './blocks';
+import { NET, WORLD_HEIGHT, WORLD_LIMIT } from '../config';
+import { BEDROCK, GOLD_BLOCK } from './blocks';
 import { parseClientMessage, parseEdit, parseEdits } from './protocol';
 
 describe('protocol', () => {
@@ -26,22 +26,34 @@ describe('protocol', () => {
   });
 
   it('drops edits outside the world or with bad blocks', () => {
-    expect(parseEdit([1, 2, 3, GOLD])).toEqual([1, 2, 3, GOLD]);
-    expect(parseEdit([WORLD_SIZE, 2, 3, GOLD])).toBeNull();
+    expect(parseEdit([1, 2, 3, GOLD_BLOCK])).toEqual([1, 2, 3, GOLD_BLOCK]);
+    expect(parseEdit([WORLD_LIMIT, 2, 3, GOLD_BLOCK])).toBeNull();
+    expect(parseEdit([-5, WORLD_HEIGHT, 3, GOLD_BLOCK])).toBeNull();
+    expect(parseEdit([-5, 2, -3000, GOLD_BLOCK])).toEqual([-5, 2, -3000, GOLD_BLOCK]);
     expect(parseEdit([1, 2, 3, 999])).toBeNull();
-    expect(parseEdit([1.5, 2, 3, GOLD])).toBeNull();
+    expect(parseEdit([1.5, 2, 3, GOLD_BLOCK])).toBeNull();
     expect(parseEdit([1, 2, 3, BEDROCK])).toBeNull();
-    expect(parseEdits([[1, 2, 3, GOLD], 'nonsense'])).toEqual([[1, 2, 3, GOLD]]);
+    expect(parseEdits([[1, 2, 3, GOLD_BLOCK], 'nonsense'])).toEqual([[1, 2, 3, GOLD_BLOCK]]);
   });
 
   it('refuses too many edits at once', () => {
-    const many = Array.from({ length: NET.maxEditsPerMessage + 1 }, () => [1, 2, 3, GOLD]);
+    const many = Array.from({ length: NET.maxEditsPerMessage + 1 }, () => [1, 2, 3, GOLD_BLOCK]);
     expect(parseEdits(many)).toBeNull();
+  });
+
+  it('cleans chat messages', () => {
+    expect(parseClientMessage(JSON.stringify({ t: 'chat', text: '  moi\n kaikki  ' }))).toEqual({
+      t: 'chat',
+      text: 'moi kaikki',
+    });
+    expect(parseClientMessage(JSON.stringify({ t: 'chat', text: '   ' }))).toBeNull();
+    const long = parseClientMessage(JSON.stringify({ t: 'chat', text: 'a'.repeat(500) }));
+    expect(long).toEqual({ t: 'chat', text: 'a'.repeat(NET.maxChatLength) });
   });
 
   it('ignores broken messages', () => {
     expect(parseClientMessage('not json')).toBeNull();
-    expect(parseClientMessage(JSON.stringify({ t: 'chat', text: 'hi' }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ t: 'shout', text: 'hi' }))).toBeNull();
     expect(parseClientMessage(42)).toBeNull();
   });
 });

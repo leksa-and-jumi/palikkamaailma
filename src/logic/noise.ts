@@ -105,3 +105,74 @@ export function fbm(
   }
   return sum / total;
 }
+
+const GRADIENTS_3D: readonly (readonly [number, number, number])[] = [
+  [1, 1, 0],
+  [-1, 1, 0],
+  [1, -1, 0],
+  [-1, -1, 0],
+  [1, 0, 1],
+  [-1, 0, 1],
+  [1, 0, -1],
+  [-1, 0, -1],
+  [0, 1, 1],
+  [0, -1, 1],
+  [0, 1, -1],
+  [0, -1, -1],
+];
+
+/** 3D Perlin noise (for caves), about -1…1. */
+export function createNoise3D(seed: number): (x: number, y: number, z: number) => number {
+  const random = mulberry32(seed);
+  const base = Array.from({ length: 256 }, (_, i) => i);
+  for (let i = 255; i > 0; i--) {
+    const j = Math.floor(random() * (i + 1));
+    [base[i], base[j]] = [base[j]!, base[i]!];
+  }
+  const perm = new Uint8Array(512);
+  for (let i = 0; i < 512; i++) perm[i] = base[i & 255]!;
+
+  const grad = (hash: number, x: number, y: number, z: number): number => {
+    const g = GRADIENTS_3D[hash % 12]!;
+    return g[0] * x + g[1] * y + g[2] * z;
+  };
+
+  return (x: number, y: number, z: number): number => {
+    const xi = Math.floor(x);
+    const yi = Math.floor(y);
+    const zi = Math.floor(z);
+    const xf = x - xi;
+    const yf = y - yi;
+    const zf = z - zi;
+    const X = xi & 255;
+    const Y = yi & 255;
+    const Z = zi & 255;
+    const a = perm[X]! + Y;
+    const aa = perm[a]! + Z;
+    const ab = perm[a + 1]! + Z;
+    const b = perm[X + 1]! + Y;
+    const ba = perm[b]! + Z;
+    const bb = perm[b + 1]! + Z;
+    const u = fade(xf);
+    const v = fade(yf);
+    const w = fade(zf);
+    const x1 = lerp(grad(perm[aa]!, xf, yf, zf), grad(perm[ba]!, xf - 1, yf, zf), u);
+    const x2 = lerp(grad(perm[ab]!, xf, yf - 1, zf), grad(perm[bb]!, xf - 1, yf - 1, zf), u);
+    const x3 = lerp(
+      grad(perm[aa + 1]!, xf, yf, zf - 1),
+      grad(perm[ba + 1]!, xf - 1, yf, zf - 1),
+      u,
+    );
+    const x4 = lerp(
+      grad(perm[ab + 1]!, xf, yf - 1, zf - 1),
+      grad(perm[bb + 1]!, xf - 1, yf - 1, zf - 1),
+      u,
+    );
+    return lerp(lerp(x1, x2, v), lerp(x3, x4, v), w);
+  };
+}
+
+/** A fixed random number in [0, 1) for a 3D grid point. */
+export function hash3(seed: number, x: number, y: number, z: number): number {
+  return hash2(seed ^ Math.imul(y, 0x9e3779b1), x, z);
+}

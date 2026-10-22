@@ -4,32 +4,56 @@
 // --- World size -----------------------------------------------------------
 /** Blocks per chunk side (x and z). */
 export const CHUNK_SIZE = 16;
-/** The world is a square island of WORLD_CHUNKS × WORLD_CHUNKS chunks. */
-export const WORLD_CHUNKS = 12;
-export const WORLD_SIZE = CHUNK_SIZE * WORLD_CHUNKS;
+/** The world goes on (almost) forever: up to this many blocks from the middle. */
+export const WORLD_LIMIT = 30_000;
 /** Blocks from the bottom (y = 0) to the sky limit. */
-export const WORLD_HEIGHT = 64;
-export const SEA_LEVEL = 20;
+export const WORLD_HEIGHT = 96;
+export const SEA_LEVEL = 40;
 
 // --- Terrain --------------------------------------------------------------
 export const TERRAIN = {
-  baseHeight: 24,
-  hillAmplitude: 9,
-  hillScale: 1 / 48,
-  mountainAmplitude: 18,
-  mountainScale: 1 / 96,
-  /** Island fades into the sea this many blocks before the world edge. */
-  shoreWidth: 40,
-  /** The sea floor height at the world edge. */
-  seaFloor: 12,
+  /** Land rises this much above the sea on average. */
+  landHeight: 4,
+  continentScale: 1 / 320,
+  continentAmplitude: 16,
+  hillScale: 1 / 56,
+  hillAmplitude: 7,
+  mountainScale: 1 / 260,
+  mountainAmplitude: 40,
+  temperatureScale: 1 / 520,
+  humidityScale: 1 / 460,
   dirtDepth: 3,
-  snowLine: 44,
-  /** Chance per grass column to grow a tree. */
-  treeChance: 0.012,
-  treeMinHeight: 4,
-  treeMaxHeight: 6,
-  /** Trees need this many blocks of free space around them in the chunk margin. */
-  treeRadius: 2,
+  /** Mountain tops above this get snow. */
+  snowLine: SEA_LEVEL + 34,
+  /** Tunnels: smaller = thinner caves. */
+  caveSize: 0.014,
+  caveScale: 1 / 28,
+  cavernScale: 1 / 52,
+  cavernThreshold: 0.6,
+  cavernMaxY: 34,
+  /** Air in caves below this height is lava. */
+  lavaLevel: 8,
+  /** How far trees can reach into the next chunk. */
+  treeRadius: 3,
+} as const;
+
+/** Ores: how deep they are found and how common (chance per 2×2×2 clump). */
+export const ORES = [
+  { key: 'coal_ore', maxY: 90, chance: 0.012 },
+  { key: 'iron_ore', maxY: 56, chance: 0.008 },
+  { key: 'lapis_ore', maxY: 30, chance: 0.0035 },
+  { key: 'gold_ore', maxY: 30, chance: 0.003 },
+  { key: 'redstone_ore', maxY: 16, chance: 0.006 },
+  { key: 'diamond_ore', maxY: 15, chance: 0.0025 },
+] as const;
+
+// --- Light ----------------------------------------------------------------
+export const LIGHT = {
+  max: 15,
+  /** Light drops this much per block (bigger = shorter torch light). */
+  falloff: 2,
+  /** Darkest a block can look (0 = black). */
+  minBrightness: 0.07,
 } as const;
 
 // --- Player ---------------------------------------------------------------
@@ -57,8 +81,10 @@ export const PLAYER = {
 export const RENDER = {
   /** Chunks drawn around the player. */
   viewDistance: 6,
-  /** Chunk meshes built per frame, so the game stays smooth. */
-  meshesPerFrame: 2,
+  /** Milliseconds per frame spent building chunk meshes, so the game stays smooth. */
+  meshBudgetMs: 8,
+  /** Chunks kept in memory around the player (generated blocks). */
+  keepDistance: 10,
   fov: 72,
   skyColor: 0x8ecbff,
   waterColor: 0x3a7bd5,
@@ -68,7 +94,7 @@ export const RENDER = {
   /** Pixels per texture tile. */
   tilePixels: 16,
   /** Tiles per row in the texture atlas. */
-  atlasColumns: 8,
+  atlasColumns: 16,
 } as const;
 
 // --- Multiplayer ----------------------------------------------------------
@@ -82,6 +108,11 @@ export const NET = {
   editsPerWelcomePage: 5000,
   /** A world keeps at most this many changed blocks. */
   maxStoredEdits: 300_000,
+  /** Longest chat message. */
+  maxChatLength: 200,
+  /** Chat messages per player in CHAT_WINDOW_MS (stops spamming). */
+  chatRateLimit: 8,
+  chatWindowMs: 10_000,
   reconnectDelayMs: 1500,
   reconnectMaxDelayMs: 15_000,
 } as const;

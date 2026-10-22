@@ -2,7 +2,7 @@
 // the game never freezes, nearest chunks first.
 
 import * as THREE from 'three';
-import { CHUNK_SIZE, RENDER, WORLD_CHUNKS } from '../config';
+import { CHUNK_SIZE, RENDER } from '../config';
 import { buildChunkMesh, type MeshData } from '../logic/mesher';
 import { chunkKey, type VoxelWorld } from '../logic/world';
 import { createAtlasTexture } from './textures';
@@ -12,8 +12,6 @@ interface ChunkMeshes {
   water: THREE.Mesh | null;
 }
 
-/** Dirty chunks next to the player are rebuilt at once, up to this many per frame. */
-const MAX_DIRTY_PER_FRAME = 8;
 const HIGHLIGHT_GROW = 0.004;
 
 function toGeometry(data: MeshData): THREE.BufferGeometry | null {
@@ -120,48 +118,59 @@ export class WorldRenderer {
     this.highlight.visible = false;
   }
 
-  /** Builds and removes chunk meshes around the player. */
+  /**
+   * Builds and removes chunk meshes around the player, spending at most
+   * RENDER.meshBudgetMs per frame (but always at least one chunk).
+   */
   updateChunks(playerX: number, playerZ: number): void {
     const world = this.world;
     if (!world) return;
     const pcx = Math.floor(playerX / CHUNK_SIZE);
     const pcz = Math.floor(playerZ / CHUNK_SIZE);
     const distance = RENDER.viewDistance;
+    const start = performance.now();
+    let built = 0;
+    const hasTime = () => built === 0 || performance.now() - start < RENDER.meshBudgetMs;
 
-    // 1. Chunks the players changed: rebuild nearest first, at once.
+    // 1. Chunks the players changed: nearest first.
+    for (const key of world.dirtyChunks) {
+      if (!this.chunks.has(key)) world.dirtyChunks.delete(key);
+    }
     const dirty = [...world.dirtyChunks]
-      .filter((key) => this.chunks.has(key))
       .map((key) => {
         const [cx, cz] = key.split(',').map(Number) as [number, number];
         return { key, cx, cz, d: Math.hypot(cx - pcx, cz - pcz) };
       })
       .sort((a, b) => a.d - b.d);
-    for (const c of dirty.slice(0, MAX_DIRTY_PER_FRAME)) {
+    for (const c of dirty) {
+      if (!hasTime()) break;
       world.dirtyChunks.delete(c.key);
       this.buildChunk(c.cx, c.cz);
-    }
-    for (const key of world.dirtyChunks) {
-      if (!this.chunks.has(key)) world.dirtyChunks.delete(key);
+      built++;
     }
 
     // 2. New chunks that came into view.
     const missing: { cx: number; cz: number; d: number }[] = [];
     for (let cz = pcz - distance; cz <= pcz + distance; cz++) {
       for (let cx = pcx - distance; cx <= pcx + distance; cx++) {
-        if (cx < 0 || cz < 0 || cx >= WORLD_CHUNKS || cz >= WORLD_CHUNKS) continue;
         const d = Math.hypot(cx - pcx, cz - pcz);
         if (d > distance + 0.5 || this.chunks.has(chunkKey(cx, cz))) continue;
         missing.push({ cx, cz, d });
       }
     }
     missing.sort((a, b) => a.d - b.d);
-    for (const c of missing.slice(0, RENDER.meshesPerFrame)) this.buildChunk(c.cx, c.cz);
+    for (const c of missing) {
+      if (!hasTime()) break;
+      this.buildChunk(c.cx, c.cz);
+      built++;
+    }
 
     // 3. Far away chunks are removed to save memory.
     for (const key of this.chunks.keys()) {
       const [cx, cz] = key.split(',').map(Number) as [number, number];
       if (Math.hypot(cx - pcx, cz - pcz) > distance + 2) this.removeChunk(key);
     }
+    world.unloadFarChunks(pcx, pcz, RENDER.keepDistance);
   }
 
   /** How many chunks around the player still need a mesh (for the loading screen). */
@@ -171,7 +180,6 @@ export class WorldRenderer {
     let pending = 0;
     for (let cz = pcz - radius; cz <= pcz + radius; cz++) {
       for (let cx = pcx - radius; cx <= pcx + radius; cx++) {
-        if (cx < 0 || cz < 0 || cx >= WORLD_CHUNKS || cz >= WORLD_CHUNKS) continue;
         if (!this.chunks.has(chunkKey(cx, cz))) pending++;
       }
     }

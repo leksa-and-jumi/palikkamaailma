@@ -10,7 +10,8 @@ import { mulberry32 } from '../logic/noise';
 const S = RENDER.tilePixels;
 
 type RGB = [number, number, number];
-type Painter = (px: (x: number, y: number, c: RGB, a?: number) => void, rnd: () => number) => void;
+type Pixel = (x: number, y: number, c: RGB, a?: number) => void;
+type Painter = (px: Pixel, rnd: () => number) => void;
 
 function vary(c: RGB, rnd: () => number, amount: number): RGB {
   const d = (rnd() - 0.5) * amount;
@@ -44,6 +45,70 @@ function ore(spot: RGB): Painter {
       px(cx + 1, cy, vary(spot, rnd, 30));
       px(cx, cy + 1, vary(spot, rnd, 30));
     }
+  };
+}
+
+/** A polished metal or gem block with a lighter edge and a few sparkles. */
+function shiny(base: RGB): Painter {
+  return (px, rnd) => {
+    for (let y = 0; y < S; y++) {
+      for (let x = 0; x < S; x++) {
+        const edge = x === 0 || y === 0 || x === S - 1 || y === S - 1;
+        const light = edge ? 34 : (x + y) % 7 === 0 ? 18 : 0;
+        px(x, y, vary([base[0] + light, base[1] + light, base[2] + light], rnd, 10));
+      }
+    }
+  };
+}
+
+/** Tree bark with vertical stripes. */
+function bark(base: RGB, stripe: RGB, darkSpots: boolean): Painter {
+  return (px, rnd) => {
+    for (let y = 0; y < S; y++) {
+      for (let x = 0; x < S; x++) {
+        const isStripe = darkSpots ? rnd() < 0.12 && (y % 3 === 0 || x % 5 === 0) : x % 4 === 0;
+        px(x, y, vary(isStripe ? stripe : base, rnd, 14));
+      }
+    }
+  };
+}
+
+/** Leaves with little holes. */
+function foliage(base: RGB, holes: number): Painter {
+  return (px, rnd) => {
+    for (let y = 0; y < S; y++) {
+      for (let x = 0; x < S; x++) {
+        if (rnd() < holes) px(x, y, [0, 0, 0], 0);
+        else px(x, y, vary(base, rnd, 40));
+      }
+    }
+  };
+}
+
+/** Draws a picture from rows of letters; '.' is see-through. */
+function sprite(rows: readonly string[], colors: Record<string, RGB>): Painter {
+  return (px, rnd) => {
+    for (let y = 0; y < S; y++) {
+      for (let x = 0; x < S; x++) {
+        const c = rows[y]?.[x] ?? '.';
+        const color = colors[c];
+        if (color) px(x, y, vary(color, rnd, 16));
+        else px(x, y, [0, 0, 0], 0);
+      }
+    }
+  };
+}
+
+/** Stone (or another base) with a frame, for furnaces and tables. */
+function framed(base: RGB, frame: RGB, inside: (px: Pixel, rnd: () => number) => void): Painter {
+  return (px, rnd) => {
+    for (let y = 0; y < S; y++) {
+      for (let x = 0; x < S; x++) {
+        const edge = x === 0 || y === 0 || x === S - 1 || y === S - 1;
+        px(x, y, vary(edge ? frame : base, rnd, 14));
+      }
+    }
+    inside(px, rnd);
   };
 }
 
@@ -143,8 +208,8 @@ const PAINTERS: Record<TileName, Painter> = {
       }
     }
   },
-  gold: ore([250, 214, 60]),
-  diamond: ore([110, 236, 230]),
+  gold_block: shiny([246, 208, 60]),
+  diamond_block: shiny([100, 228, 222]),
   wool_red: wool([196, 50, 46]),
   wool_blue: wool([52, 82, 196]),
   wool_yellow: wool([238, 206, 52]),
@@ -192,6 +257,258 @@ const PAINTERS: Record<TileName, Painter> = {
     noisy([206, 52, 40], 16)(px, rnd);
     for (let y = 6; y < 10; y++) for (let x = 6; x < 10; x++) px(x, y, [60, 60, 60]);
   },
+  coal_ore: ore([40, 40, 40]),
+  iron_ore: ore([216, 176, 140]),
+  gold_ore: ore([250, 214, 60]),
+  diamond_ore: ore([110, 236, 230]),
+  redstone_ore: ore([220, 30, 30]),
+  lapis_ore: ore([40, 70, 190]),
+  emerald_ore: ore([40, 200, 90]),
+  sandstone_top: noisy([222, 210, 160], 12),
+  sandstone_side: (px, rnd) => {
+    for (let y = 0; y < S; y++) {
+      for (let x = 0; x < S; x++) {
+        const band = y < 3 ? 8 : y > 12 ? -16 : y % 4 === 0 ? -8 : 0;
+        px(x, y, vary([216 + band, 202 + band, 150 + band], rnd, 10));
+      }
+    }
+  },
+  gravel: (px, rnd) => {
+    for (let y = 0; y < S; y++) {
+      for (let x = 0; x < S; x++) {
+        const r = rnd();
+        const c: RGB = r < 0.3 ? [100, 96, 92] : r < 0.6 ? [140, 134, 128] : [170, 164, 158];
+        px(x, y, vary(c, rnd, 12));
+      }
+    }
+  },
+  birch_log: bark([226, 226, 218], [40, 40, 40], true),
+  birch_leaves: foliage([110, 160, 70], 0.18),
+  spruce_log: bark([82, 58, 34], [58, 40, 22], false),
+  spruce_leaves: foliage([46, 92, 60], 0.12),
+  cactus_side: (px, rnd) => {
+    for (let y = 0; y < S; y++) {
+      for (let x = 0; x < S; x++) {
+        const spine = (x === 3 || x === 12) && y % 4 === 1;
+        const rib = x % 5 === 0 ? -20 : 0;
+        px(x, y, spine ? [230, 230, 200] : vary([70 + rib, 140 + rib, 60 + rib], rnd, 12));
+      }
+    }
+  },
+  cactus_top: (px, rnd) => {
+    noisy([90, 160, 70], 16)(px, rnd);
+    for (let i = 4; i < 12; i++) px(i, i, [60, 120, 50]);
+  },
+  tall_grass: sprite(
+    [
+      '................',
+      '................',
+      '.......g........',
+      '..g....g...g....',
+      '..g...gg...g....',
+      '...g..g...gg....',
+      '...g..g...g..g..',
+      '.g.g..g..gg..g..',
+      '.g.gg.g..g..g...',
+      '..g.g.gg.g..g...',
+      '..g.g..g.g.gg...',
+      '..gg.g.g.ggg....',
+      '...g.g.gggg.....',
+      '...gggggggg.....',
+      '....gggggg......',
+      '.....gggg.......',
+    ],
+    { g: [90, 160, 50] },
+  ),
+  dandelion: sprite(
+    [
+      '................',
+      '................',
+      '................',
+      '......yyy.......',
+      '.....yyyyy......',
+      '.....yyoyy......',
+      '.....yyyyy......',
+      '......yyy.......',
+      '.......g........',
+      '.......g..gg....',
+      '....gg.g.gg.....',
+      '.....ggggg......',
+      '.......g........',
+      '.......g........',
+      '.......g........',
+      '.......g........',
+    ],
+    { y: [250, 220, 40], o: [240, 160, 30], g: [70, 140, 40] },
+  ),
+  poppy: sprite(
+    [
+      '................',
+      '................',
+      '................',
+      '.....r.r.r......',
+      '....rrrrrrr.....',
+      '....rrrkrrr.....',
+      '....rrrrrrr.....',
+      '.....rrrrr......',
+      '.......g........',
+      '.......g........',
+      '...gg..g........',
+      '....gggg..gg....',
+      '.......g.gg.....',
+      '.......gg.......',
+      '.......g........',
+      '.......g........',
+    ],
+    { r: [210, 30, 30], k: [30, 20, 20], g: [70, 140, 40] },
+  ),
+  dead_bush: sprite(
+    [
+      '................',
+      '................',
+      '..b.........b...',
+      '...b.......b....',
+      '....b..b..b.....',
+      '..b..b.b.b..b...',
+      '...b..bbb..b....',
+      '....b..b..b.....',
+      '.....b.b.b......',
+      '......bbb.......',
+      '.......b........',
+      '.......b........',
+      '.......b........',
+      '.......b........',
+      '.......b........',
+      '.......b........',
+    ],
+    { b: [140, 100, 50] },
+  ),
+  lava: (px, rnd) => {
+    for (let y = 0; y < S; y++) {
+      for (let x = 0; x < S; x++) {
+        const swirl = Math.sin(x * 0.9 + Math.sin(y * 0.7) * 2) * 30;
+        px(x, y, vary([240, 110 + swirl, 20], rnd, 20));
+      }
+    }
+  },
+  obsidian: (px, rnd) => {
+    for (let y = 0; y < S; y++) {
+      for (let x = 0; x < S; x++) {
+        const glint = rnd() < 0.06 ? 40 : 0;
+        px(x, y, vary([28 + glint, 18 + glint, 44 + glint * 1.5], rnd, 10));
+      }
+    }
+  },
+  crafting_table_top: (px, rnd) => {
+    PAINTERS.planks(px, rnd);
+    for (let i = 2; i < 14; i++) {
+      px(i, 5, [96, 64, 36]);
+      px(i, 10, [96, 64, 36]);
+      px(5, i, [96, 64, 36]);
+      px(10, i, [96, 64, 36]);
+    }
+  },
+  crafting_table_side: (px, rnd) => {
+    PAINTERS.planks(px, rnd);
+    for (let x = 0; x < S; x++) px(x, 0, [120, 84, 50]);
+    // A saw and a hammer hanging on the side.
+    for (let x = 3; x < 8; x++) px(x, 5, [200, 200, 210]);
+    for (let y = 4; y < 9; y++) px(11, y, [110, 76, 44]);
+    for (let x = 9; x < 14; x++) px(x, 4, [150, 150, 160]);
+  },
+  crafting_table_front: (px, rnd) => {
+    PAINTERS.planks(px, rnd);
+    for (let x = 0; x < S; x++) px(x, 0, [120, 84, 50]);
+    for (let y = 3; y < 12; y++) px(4, y, [110, 76, 44]);
+    for (let x = 2; x < 7; x++) px(x, 3, [150, 150, 160]);
+    for (let y = 4; y < 12; y++) px(10 + (y % 2), y, [200, 200, 210]);
+  },
+  furnace_front: framed([120, 120, 120], [90, 90, 90], (px) => {
+    for (let y = 9; y < 14; y++) for (let x = 4; x < 12; x++) px(x, y, [30, 30, 30]);
+    for (let x = 5; x < 11; x++) px(x, 12, [230, 120, 30]);
+    for (let x = 4; x < 12; x++) px(x, 5, [70, 70, 70]);
+  }),
+  furnace_side: framed([128, 128, 128], [96, 96, 96], () => undefined),
+  furnace_top: noisy([110, 110, 110], 18),
+  chest_front: framed([166, 110, 50], [110, 70, 30], (px) => {
+    for (let x = 1; x < 15; x++) px(x, 6, [90, 56, 24]);
+    for (let y = 5; y < 9; y++) for (let x = 7; x < 9; x++) px(x, y, [210, 210, 210]);
+  }),
+  chest_side: framed([166, 110, 50], [110, 70, 30], (px) => {
+    for (let x = 1; x < 15; x++) px(x, 6, [90, 56, 24]);
+  }),
+  chest_top: framed([176, 118, 56], [110, 70, 30], () => undefined),
+  enchanting_top: (px, rnd) => {
+    for (let y = 0; y < S; y++) {
+      for (let x = 0; x < S; x++) {
+        const edge = x < 2 || y < 2 || x > 13 || y > 13;
+        px(x, y, edge ? vary([170, 30, 40], rnd, 20) : vary([36, 26, 50], rnd, 12));
+      }
+    }
+    // An open book in the middle.
+    for (let y = 5; y < 11; y++)
+      for (let x = 3; x < 13; x++) px(x, y, x === 8 ? [120, 80, 40] : [236, 230, 210]);
+  },
+  enchanting_side: (px, rnd) => {
+    for (let y = 0; y < S; y++) {
+      for (let x = 0; x < S; x++) {
+        const top = y < 4;
+        px(x, y, top ? vary([170, 30, 40], rnd, 20) : vary([36, 26, 50], rnd, 12));
+      }
+    }
+    for (let i = 0; i < 5; i++) px(2 + i * 3, 7 + (i % 2) * 3, [80, 220, 230]);
+  },
+  bookshelf: (px, rnd) => {
+    const colors: RGB[] = [
+      [170, 40, 40],
+      [40, 90, 170],
+      [60, 140, 60],
+      [200, 170, 60],
+      [130, 60, 150],
+    ];
+    for (let y = 0; y < S; y++) {
+      for (let x = 0; x < S; x++) {
+        const shelf = y === 0 || y === 7 || y === 8 || y === 15;
+        if (shelf) px(x, y, vary([178, 140, 86], rnd, 12));
+        else px(x, y, vary(colors[(x + (y > 7 ? 2 : 0)) % colors.length]!, rnd, 20));
+      }
+    }
+  },
+  torch: sprite(
+    [
+      '................',
+      '................',
+      '................',
+      '................',
+      '.......yy.......',
+      '......yooy......',
+      '......yooy......',
+      '.......ww.......',
+      '.......ww.......',
+      '.......ww.......',
+      '.......ww.......',
+      '.......ww.......',
+      '.......ww.......',
+      '.......ww.......',
+      '.......ww.......',
+      '.......ww.......',
+    ],
+    { y: [255, 230, 90], o: [255, 150, 40], w: [130, 92, 50] },
+  ),
+  clay: noisy([160, 166, 180], 12),
+  ice: (px, rnd) => {
+    for (let y = 0; y < S; y++) {
+      for (let x = 0; x < S; x++) {
+        const crack = (x + y) % 9 === 0;
+        px(x, y, vary(crack ? [230, 240, 255] : [150, 190, 245], rnd, 10), 210);
+      }
+    }
+  },
+  iron_block: shiny([210, 210, 214]),
+  emerald_block: shiny([50, 200, 100]),
+  lapis_block: shiny([40, 70, 180]),
+  redstone_block: shiny([190, 20, 20]),
+  coal_block: shiny([24, 24, 26]),
 };
 
 function paintTile(name: TileName, image: ImageData, ox: number, oy: number): void {
@@ -241,7 +558,24 @@ export function drawBlockIcon(canvas: HTMLCanvasElement, blockId: number): void 
   ctx.clearRect(0, 0, size, size);
   ctx.imageSmoothingEnabled = false;
   const atlas = getAtlasCanvas();
-  const tiles = getBlockType(blockId).tiles;
+  const type = getBlockType(blockId);
+  const tiles = type.tiles;
+  if (type.shape === 'cross') {
+    // Flowers and torches look best as a flat picture.
+    const i = tileIndex(tiles.side);
+    ctx.drawImage(
+      atlas,
+      (i % ATLAS_COLUMNS) * S,
+      Math.floor(i / ATLAS_COLUMNS) * S,
+      S,
+      S,
+      0,
+      0,
+      size,
+      size,
+    );
+    return;
+  }
   const src = (name: TileName) => {
     const i = tileIndex(name);
     return [(i % ATLAS_COLUMNS) * S, Math.floor(i / ATLAS_COLUMNS) * S] as const;
