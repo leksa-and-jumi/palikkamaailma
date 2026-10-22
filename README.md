@@ -1,0 +1,46 @@
+# 🧱 Palikkamaailma
+
+Palikkapeli, jossa rakennetaan yhdessä omalla saarella. Kaverit pääsevät samaan maailmaan
+maailman koodilla (esim. `KALA-PUU-42`). ✨ Taikarakentaja rakentaa linnan, talon tai melkein
+mitä vain, kun kirjoitat mitä haluat.
+
+Suunnittelijat: **Julius ja Leo**. Koodi: Claude.
+
+## Näin pelaat
+
+1. Valitse eläin 🦊🐻🐼🐸…
+2. **🌍 Uusi maailma** tekee uuden saaren ja koodin. Kerro koodi kaverille!
+3. Kaveri kirjoittaa koodin kohtaan **Liity kaverin maailmaan**.
+4. **🧍 Pelaa yksin** toimii ilman nettiä, ja saari tallentuu tälle koneelle.
+
+| Näppäin                   | Mitä tapahtuu             |
+| ------------------------- | ------------------------- |
+| `W` `A` `S` `D`           | liiku                     |
+| `Välilyönti`              | hyppää                    |
+| `Välilyönti` 2 × nopeasti | lennä / lopeta lentäminen |
+| `Shift`                   | juokse / laskeudu         |
+| vasen hiiri               | riko palikka              |
+| oikea hiiri               | laita palikka             |
+| `1`–`9` tai rulla         | valitse palikka           |
+| `E`                       | kaikki palikat            |
+| `T`                       | ✨ taikarakentaja         |
+| `Z`                       | kumoa taikarakennus       |
+| `Esc`                     | tauko                     |
+
+## Turvallisuus
+
+- Pelaajat ovat eläimiä, ei nimiä eikä muita tietoja.
+- Ei chattia eikä julkista maailmalistaa: samaan maailmaan pääsee vain koodilla.
+- Taikarakentajan tekoäly vastaa vain palikoilla, ei tekstillä.
+
+## Kehittäjälle
+
+```bash
+npm install
+npm run dev        # peli: http://localhost:5173
+npm run dev:room   # moninpelihuoneet: http://localhost:8788
+npm run convex:dev # Convex (tai `npx convex dev` ilman tiliä paikallisesti)
+npm run check      # tyypit, lint, muotoilu ja testit
+```
+
+Tarkemmat ohjeet: [CLAUDE.md](CLAUDE.md).

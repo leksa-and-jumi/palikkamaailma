@@ -1,0 +1,197 @@
+// All game constants live here. This file is pure (no DOM), so the room
+// server (worker/) and Convex can import it too.
+
+// --- World size -----------------------------------------------------------
+/** Blocks per chunk side (x and z). */
+export const CHUNK_SIZE = 16;
+/** The world is a square island of WORLD_CHUNKS × WORLD_CHUNKS chunks. */
+export const WORLD_CHUNKS = 12;
+export const WORLD_SIZE = CHUNK_SIZE * WORLD_CHUNKS;
+/** Blocks from the bottom (y = 0) to the sky limit. */
+export const WORLD_HEIGHT = 64;
+export const SEA_LEVEL = 20;
+
+// --- Terrain --------------------------------------------------------------
+export const TERRAIN = {
+  baseHeight: 24,
+  hillAmplitude: 9,
+  hillScale: 1 / 48,
+  mountainAmplitude: 18,
+  mountainScale: 1 / 96,
+  /** Island fades into the sea this many blocks before the world edge. */
+  shoreWidth: 40,
+  /** The sea floor height at the world edge. */
+  seaFloor: 12,
+  dirtDepth: 3,
+  snowLine: 44,
+  /** Chance per grass column to grow a tree. */
+  treeChance: 0.012,
+  treeMinHeight: 4,
+  treeMaxHeight: 6,
+  /** Trees need this many blocks of free space around them in the chunk margin. */
+  treeRadius: 2,
+} as const;
+
+// --- Player ---------------------------------------------------------------
+export const PLAYER = {
+  width: 0.6,
+  height: 1.75,
+  eyeHeight: 1.6,
+  walkSpeed: 4.6,
+  sprintSpeed: 7,
+  flySpeed: 11,
+  jumpSpeed: 8.4,
+  gravity: 26,
+  maxFallSpeed: 40,
+  swimGravity: 6,
+  swimUpSpeed: 3.5,
+  maxSwimFallSpeed: 3,
+  /** How far away (blocks) you can break and place. */
+  reach: 6,
+  /** Two space presses within this time (s) toggles flying. */
+  doubleTapTime: 0.3,
+  mouseSensitivity: 0.0022,
+} as const;
+
+// --- Rendering ------------------------------------------------------------
+export const RENDER = {
+  /** Chunks drawn around the player. */
+  viewDistance: 6,
+  /** Chunk meshes built per frame, so the game stays smooth. */
+  meshesPerFrame: 2,
+  fov: 72,
+  skyColor: 0x8ecbff,
+  waterColor: 0x3a7bd5,
+  underwaterColor: 0x1d4f91,
+  fogNear: 50,
+  fogFar: 96,
+  /** Pixels per texture tile. */
+  tilePixels: 16,
+  /** Tiles per row in the texture atlas. */
+  atlasColumns: 8,
+} as const;
+
+// --- Multiplayer ----------------------------------------------------------
+export const NET = {
+  /** How often your position is sent to the others (per second). */
+  moveSendRate: 10,
+  maxPlayersPerRoom: 8,
+  /** Block edits per message (the magic builder can send many). */
+  maxEditsPerMessage: 4000,
+  /** Edits in the welcome message are sent in pages of this size. */
+  editsPerWelcomePage: 5000,
+  /** A world keeps at most this many changed blocks. */
+  maxStoredEdits: 300_000,
+  reconnectDelayMs: 1500,
+  reconnectMaxDelayMs: 15_000,
+} as const;
+
+// --- World codes ----------------------------------------------------------
+// A code is two short Finnish words and a number, e.g. "KALA-PUU-42".
+// Easy for kids to say to each other, hard for strangers to guess.
+export const CODE_WORDS = [
+  'AHVEN',
+  'ANKKA',
+  'AURINKO',
+  'AUTO',
+  'HAI',
+  'HIIRI',
+  'HILLO',
+  'HUVI',
+  'JUNA',
+  'KALA',
+  'KANA',
+  'KARHU',
+  'KETTU',
+  'KIVI',
+  'KUKKA',
+  'KUU',
+  'KYNÄ',
+  'LAIVA',
+  'LEIJA',
+  'LEPPÄ',
+  'LIMSA',
+  'LUMI',
+  'MAITO',
+  'MANSIKKA',
+  'MEHU',
+  'MUNA',
+  'MÄKI',
+  'NALLE',
+  'OMENA',
+  'ORAVA',
+  'PALLO',
+  'PANDA',
+  'PELI',
+  'PILVI',
+  'PIPO',
+  'PIZZA',
+  'POLKU',
+  'PORO',
+  'PUPU',
+  'PUU',
+  'RAKETTI',
+  'RUSINA',
+  'SAMMAKKO',
+  'SATU',
+  'SIILI',
+  'SIENI',
+  'SILTA',
+  'SUKKA',
+  'SUSI',
+  'TÄHTI',
+  'TALO',
+  'TIKKU',
+  'TONTTU',
+  'TORNI',
+  'TUULI',
+  'UKKO',
+  'VENE',
+  'VESI',
+  'VIIKSI',
+  'ÄMPÄRI',
+  'ILVES',
+  'JÄNIS',
+  'HUKKA',
+  'MATO',
+] as const;
+export const CODE_NUMBER_MAX = 100;
+
+// --- Avatars --------------------------------------------------------------
+// Players are animals. Never names or other personal data.
+export const AVATARS = [
+  { emoji: '🦊', color: 0xf08a24 },
+  { emoji: '🐻', color: 0x8b5a2b },
+  { emoji: '🐼', color: 0xeeeeee },
+  { emoji: '🐸', color: 0x4caf50 },
+  { emoji: '🐷', color: 0xf4a7b9 },
+  { emoji: '🐰', color: 0xd8d0c8 },
+  { emoji: '🦁', color: 0xe8b43a },
+  { emoji: '🐧', color: 0x333a44 },
+  { emoji: '🦖', color: 0x5aa04a },
+  { emoji: '🐙', color: 0xb05cc8 },
+] as const;
+export const AVATAR_EMOJIS: readonly string[] = AVATARS.map((a) => a.emoji);
+
+// --- Magic builder (AI) ---------------------------------------------------
+export const BUILDER = {
+  maxPromptLength: 60,
+  maxShapes: 60,
+  /** No shape may be bigger than this along any axis. */
+  maxShapeSize: 24,
+  /** The whole build must fit in a box this size. */
+  maxBuildSize: 32,
+  maxBlocks: 12_000,
+  /** Builds per world in RATE_WINDOW_MS. */
+  rateLimit: 12,
+  rateWindowMs: 10 * 60 * 1000,
+  /** Distance in front of the player where the build starts. */
+  distanceAhead: 4,
+} as const;
+
+// --- Local storage keys -------------------------------------------------
+export const STORAGE = {
+  avatar: 'palikkamaailma.avatar',
+  worlds: 'palikkamaailma.worlds',
+  soloEdits: 'palikkamaailma.solo.edits',
+} as const;

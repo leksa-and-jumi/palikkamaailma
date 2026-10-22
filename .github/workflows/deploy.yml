@@ -1,0 +1,62 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      # Repository variable, e.g. https://palikkamaailma-huoneet.<account>.workers.dev
+      VITE_ROOM_URL: ${{ vars.ROOM_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      # Multiplayer rooms (Cloudflare Worker + Durable Objects).
+      - name: Deploy room server
+        if: env.CLOUDFLARE_API_TOKEN != ''
+        run: npx wrangler deploy
+      # With the secret: deploy Convex functions to production and build the
+      # site against the production Convex URL.
+      - name: Deploy Convex and build
+        if: env.CONVEX_DEPLOY_KEY != ''
+        run: npx convex deploy --cmd 'npm run build' --cmd-url-env-var-name VITE_CONVEX_URL
+      # Without the secret: world codes are not checked and the magic builder
+      # only knows the ready-made builds.
+      - name: Build without Convex
+        if: env.CONVEX_DEPLOY_KEY == ''
+        run: npm run build
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

@@ -1,0 +1,18 @@
+// Cloudflare Worker + Durable Objects for the multiplayer rooms.
+// Local:  npm run dev:room    Deploy: npm run room:deploy
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "palikkamaailma-huoneet",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-09-01",
+  "observability": { "enabled": true },
+  "durable_objects": {
+    "bindings": [{ "name": "WORLD_ROOM", "class_name": "WorldRoom" }],
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["WorldRoom"] }],
+  "vars": {
+    "ALLOWED_ORIGINS": "https://leksa-and-jumi.github.io,http://localhost:5178,http://127.0.0.1:5178",
+    // Set after Convex is set up, e.g. https://happy-otter-123.convex.site
+    "CONVEX_SITE_URL": "",
+  },
+}

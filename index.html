@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="fi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Palikkamaailma</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧱</text></svg>"
+    />
+  </head>
+  <body>
+    <div id="game"></div>
+
+    <!-- Start menu -->
+    <section id="menu" class="screen">
+      <div class="panel">
+        <h1>🧱 Palikkamaailma</h1>
+        <p class="lead">Rakenna yhdessä omalla saarella!</p>
+
+        <h2>Kuka olet?</h2>
+        <div id="avatars" class="avatars"></div>
+
+        <div class="menu-buttons">
+          <button id="new-world" class="big">🌍 Uusi maailma</button>
+          <button id="solo" class="big secondary">🧍 Pelaa yksin</button>
+        </div>
+
+        <h2>Liity kaverin maailmaan</h2>
+        <form id="join-form" class="join">
+          <input
+            id="join-code"
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="esim. KALA-PUU-42"
+          />
+          <button type="submit">🔑 Liity</button>
+        </form>
+        <p id="menu-message" class="message"></p>
+
+        <div id="my-worlds-box" hidden>
+          <h2>Omat maailmat</h2>
+          <div id="my-worlds" class="worlds"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Loading -->
+    <section id="loading" class="screen" hidden>
+      <div class="panel small">
+        <div class="spinner">🧱</div>
+        <p id="loading-text">Rakennetaan saarta…</p>
+      </div>
+    </section>
+
+    <!-- In-game HUD -->
+    <div id="hud" hidden>
+      <div class="crosshair"></div>
+      <div class="top-left">
+        <div id="world-card" class="card"></div>
+        <div id="status" class="card status"></div>
+      </div>
+      <div id="players" class="top-right card"></div>
+      <div id="flying" class="flying" hidden>🪽 Lennät</div>
+      <div id="hotbar" class="hotbar"></div>
+      <div id="block-name" class="block-name"></div>
+      <div id="toast" class="toast" hidden></div>
+    </div>
+
+    <!-- Pause -->
+    <section id="pause" class="screen" hidden>
+      <div class="panel">
+        <h2>⏸️ Tauko</h2>
+        <button id="resume" class="big">▶️ Jatka pelaamista</button>
+        <div class="help">
+          <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> liiku</div>
+          <div><kbd>Välilyönti</kbd> hyppää</div>
+          <div><kbd>Välilyönti</kbd> 2 × nopeasti: lennä</div>
+          <div><kbd>Shift</kbd> juokse / laskeudu</div>
+          <div><kbd>Vasen hiiri</kbd> riko palikka</div>
+          <div><kbd>Oikea hiiri</kbd> laita palikka</div>
+          <div><kbd>1</kbd>–<kbd>9</kbd> tai rulla: valitse palikka</div>
+          <div><kbd>E</kbd> kaikki palikat</div>
+          <div><kbd>T</kbd> ✨ taikarakentaja</div>
+          <div><kbd>Z</kbd> kumoa taikarakennus</div>
+        </div>
+        <p id="pause-code" class="code-hint"></p>
+        <button id="to-menu" class="secondary">🏠 Valikkoon</button>
+      </div>
+    </section>
+
+    <!-- Block picker -->
+    <section id="picker" class="screen" hidden>
+      <div class="panel wide">
+        <h2>🧱 Valitse palikka</h2>
+        <div id="picker-grid" class="picker-grid"></div>
+        <button id="picker-close" class="secondary">Valmis</button>
+      </div>
+    </section>
+
+    <!-- Magic builder -->
+    <section id="builder" class="screen" hidden>
+      <div class="panel">
+        <h2>✨ Taikarakentaja</h2>
+        <p class="lead">Kirjoita, mitä rakennetaan, tai valitse valmis.</p>
+        <form id="builder-form" class="join">
+          <input
+            id="builder-prompt"
+            autocomplete="off"
+            maxlength="60"
+            placeholder="esim. punainen linna"
+          />
+          <button type="submit">✨ Rakenna</button>
+        </form>
+        <div id="blueprints" class="blueprints"></div>
+        <p id="builder-message" class="message"></p>
+        <button id="builder-close" class="secondary">Sulje</button>
+      </div>
+    </section>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
