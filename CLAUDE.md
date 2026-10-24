@@ -25,7 +25,9 @@ Tämä repo kuuluu Julius (7 v) ja Leo (10 v) -veljesten pelistudioon (GitHub-or
 - **TypeScript (strict) + Vite + Three.js** (ei Phaser: peli on 3D).
 - **Cloudflare Worker + Durable Objects** (`worker/index.ts`): jokaisella maailmakoodilla oma huone, joka tallentaa muutetut palikat SQLiteen ja välittää liikkeet WebSocketilla (hibernation API).
 - **Convex** (`convex/`): maailmakoodit (`worlds`), taikarakentaja (`builder.build` -action kutsuu OpenRouteria) ja sen nopeusraja (`builds`). HTTP `/world?code=` kertoo huonepalvelimelle, onko koodi oikea.
-- **OpenRouter**: oletusmalli `anthropic/claude-haiku-5.5`, vaihdettavissa Convexin env-muuttujalla `OPENROUTER_MODEL`. Ilman avainta taikarakentaja käyttää valmiita rakennuksia (`src/logic/blueprints.ts`).
+- **OpenRouter**: oletusmalli `anthropic/claude-opus-5.5` ajattelutasolla `medium` (vaihdettavissa Convexin env-muuttujilla `OPENROUTER_MODEL` ja `OPENROUTER_EFFORT`). Vastaus striimataan, koska hieno rakennus kestää 1–2 min. Yksi rakennus maksaa noin 0,10–0,30 $ (OpenRouter-avaimen kuukausiraja pysäyttää kulut; sen jälkeen käytetään valmiita rakennuksia). Ilman avainta taikarakentaja käyttää valmiita rakennuksia (`src/logic/blueprints.ts`).
+- **Taikarakentajan kehote** on `src/logic/builderPrompt.ts` (palikoiden kuvaukset, rakennusohjeet, esimerkkimökki). Muodot (`src/logic/shapes.ts`): box, walls, line, roof (harjakatto + päätykolmiot), sphere, cylinder, pyramid, blocks, layers (kerroskuva yksityiskohtiin) ja `mirror: 'x'`. Älä lisää OpenRouter-pyyntöön `response_format`-skeemaa: Anthropic hylkää sen ("Schema is too complex").
+- **Taikarakennuksen kulku**: B → toive → odotus (voi pelata sillä aikaa) → esikatselu (`src/ui/builderScreen.ts` + `src/render/buildPreview.ts`: pyöritys, zoomaus, kerrosleikkaus) → asettaminen (`src/render/buildGhost.ts`): läpinäkyvä haamu seuraa katsetta, etureuna osoitettuun kohtaan, R / oikea hiiri kääntää, vasen asettaa, X peruu. `src/logic/placement.ts` tyhjentää rakennuksen laatikon (kaikki sisälle ja alle jäävä katoaa, paitsi peruskallio) ja tekee rinteessä tukijalat maahan asti. Z kumoaa.
 - Rakenne:
   - `src/config.ts` – kaikki vakiot. Puhdas tiedosto, jota myös worker ja Convex käyttävät.
   - `src/logic/` – puhdas logiikka: palikat, maasto, maailma, mesher, fysiikka, raycast, protokolla, koodit, muodot. **Jokaisella logiikkatiedostolla on testi.**
@@ -87,7 +89,7 @@ Palvelut (2026-10-22): Convex-projekti `palikkamaailma` (dev `steady-pika-483`, 
 ## Testaus selaimessa
 
 - Studion juuren `.claude/launch.json`: `palikkamaailma` (portti 5178). Käynnistä lisäksi `npm run dev:room` (8788) ja Convex.
-- Automaattiselaimessa hiiren lukitus ei toimi: kehitystilassa `window.__game()` antaa pelin, jolla voi testata (`paused = false`, `breakBlock()`, `magicBuild('linna')`).
+- Automaattiselaimessa hiiren lukitus ei toimi: kehitystilassa `window.__game()` antaa pelin, jolla voi testata (`paused = false`, `breakBlock()`, `await magicBuild('linna')` aloittaa asettamisen, `finishPlacing()` asettaa). Tekoälyä ei tarvitse kutsua (maksaa): korvaa `builder.callbacks.ask` funktiolla, joka palauttaa `{ blocks }`.
 - Taustalla oleva välilehti ei piirrä ruutuja (rAF pysähtyy): tuo välilehti eteen tai ota kuvakaappaus.
 
 ## Komennot

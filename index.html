@@ -80,6 +80,10 @@
       <div id="hurt-flash" class="hurt-flash"></div>
       <div id="block-name" class="block-name"></div>
       <div id="toast" class="toast" hidden></div>
+      <div id="place-hint" class="place-hint" hidden>
+        🏗️ Osoita paikka · <kbd>Vasen hiiri</kbd> aseta · <kbd>R</kbd> tai
+        <kbd>Oikea hiiri</kbd> käännä · <kbd>X</kbd> peru
+      </div>
       <div id="biome" class="biome"></div>
       <div id="chat-log" class="chat-log"></div>
       <form id="chat-form" class="chat-form" hidden>
@@ -110,6 +114,7 @@
           <div><kbd>T</kbd> tai <kbd>Enter</kbd> chatti</div>
           <div><kbd>B</kbd> ✨ taikarakentaja</div>
           <div><kbd>Z</kbd> kumoa taikarakennus</div>
+          <div><kbd>R</kbd> käännä taikarakennusta</div>
         </div>
         <p id="pause-code" class="code-hint"></p>
         <button id="switch-mode" class="secondary"></button>
@@ -147,21 +152,41 @@
 
     <!-- Magic builder -->
     <section id="builder" class="screen" hidden>
-      <div class="panel">
-        <h2>✨ Taikarakentaja</h2>
-        <p class="lead">Kirjoita, mitä rakennetaan, tai valitse valmis.</p>
-        <form id="builder-form" class="join">
-          <input
-            id="builder-prompt"
-            autocomplete="off"
-            maxlength="60"
-            placeholder="esim. punainen linna"
-          />
-          <button type="submit">✨ Rakenna</button>
-        </form>
-        <div id="blueprints" class="blueprints"></div>
-        <p id="builder-message" class="message"></p>
-        <button id="builder-close" class="secondary">Sulje</button>
+      <div class="panel builder-panel">
+        <div id="builder-ask">
+          <h2>✨ Taikarakentaja</h2>
+          <p class="lead">Kirjoita, mitä rakennetaan, tai valitse valmis.</p>
+          <form id="builder-form" class="join">
+            <input
+              id="builder-prompt"
+              autocomplete="off"
+              maxlength="60"
+              placeholder="esim. punainen linna"
+            />
+            <button type="submit">✨ Rakenna</button>
+          </form>
+          <div id="blueprints" class="blueprints"></div>
+          <p id="builder-message" class="message"></p>
+          <button id="builder-close" class="secondary">Sulje</button>
+        </div>
+        <div id="builder-view" hidden>
+          <h2 id="preview-title"></h2>
+          <div id="preview" class="preview"></div>
+          <p class="hint">🖱️ Vedä: pyöritä · Rulla: lähemmäs ja kauemmas</p>
+          <label class="preview-layers">
+            🔪 Kurkista sisään
+            <input id="preview-layers" type="range" min="0" max="10" step="1" />
+          </label>
+          <p id="preview-info" class="lead"></p>
+          <div class="menu-buttons">
+            <button id="preview-place" class="big">✅ Aseta maailmaan</button>
+          </div>
+          <div class="menu-buttons">
+            <button id="preview-retry" class="secondary">🔁 Uusi yritys</button>
+            <button id="preview-back" class="secondary">✏️ Muuta toivetta</button>
+            <button id="preview-close" class="secondary">✖️ Hylkää</button>
+          </div>
+        </div>
       </div>
     </section>
 

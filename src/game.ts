@@ -34,7 +34,15 @@ import { blockDrops, breakTime, wearsWhenMining } from './logic/mining';
 import { createPlayer, overlapsBlock, stepPlayer, type PlayerState } from './logic/physics';
 import { cleanChatText, type DroppedItem, type ServerMessage } from './logic/protocol';
 import { raycast, type RayHit } from './logic/raycast';
-import { centerBuild, expandShapes, facingFromYaw, placeBuild } from './logic/shapes';
+import { nearSideOffset, planPlacement } from './logic/placement';
+import {
+  centerFootprint,
+  expandShapes,
+  facingFromYaw,
+  placeBuild,
+  type BuildBlock,
+  type Vec3,
+} from './logic/shapes';
 import { findSpawn } from './logic/spawn';
 import {
   addExhaustion,
@@ -54,9 +62,11 @@ import { askBuilder } from './net/convex';
 import { ContainerService } from './net/containers';
 import { ROOM_URL, RoomClient, type RoomStatus } from './net/room';
 import { OtherPlayers } from './render/avatars';
+import { BuildGhost } from './render/buildGhost';
 import { CrackOverlay, DropRenderer } from './render/dropRenderer';
 import type { WorldRenderer } from './render/worldRenderer';
 import type { Hud } from './ui/hud';
+import { BuilderScreen, type BuildResult } from './ui/builderScreen';
 import { Input } from './ui/input';
 import type { ExtraPanel, InventoryScreen } from './ui/inventoryScreen';
 import { ChestPanel, CraftingPanel, FurnacePanel } from './ui/panels';
@@ -124,6 +134,18 @@ export class Game {
   private pending: Edit[] = [];
   /** Blocks as they were before the last magic build, for undo. */
   private undo: Edit[] = [];
+  private readonly builder: BuilderScreen;
+  private readonly ghost: BuildGhost;
+  /** A magic build that follows your aim until you place it. */
+  private placing: {
+    build: BuildBlock[];
+    /** Extra quarter turns from R or the right mouse button. */
+    turns: number;
+    /** The facing the ghost was built for (it is rebuilt when this changes). */
+    shownFacing: number | null;
+    origin: Vec3 | null;
+    facing: 0 | 1 | 2 | 3;
+  } | null = null;
 
   mode: GameMode;
   vitals: Vitals;
@@ -159,6 +181,12 @@ export class Game {
     this.others = new OtherPlayers(renderer.scene);
     this.dropRenderer = new DropRenderer(renderer.scene);
     this.cracks = new CrackOverlay(renderer.scene);
+    this.ghost = new BuildGhost(renderer.scene);
+    this.builder = new BuilderScreen({
+      ask: (prompt) => this.askBuild(prompt),
+      place: (blocks) => this.startPlacing(blocks),
+      toast: (text) => hud.toast(text),
+    });
 
     this.spawn = findSpawn(this.world);
     const saved = loadPlayer(options.code);
@@ -238,6 +266,9 @@ export class Game {
     this.input.enabled = false;
     this.input.unlock();
     this.room?.close();
+    this.builder.stop();
+    this.cancelPlacing();
+    this.ghost.clear();
     this.flushSave();
     this.savePlayerNow();
     this.others.clear();
@@ -398,6 +429,13 @@ export class Game {
   }
 
   private updateTarget(): void {
+    if (this.placing) {
+      this.target = null;
+      this.renderer.hideHighlight();
+      this.cracks.show(0, 0, 0, null);
+      this.updatePlacing();
+      return;
+    }
     this.target = this.cast(false);
     if (this.target) this.renderer.showHighlight(this.target.x, this.target.y, this.target.z);
     else this.renderer.hideHighlight();
@@ -412,6 +450,11 @@ export class Game {
   }
 
   private onBreakPressed(): void {
+    if (this.placing) {
+      this.finishPlacing();
+      this.breakCooldown = SURVIVAL.creativeBreakDelay;
+      return;
+    }
     if (this.targetMob) {
       this.attack(this.targetMob.id);
       return;
@@ -426,6 +469,10 @@ export class Game {
   private updateActions(dt: number): void {
     this.breakCooldown -= dt;
     this.placeCooldown -= dt;
+    if (this.placing) {
+      this.mining = null;
+      return;
+    }
     if (this.input.isMouseDown(2) && this.placeCooldown <= 0) this.useItem();
 
     const t = this.target;
@@ -501,6 +548,10 @@ export class Game {
   /** Right click: open a table/furnace/chest, eat, use a bucket or place a block. */
   private useItem(): void {
     this.placeCooldown = PLACE_REPEAT;
+    if (this.placing) {
+      this.turnPlacing();
+      return;
+    }
     const sneaking = this.input.isDown('ShiftLeft') || this.input.isDown('ShiftRight');
     const stack = this.selectedStack();
     const item = stack ? getItem(stack.id) : undefined;
@@ -879,31 +930,102 @@ export class Game {
 
   // --- Magic builder ----------------------------------------------------
 
-  private async magicBuild(prompt: string): Promise<string | null> {
+  private async askBuild(prompt: string): Promise<BuildResult> {
     const answer = await askBuilder(this.options.code, prompt);
-    if (!answer.ok) return BUILDER_ERRORS[answer.reason] ?? BUILDER_ERRORS.failed!;
+    if (!answer.ok) return { error: BUILDER_ERRORS[answer.reason] ?? BUILDER_ERRORS.failed! };
+    const blocks = centerFootprint(expandShapes(answer.shapes));
+    if (!blocks.some((b) => b[3] !== AIR)) return { error: BUILDER_ERRORS.failed! };
+    return { blocks };
+  }
 
-    const blocks = centerBuild(expandShapes(answer.shapes));
-    if (blocks.length === 0) return BUILDER_ERRORS.failed!;
-    const facing = facingFromYaw(this.player.yaw);
-    const [dx, , dz] = [
-      [0, 0, -1],
-      [1, 0, 0],
-      [0, 0, 1],
-      [-1, 0, 0],
-    ][facing]!;
-    const ox = Math.floor(this.player.x) + dx! * BUILDER.distanceAhead;
-    const oz = Math.floor(this.player.z) + dz! * BUILDER.distanceAhead;
-    const ground = Math.max(this.world.surfaceY(ox, oz), SEA_LEVEL);
-    const placed = placeBuild(blocks, [ox, ground + 1, oz], facing);
+  /** For tests in development: asks for a build and starts placing it right away. */
+  async magicBuild(prompt: string): Promise<string | null> {
+    const result = await this.builder.run(prompt);
+    if ('error' in result) return result.error;
+    this.startPlacing(result.blocks);
+    return null;
+  }
 
-    const before: Edit[] = placed.map(([x, y, z]) => [x, y, z, this.world.getBlock(x, y, z)]);
-    const changed = this.change(placed);
+  private startPlacing(build: BuildBlock[]): void {
+    this.placing = { build, turns: 0, shownFacing: null, origin: null, facing: 0 };
+    this.hud.setPlaceHint(true);
+  }
+
+  private cancelPlacing(): void {
+    this.placing = null;
+    this.ghost.hide();
+    this.hud.setPlaceHint(false);
+  }
+
+  private turnPlacing(): void {
+    if (!this.placing) return;
+    this.placing.turns = (this.placing.turns + 1) % 4;
+    sounds.place();
+  }
+
+  /** Every frame: the ghost goes where you point, turned the way you look. */
+  private updatePlacing(): void {
+    const p = this.placing;
+    if (!p) return;
+    const view = facingFromYaw(this.player.yaw);
+    p.facing = ((view + p.turns) % 4) as 0 | 1 | 2 | 3;
+    const local = placeBuild(p.build, [0, 0, 0], p.facing);
+    if (p.shownFacing !== p.facing) {
+      this.ghost.setBuild(local);
+      p.shownFacing = p.facing;
+    }
+    const [dx, dy, dz] = this.lookDirection();
+    const eyeY = this.player.y + PLAYER.eyeHeight;
+    const hit = raycast(
+      this.player.x,
+      eyeY,
+      this.player.z,
+      dx,
+      dy,
+      dz,
+      BUILDER.placeReach,
+      (x, y, z) => {
+        const b = getBlockType(this.world.getBlock(x, y, z));
+        return b.id !== AIR && b.shape !== 'cross';
+      },
+    );
+    let target: Vec3;
+    if (hit) {
+      target = [hit.x + hit.nx, hit.y + hit.ny, hit.z + hit.nz];
+    } else {
+      // Pointing at the sky: the build stands on the ground a bit further away.
+      const x = Math.floor(this.player.x + dx * BUILDER.placeDistance);
+      const z = Math.floor(this.player.z + dz * BUILDER.placeDistance);
+      target = [x, Math.max(this.world.surfaceY(x, z), SEA_LEVEL) + 1, z];
+    }
+    // The front of the build starts where you point and it continues away from you.
+    const [ox, , oz] = nearSideOffset(local, view);
+    p.origin = [target[0] + ox, target[1], target[2] + oz];
+    this.ghost.moveTo(...p.origin);
+  }
+
+  private finishPlacing(): void {
+    const p = this.placing;
+    if (!p?.origin) return;
+    const { edits } = planPlacement(p.build, p.origin, p.facing, (x, y, z) =>
+      this.world.getBlock(x, y, z),
+    );
+    const before: Edit[] = edits.map(([x, y, z]) => [x, y, z, this.world.getBlock(x, y, z)]);
+    const changed = this.change(edits);
     const changedKeys = new Set(changed.map(([x, y, z]) => `${x},${y},${z}`));
     this.undo = before.filter(([x, y, z]) => changedKeys.has(`${x},${y},${z}`));
+    // Chests and furnaces under the build spill their items (the room server does it in multiplayer).
+    if (!this.room) {
+      for (const [x, y, z, id] of this.undo) {
+        if (!isContainerBlock(id)) continue;
+        for (const item of this.containers.removeLocal([x, y, z])) {
+          this.spawnDrop(item, [x + 0.5, y + 0.5, z + 0.5], true);
+        }
+      }
+    }
+    this.cancelPlacing();
     sounds.magic();
     this.hud.toast(`✨ Valmis! (${changed.length} palikkaa) – Z kumoaa`);
-    return null;
   }
 
   private undoBuild(): void {
@@ -918,12 +1040,22 @@ export class Game {
   /** Returns true when the key opened something (so it is not typed anywhere). */
   private onKey(code: string, e: KeyboardEvent): boolean {
     if (!this.ready || this.dead) return false;
-    if (this.inventoryScreen.isOpen || this.hud.builderOpen || this.hud.chatOpen) return false;
+    if (this.inventoryScreen.isOpen || this.builder.isOpen || this.hud.chatOpen) return false;
     if (code === 'KeyE') {
       // The survival backpack has the small 2 × 2 crafting grid, like Minecraft.
       this.openScreen(this.mode === 'survival' ? new CraftingPanel(2) : null);
     } else if (code === 'KeyB') {
-      this.openOverlay((done) => this.hud.openBuilder((prompt) => this.magicBuild(prompt), done));
+      // While placing, B goes back to the preview with the same build.
+      if (this.placing) {
+        this.builder.restore(this.placing.build);
+        this.cancelPlacing();
+      }
+      this.openOverlay((done) => this.builder.open(done));
+    } else if (code === 'KeyR' && this.placing) {
+      this.turnPlacing();
+    } else if (code === 'KeyX' && this.placing) {
+      this.cancelPlacing();
+      this.hud.toast('✖️ Taikarakennus jäi asettamatta');
     } else if (code === 'KeyT' || code === 'Enter') {
       this.openOverlay((done) => this.hud.openChat((text) => this.sendChat(text), done));
     } else if (code === 'KeyZ' && this.input.locked) {

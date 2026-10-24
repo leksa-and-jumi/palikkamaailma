@@ -299,104 +299,155 @@ class MeshBuilder {
   }
 }
 
+/** What the mesher needs to know about the blocks around the one it draws. */
+interface Grid {
+  at(x: number, y: number, z: number): BlockType;
+  opaqueAt(x: number, y: number, z: number): number;
+  skyAt(x: number, y: number, z: number): number;
+  blockAt(x: number, y: number, z: number): number;
+}
+
+/** Adds the faces of one block to the mesh. */
+function emitBlock(
+  solid: MeshBuilder,
+  water: MeshBuilder,
+  { at, opaqueAt, skyAt, blockAt }: Grid,
+  x: number,
+  y: number,
+  z: number,
+): void {
+  const max = LIGHT.max;
+  const block = at(x, y, z);
+  if (block.id === AIR) return;
+  const out = block.id === WATER ? water : solid;
+  const glows = block.light > 0;
+
+  if (block.shape === 'cross') {
+    const [u0, v0, u1, v1] = tileUV(block.tiles.side);
+    const sky = glows ? 1 : skyAt(x, y, z) / max;
+    const lit = glows ? 1 : blockAt(x, y, z) / max;
+    for (const quad of CROSS_QUADS) {
+      const base = out.positions.length / 3;
+      quad.forEach(([ox, oy, oz], i) => {
+        out.positions.push(x + ox, y + oy, z + oz);
+        const [cu, cv] = CORNER_UVS[i]!;
+        out.uvs.push(cu ? u1 : u0, cv ? v1 : v0);
+        out.colors.push(1, sky, lit);
+      });
+      // Both sides, so the plant can be seen from everywhere.
+      out.indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
+      out.indices.push(base, base + 2, base + 1, base, base + 3, base + 2);
+    }
+    return;
+  }
+
+  const liquidTop = block.liquid && at(x, y + 1, z).id !== block.id;
+
+  FACES.forEach((face, faceIndex) => {
+    const [nx, ny, nz] = face.normal;
+    if (!isFaceVisible(block, at(x + nx, y + ny, z + nz))) return;
+
+    const tile: TileName =
+      face.front && block.tiles.front ? block.tiles.front : block.tiles[face.tile];
+    const [u0, v0, u1, v1] = tileUV(tile);
+    const base = out.positions.length / 3;
+    const ao: number[] = [];
+
+    face.corners.forEach((corner, i) => {
+      const [ox, oy, oz] = corner;
+      let level = 3;
+      let sky = 1;
+      let lit = 1;
+      if (!glows) {
+        const [s1, s2, c] = AO_OFFSETS[faceIndex]![i]!;
+        const a = opaqueAt(x + s1[0], y + s1[1], z + s1[2]);
+        const b = opaqueAt(x + s2[0], y + s2[1], z + s2[2]);
+        const d = opaqueAt(x + c[0], y + c[1], z + c[2]);
+        level = a && b ? 0 : 3 - (a + b + d);
+        // Smooth light: average the open blocks around this corner.
+        const cells: (readonly [number, number, number])[] = [[x + nx, y + ny, z + nz]];
+        if (!a) cells.push([x + s1[0], y + s1[1], z + s1[2]]);
+        if (!b) cells.push([x + s2[0], y + s2[1], z + s2[2]]);
+        if (!d && !(a && b)) cells.push([x + c[0], y + c[1], z + c[2]]);
+        let skySum = 0;
+        let blockSum = 0;
+        for (const [cx, cy, cz] of cells) {
+          skySum += skyAt(cx, cy, cz);
+          blockSum += blockAt(cx, cy, cz);
+        }
+        sky = skySum / cells.length / max;
+        lit = blockSum / cells.length / max;
+      }
+      ao.push(level);
+
+      const top = liquidTop && oy === 1 ? LIQUID_SURFACE : oy;
+      out.positions.push(x + ox, y + top, z + oz);
+      const [cu, cv] = CORNER_UVS[i]!;
+      out.uvs.push(cu ? u1 : u0, cv ? v1 : v0);
+      // Colour channels: r = shade and corner darkness, g = sunlight, b = torch light.
+      // The shader mixes them with the time of day (see worldRenderer).
+      const shade = glows ? 1 : face.shade * AO_LEVELS[level as 0 | 1 | 2 | 3];
+      out.colors.push(shade, sky, lit);
+    });
+
+    // Split the square along the brighter diagonal so shading looks even.
+    if (ao[0]! + ao[2]! < ao[1]! + ao[3]!) {
+      out.indices.push(base + 1, base + 2, base + 3, base + 1, base + 3, base);
+    } else {
+      out.indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
+    }
+  });
+}
+
 export function buildChunkMesh(world: VoxelWorld, cx: number, cz: number): ChunkMesh {
   const padded = fillPadded(world, cx, cz);
   const light = computeLight(padded);
-  const max = LIGHT.max;
   const solid = new MeshBuilder();
   const water = new MeshBuilder();
-  const at = (x: number, y: number, z: number): BlockType => BLOCKS[padded[padIndex(x, y, z)]!]!;
-  const opaqueAt = (x: number, y: number, z: number): number =>
-    OPAQUE[padded[padIndex(x, y, z)]!] ? 1 : 0;
-  const skyAt = (x: number, y: number, z: number): number => light.sky[padIndex(x, y, z)]!;
-  const blockAt = (x: number, y: number, z: number): number => light.block[padIndex(x, y, z)]!;
+  const grid: Grid = {
+    at: (x, y, z) => BLOCKS[padded[padIndex(x, y, z)]!]!,
+    opaqueAt: (x, y, z) => (OPAQUE[padded[padIndex(x, y, z)]!] ? 1 : 0),
+    skyAt: (x, y, z) => light.sky[padIndex(x, y, z)]!,
+    blockAt: (x, y, z) => light.block[padIndex(x, y, z)]!,
+  };
 
   for (let y = 0; y < WORLD_HEIGHT; y++) {
     for (let z = 0; z < CHUNK_SIZE; z++) {
-      for (let x = 0; x < CHUNK_SIZE; x++) {
-        const block = at(x, y, z);
-        if (block.id === AIR) continue;
-        const out = block.id === WATER ? water : solid;
-        const glows = block.light > 0;
-
-        if (block.shape === 'cross') {
-          const [u0, v0, u1, v1] = tileUV(block.tiles.side);
-          const sky = glows ? 1 : skyAt(x, y, z) / max;
-          const lit = glows ? 1 : blockAt(x, y, z) / max;
-          for (const quad of CROSS_QUADS) {
-            const base = out.positions.length / 3;
-            quad.forEach(([ox, oy, oz], i) => {
-              out.positions.push(x + ox, y + oy, z + oz);
-              const [cu, cv] = CORNER_UVS[i]!;
-              out.uvs.push(cu ? u1 : u0, cv ? v1 : v0);
-              out.colors.push(1, sky, lit);
-            });
-            // Both sides, so the plant can be seen from everywhere.
-            out.indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
-            out.indices.push(base, base + 2, base + 1, base, base + 3, base + 2);
-          }
-          continue;
-        }
-
-        const liquidTop = block.liquid && at(x, y + 1, z).id !== block.id;
-
-        FACES.forEach((face, faceIndex) => {
-          const [nx, ny, nz] = face.normal;
-          if (!isFaceVisible(block, at(x + nx, y + ny, z + nz))) return;
-
-          const tile: TileName =
-            face.front && block.tiles.front ? block.tiles.front : block.tiles[face.tile];
-          const [u0, v0, u1, v1] = tileUV(tile);
-          const base = out.positions.length / 3;
-          const ao: number[] = [];
-
-          face.corners.forEach((corner, i) => {
-            const [ox, oy, oz] = corner;
-            let level = 3;
-            let sky = 1;
-            let lit = 1;
-            if (!glows) {
-              const [s1, s2, c] = AO_OFFSETS[faceIndex]![i]!;
-              const a = opaqueAt(x + s1[0], y + s1[1], z + s1[2]);
-              const b = opaqueAt(x + s2[0], y + s2[1], z + s2[2]);
-              const d = opaqueAt(x + c[0], y + c[1], z + c[2]);
-              level = a && b ? 0 : 3 - (a + b + d);
-              // Smooth light: average the open blocks around this corner.
-              const cells: (readonly [number, number, number])[] = [[x + nx, y + ny, z + nz]];
-              if (!a) cells.push([x + s1[0], y + s1[1], z + s1[2]]);
-              if (!b) cells.push([x + s2[0], y + s2[1], z + s2[2]]);
-              if (!d && !(a && b)) cells.push([x + c[0], y + c[1], z + c[2]]);
-              let skySum = 0;
-              let blockSum = 0;
-              for (const [cx, cy, cz] of cells) {
-                skySum += skyAt(cx, cy, cz);
-                blockSum += blockAt(cx, cy, cz);
-              }
-              sky = skySum / cells.length / max;
-              lit = blockSum / cells.length / max;
-            }
-            ao.push(level);
-
-            const top = liquidTop && oy === 1 ? LIQUID_SURFACE : oy;
-            out.positions.push(x + ox, y + top, z + oz);
-            const [cu, cv] = CORNER_UVS[i]!;
-            out.uvs.push(cu ? u1 : u0, cv ? v1 : v0);
-            // Colour channels: r = shade and corner darkness, g = sunlight, b = torch light.
-            // The shader mixes them with the time of day (see worldRenderer).
-            const shade = glows ? 1 : face.shade * AO_LEVELS[level as 0 | 1 | 2 | 3];
-            out.colors.push(shade, sky, lit);
-          });
-
-          // Split the square along the brighter diagonal so shading looks even.
-          if (ao[0]! + ao[2]! < ao[1]! + ao[3]!) {
-            out.indices.push(base + 1, base + 2, base + 3, base + 1, base + 3, base);
-          } else {
-            out.indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
-          }
-        });
-      }
+      for (let x = 0; x < CHUNK_SIZE; x++) emitBlock(solid, water, grid, x, y, z);
     }
   }
 
+  return { solid: solid.build(), water: water.build() };
+}
+
+/**
+ * A mesh for a loose set of blocks ([x, y, z, id]), for example a magic build
+ * in the preview. Everything is in full daylight; corners still get shade, and
+ * the colours are plain grey shades (no day and night channels).
+ */
+export function buildBlocksMesh(
+  blocks: readonly (readonly [number, number, number, number])[],
+): ChunkMesh {
+  const ids = new Map<string, number>();
+  for (const [x, y, z, id] of blocks) if (id !== AIR) ids.set(`${x},${y},${z}`, id);
+  const idAt = (x: number, y: number, z: number) => ids.get(`${x},${y},${z}`) ?? AIR;
+  const grid: Grid = {
+    at: (x, y, z) => BLOCKS[idAt(x, y, z)]!,
+    opaqueAt: (x, y, z) => (OPAQUE[idAt(x, y, z)] ? 1 : 0),
+    skyAt: () => LIGHT.max,
+    blockAt: () => 0,
+  };
+  const solid = new MeshBuilder();
+  const water = new MeshBuilder();
+  for (const key of ids.keys()) {
+    const [x, y, z] = key.split(',').map(Number) as [number, number, number];
+    emitBlock(solid, water, grid, x, y, z);
+  }
+  for (const mesh of [solid, water]) {
+    // Shade only: copy the red channel (shade and corner darkness) to green and blue.
+    for (let i = 0; i < mesh.colors.length; i += 3) {
+      mesh.colors[i + 1] = mesh.colors[i + 2] = mesh.colors[i]!;
+    }
+  }
   return { solid: solid.build(), water: water.build() };
 }
