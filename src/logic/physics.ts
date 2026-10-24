@@ -36,7 +36,22 @@ export interface BlockQuery {
 
 /** Small gap so the player never sticks inside a wall. */
 const SKIN = 0.001;
-const HALF = PLAYER.width / 2;
+/** Size and speed of something that walks: the player, an animal, a monster. */
+export interface Body {
+  width: number;
+  height: number;
+  walkSpeed: number;
+  sprintSpeed: number;
+  jumpSpeed: number;
+}
+
+export const PLAYER_BODY: Body = {
+  width: PLAYER.width,
+  height: PLAYER.height,
+  walkSpeed: PLAYER.walkSpeed,
+  sprintSpeed: PLAYER.sprintSpeed,
+  jumpSpeed: PLAYER.jumpSpeed,
+};
 /** Longest physics step; bigger frames are split so nothing tunnels through walls. */
 const MAX_STEP = 1 / 60;
 /** How far below the feet we look for ground. */
@@ -60,11 +75,12 @@ export function createPlayer(x: number, y: number, z: number): PlayerState {
   };
 }
 
-function collides(world: BlockQuery, x: number, y: number, z: number): boolean {
+function collides(world: BlockQuery, b: Body, x: number, y: number, z: number): boolean {
+  const HALF = b.width / 2;
   const x0 = Math.floor(x - HALF + SKIN);
   const x1 = Math.floor(x + HALF - SKIN);
   const y0 = Math.floor(y + SKIN);
-  const y1 = Math.floor(y + PLAYER.height - SKIN);
+  const y1 = Math.floor(y + b.height - SKIN);
   const z0 = Math.floor(z - HALF + SKIN);
   const z1 = Math.floor(z + HALF - SKIN);
   for (let by = y0; by <= y1; by++) {
@@ -78,12 +94,19 @@ function collides(world: BlockQuery, x: number, y: number, z: number): boolean {
 }
 
 /** Is any part of the player box in one of these blocks? */
-export function overlapsBlock(state: PlayerState, bx: number, by: number, bz: number): boolean {
+export function overlapsBlock(
+  state: PlayerState,
+  bx: number,
+  by: number,
+  bz: number,
+  b: Body = PLAYER_BODY,
+): boolean {
+  const HALF = b.width / 2;
   return (
     bx + 1 > state.x - HALF &&
     bx < state.x + HALF &&
     by + 1 > state.y &&
-    by < state.y + PLAYER.height &&
+    by < state.y + b.height &&
     bz + 1 > state.z - HALF &&
     bz < state.z + HALF
   );
@@ -92,6 +115,7 @@ export function overlapsBlock(state: PlayerState, bx: number, by: number, bz: nu
 /** Moves along one axis, stopping at the first block in the way. */
 function moveAxis(
   world: BlockQuery,
+  b: Body,
   s: PlayerState,
   axis: 'x' | 'y' | 'z',
   delta: number,
@@ -99,11 +123,12 @@ function moveAxis(
   if (delta === 0) return false;
   const start = s[axis];
   s[axis] = start + delta;
-  if (!collides(world, s.x, s.y, s.z)) return false;
+  if (!collides(world, b, s.x, s.y, s.z)) return false;
+  const HALF = b.width / 2;
 
   // Slide back to touch the block exactly.
   if (axis === 'y') {
-    s.y = delta > 0 ? Math.floor(s.y + PLAYER.height) - PLAYER.height - SKIN : Math.floor(s.y) + 1;
+    s.y = delta > 0 ? Math.floor(s.y + b.height) - b.height - SKIN : Math.floor(s.y) + 1;
   } else {
     const edge =
       delta > 0
@@ -111,11 +136,11 @@ function moveAxis(
         : Math.floor(s[axis] - HALF) + 1 + HALF + SKIN;
     s[axis] = edge;
   }
-  if (collides(world, s.x, s.y, s.z)) s[axis] = start;
+  if (collides(world, b, s.x, s.y, s.z)) s[axis] = start;
   return true;
 }
 
-function step(world: BlockQuery, s: PlayerState, input: MoveInput, dt: number): void {
+function step(world: BlockQuery, b: Body, s: PlayerState, input: MoveInput, dt: number): void {
   const feetInWater = world.isLiquid(Math.floor(s.x), Math.floor(s.y + 0.1), Math.floor(s.z));
   const bodyInWater = world.isLiquid(Math.floor(s.x), Math.floor(s.y + 1), Math.floor(s.z));
   s.inWater = feetInWater || bodyInWater;
@@ -138,7 +163,7 @@ function step(world: BlockQuery, s: PlayerState, input: MoveInput, dt: number): 
     const vertical = (input.jump ? 1 : 0) - (input.down ? 1 : 0);
     s.vy = vertical !== 0 ? vertical * speed * 0.7 : s.vy * Math.max(0, 1 - FLY_DAMPING * dt);
   } else {
-    const speed = input.sprint ? PLAYER.sprintSpeed : PLAYER.walkSpeed;
+    const speed = input.sprint ? b.sprintSpeed : b.walkSpeed;
     s.vx = dx * speed * (s.inWater ? 0.6 : 1);
     s.vz = dz * speed * (s.inWater ? 0.6 : 1);
     if (s.inWater) {
@@ -146,16 +171,16 @@ function step(world: BlockQuery, s: PlayerState, input: MoveInput, dt: number): 
       if (input.jump) s.vy = PLAYER.swimUpSpeed;
       s.vy = Math.max(s.vy, -PLAYER.maxSwimFallSpeed);
     } else {
-      if (input.jump && s.onGround) s.vy = PLAYER.jumpSpeed;
+      if (input.jump && s.onGround) s.vy = b.jumpSpeed;
       s.vy = Math.max(s.vy - PLAYER.gravity * dt, -PLAYER.maxFallSpeed);
     }
   }
 
-  moveAxis(world, s, 'x', s.vx * dt);
-  moveAxis(world, s, 'z', s.vz * dt);
-  const hitY = moveAxis(world, s, 'y', s.vy * dt);
+  moveAxis(world, b, s, 'x', s.vx * dt);
+  moveAxis(world, b, s, 'z', s.vz * dt);
+  const hitY = moveAxis(world, b, s, 'y', s.vy * dt);
   if (hitY) s.vy = 0;
-  s.onGround = s.vy <= 0 && collides(world, s.x, s.y - GROUND_PROBE, s.z);
+  s.onGround = s.vy <= 0 && collides(world, b, s.x, s.y - GROUND_PROBE, s.z);
   if (s.onGround && s.flying) s.flying = false;
 
   // Stay inside the world and below the sky.
@@ -166,11 +191,17 @@ function step(world: BlockQuery, s: PlayerState, input: MoveInput, dt: number): 
 }
 
 /** Advances the player by dt seconds. */
-export function stepPlayer(world: BlockQuery, s: PlayerState, input: MoveInput, dt: number): void {
+export function stepPlayer(
+  world: BlockQuery,
+  s: PlayerState,
+  input: MoveInput,
+  dt: number,
+  body: Body = PLAYER_BODY,
+): void {
   let left = Math.min(dt, 0.25);
   while (left > 0) {
     const part = Math.min(left, MAX_STEP);
-    step(world, s, input, part);
+    step(world, body, s, input, part);
     left -= part;
   }
 }

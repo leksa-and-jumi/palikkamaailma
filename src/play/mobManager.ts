@@ -1,0 +1,453 @@
+// Runs the computer characters around this player. Each creature is
+// simulated by one player (its owner, usually the one who spawned it); the
+// others only see it through the owner's position messages. Animals spawn
+// near players, wander, run away, follow food, make babies and drop food.
+
+import { MOBS, SEA_LEVEL } from '../config';
+import { GRASS, LAVA, SNOW, WATER, getBlockType, isSolid } from '../logic/blocks';
+import { itemId } from '../logic/items';
+import { createMob, think, type Mob, type Seen } from '../logic/mobBrain';
+import {
+  MOB_NAMES,
+  MOB_TYPES,
+  PERSONALITIES,
+  PERSONALITY_TRAITS,
+  mobType,
+  rollDrops,
+  type MobKind,
+} from '../logic/mobs';
+import { stepPlayer, type Body } from '../logic/physics';
+import { MOB_FLAG, type MobNet } from '../logic/protocol';
+import type { Biome } from '../logic/terrain';
+import type { VoxelWorld } from '../logic/world';
+import type { MobView } from '../render/mobRenderer';
+import type { ItemStack } from '../logic/inventory';
+
+const SPAWN_TRIES = 6;
+const GROUP_MIN = 2;
+const GROUP_MAX = 4;
+const MAX_DROP = 3;
+const KNOCK_HOP = 5;
+const BABY_BODY_SCALE = 0.55;
+const EGG_MIN = 300;
+const EGG_MAX = 600;
+
+/** Which animals live where. */
+const ANIMALS_BY_BIOME: Partial<Record<Biome, readonly MobKind[]>> = {
+  plains: ['pig', 'cow', 'sheep', 'chicken'],
+  forest: ['pig', 'chicken', 'cow'],
+  taiga: ['sheep', 'cow'],
+  snowy: ['sheep'],
+};
+
+interface RemoteMob {
+  net: MobNet;
+  owner: string;
+  seen: number;
+}
+
+export interface MobEvents {
+  /** Something falls on the ground (meat, feathers, eggs). */
+  drop(stack: ItemStack, p: [number, number, number]): void;
+  /** You defeated a creature: experience points. */
+  xp(amount: number): void;
+  /** Hit someone else's creature: tell its owner. */
+  sendHit(id: string, damage: number, from: [number, number]): void;
+  /** Short message on screen. */
+  toast(text: string): void;
+}
+
+export interface MobContext {
+  world: VoxelWorld;
+  me: Seen;
+  /** Other players in the world. */
+  others: readonly Seen[];
+  dt: number;
+}
+
+function bodyFor(m: Mob): Body {
+  const body = MOB_TYPES[m.kind].body;
+  return m.baby
+    ? { ...body, width: body.width * BABY_BODY_SCALE, height: body.height * BABY_BODY_SCALE }
+    : body;
+}
+
+export class MobManager {
+  readonly owned = new Map<string, Mob>();
+  private readonly remote = new Map<string, RemoteMob>();
+  private spawnTimer = 0;
+  private counter = 0;
+  /** Your id in the room ('me' when alone); new creatures are named after it. */
+  myId = 'me';
+
+  constructor(
+    private readonly events: MobEvents,
+    private readonly random: () => number = Math.random,
+  ) {}
+
+  private newId(): string {
+    this.counter++;
+    return `${this.myId}-${this.counter}-${Math.floor(this.random() * 1e6).toString(36)}`;
+  }
+
+  /** Makes a creature here (spawning, babies, villagers). */
+  spawn(kind: MobKind, x: number, y: number, z: number, baby = false): Mob {
+    const type = mobType(kind);
+    const personality = type.personalities[Math.floor(this.random() * type.personalities.length)]!;
+    const name = MOB_NAMES[Math.floor(this.random() * MOB_NAMES.length)]!;
+    const mob = createMob(this.newId(), kind, x, y, z, personality, name, baby);
+    mob.body.yaw = this.random() * Math.PI * 2;
+    mob.cooldown = EGG_MIN + this.random() * (EGG_MAX - EGG_MIN);
+    this.owned.set(mob.id, mob);
+    return mob;
+  }
+
+  update(ctx: MobContext): void {
+    const { world, dt } = ctx;
+    const everyone = [ctx.me, ...ctx.others];
+    this.spawnTimer -= dt;
+    if (this.spawnTimer <= 0) {
+      this.spawnTimer = MOBS.spawnInterval;
+      if (this.isSpawner(ctx)) this.trySpawnAnimals(ctx);
+    }
+
+    for (const m of this.owned.values()) {
+      const distance = Math.hypot(m.body.x - ctx.me.x, m.body.z - ctx.me.z);
+      if (distance > MOBS.despawnDistance || m.body.y < -10) {
+        this.owned.delete(m.id);
+        continue;
+      }
+      this.step(m, everyone, world, dt);
+      this.grow(m, dt);
+      this.layEggs(m, dt);
+    }
+    this.breed();
+
+    const now = performance.now();
+    for (const [id, r] of this.remote) {
+      if (now - r.seen > MOBS.remoteTimeout * 1000) this.remote.delete(id);
+    }
+  }
+
+  /** Only one player spawns animals in an area (the one with the smallest id), so they don't double. */
+  private isSpawner(ctx: MobContext): boolean {
+    return !ctx.others.some(
+      (o) => o.id < ctx.me.id && Math.hypot(o.x - ctx.me.x, o.z - ctx.me.z) < MOBS.spawnMax * 1.5,
+    );
+  }
+
+  private animalCount(): number {
+    let n = 0;
+    for (const m of this.owned.values())
+      if (!MOB_TYPES[m.kind].hostile && m.kind !== 'villager') n++;
+    for (const r of this.remote.values()) if (!MOB_TYPES[r.net[1]].hostile) n++;
+    return n;
+  }
+
+  private trySpawnAnimals(ctx: MobContext): void {
+    if (this.animalCount() >= MOBS.maxAnimals) return;
+    const { world } = ctx;
+    for (let i = 0; i < SPAWN_TRIES; i++) {
+      const angle = this.random() * Math.PI * 2;
+      const distance = MOBS.spawnMin + this.random() * (MOBS.spawnMax - MOBS.spawnMin);
+      const x = Math.floor(ctx.me.x + Math.cos(angle) * distance);
+      const z = Math.floor(ctx.me.z + Math.sin(angle) * distance);
+      const kinds = ANIMALS_BY_BIOME[world.terrain.biomeAt(x, z)];
+      if (!kinds) continue;
+      const y = this.groundAt(world, x, z);
+      if (y === null) continue;
+      const kind = kinds[Math.floor(this.random() * kinds.length)]!;
+      const count = GROUP_MIN + Math.floor(this.random() * (GROUP_MAX - GROUP_MIN + 1));
+      for (let k = 0; k < count; k++) {
+        const gx = x + Math.floor(this.random() * 5) - 2;
+        const gz = z + Math.floor(this.random() * 5) - 2;
+        const gy = this.groundAt(world, gx, gz);
+        if (gy !== null) this.spawn(kind, gx + 0.5, gy, gz + 0.5, this.random() < 0.2);
+      }
+      return;
+    }
+  }
+
+  /** Feet height on grass or snow with room above, or null. */
+  private groundAt(world: VoxelWorld, x: number, z: number): number | null {
+    const top = world.surfaceY(x, z);
+    if (top < SEA_LEVEL) return null;
+    const ground = world.getBlock(x, top, z);
+    if (ground !== GRASS && ground !== SNOW) return null;
+    if (isSolid(world.getBlock(x, top + 1, z)) || isSolid(world.getBlock(x, top + 2, z))) {
+      return null;
+    }
+    return top + 1;
+  }
+
+  private step(m: Mob, players: readonly Seen[], world: VoxelWorld, dt: number): void {
+    const thought = think(m, players, dt, this.random);
+    m.body.yaw = thought.yaw;
+    const input = { ...thought.input };
+    if (input.forward > 0 && this.dangerAhead(m, world)) {
+      // Don't walk off cliffs or into water and lava: stop and think again.
+      input.forward = 0;
+      m.goal = null;
+      m.timer = 0;
+    }
+    const before = [m.body.x, m.body.z];
+    // Personality changes speed: lazy ones amble, playful ones scamper.
+    const traits = PERSONALITY_TRAITS[m.personality];
+    const base = bodyFor(m);
+    const body = {
+      ...base,
+      walkSpeed: base.walkSpeed * traits.speed,
+      sprintSpeed: base.sprintSpeed * traits.speed,
+    };
+    stepPlayer(
+      {
+        isSolid: (x, y, z) => isSolid(world.getBlock(x, y, z)),
+        isLiquid: (x, y, z) => getBlockType(world.getBlock(x, y, z)).liquid,
+      },
+      m.body,
+      input,
+      dt,
+      body,
+    );
+    const moved = Math.hypot(m.body.x - before[0]!, m.body.z - before[1]!);
+    m.blocked = input.forward > 0 && moved < body.walkSpeed * dt * 0.3;
+  }
+
+  /** Is the next step a big drop, water or lava? */
+  private dangerAhead(m: Mob, world: VoxelWorld): boolean {
+    const ax = Math.floor(m.body.x - Math.sin(m.body.yaw) * 0.9);
+    const az = Math.floor(m.body.z - Math.cos(m.body.yaw) * 0.9);
+    const y = Math.floor(m.body.y);
+    const here = world.getBlock(ax, y, az);
+    if (here === LAVA || here === WATER) return true;
+    for (let dy = 1; dy <= 3; dy++) {
+      const below = world.getBlock(ax, y - dy, az);
+      if (below === LAVA || below === WATER) return true;
+      if (isSolid(below)) return false;
+    }
+    return true;
+  }
+
+  private grow(m: Mob, dt: number): void {
+    if (!m.baby) return;
+    m.grow -= dt;
+    if (m.grow <= 0) m.baby = false;
+  }
+
+  private layEggs(m: Mob, dt: number): void {
+    if (m.kind !== 'chicken' || m.baby) return;
+    m.cooldown -= dt;
+    if (m.cooldown > 0) return;
+    m.cooldown = EGG_MIN + this.random() * (EGG_MAX - EGG_MIN);
+    this.events.drop({ id: itemId('egg'), count: 1 }, [m.body.x, m.body.y + 0.3, m.body.z]);
+  }
+
+  /** Two fed animals of the same kind near each other make a baby. */
+  private breed(): void {
+    const inLove = [...this.owned.values()].filter((m) => m.love > 0 && !m.baby);
+    for (let i = 0; i < inLove.length; i++) {
+      for (let j = i + 1; j < inLove.length; j++) {
+        const a = inLove[i]!;
+        const b = inLove[j]!;
+        if (a.kind !== b.kind || a.love <= 0 || b.love <= 0) continue;
+        const d = Math.hypot(a.body.x - b.body.x, a.body.z - b.body.z);
+        if (d > MOBS.breedDistance) continue;
+        a.love = b.love = 0;
+        const x = (a.body.x + b.body.x) / 2;
+        const z = (a.body.z + b.body.z) / 2;
+        this.spawn(a.kind, x, Math.max(a.body.y, b.body.y), z, true);
+        this.events.toast(`💕 ${MOB_TYPES[a.kind].emoji} Uusi vauva!`);
+      }
+    }
+  }
+
+  // --- Hitting and feeding ------------------------------------------------
+
+  /** You hit a creature. Returns true if it was there. */
+  hit(id: string, damage: number, from: [number, number]): boolean {
+    const own = this.owned.get(id);
+    if (own) {
+      this.applyHit(own, damage, from, true);
+      return true;
+    }
+    const r = this.remote.get(id);
+    if (!r) return false;
+    this.events.sendHit(id, damage, from);
+    // Guess the result so the experience comes right away.
+    if (r.net[6] - damage <= 0) {
+      this.events.xp(MOB_TYPES[r.net[1]].xp);
+      this.remote.delete(id);
+    }
+    return true;
+  }
+
+  /** Someone else hit one of your creatures. */
+  receiveHit(id: string, damage: number, from: [number, number]): void {
+    const m = this.owned.get(id);
+    if (m) this.applyHit(m, damage, from, false);
+  }
+
+  private applyHit(m: Mob, damage: number, from: [number, number], byMe: boolean): void {
+    m.health -= damage;
+    m.hurt = 0;
+    m.hurtFrom = from;
+    m.body.vy = KNOCK_HOP;
+    if (m.health > 0) return;
+    this.owned.delete(m.id);
+    for (const d of rollDrops(m.kind, this.random)) {
+      for (let left = d.count; left > 0; left -= MAX_DROP) {
+        this.events.drop({ id: itemId(d.key), count: Math.min(MAX_DROP, left) }, [
+          m.body.x,
+          m.body.y + 0.5,
+          m.body.z,
+        ]);
+      }
+    }
+    if (byMe) this.events.xp(MOB_TYPES[m.kind].xp);
+  }
+
+  /** Right click with food: the animal falls in love (two make a baby). */
+  feed(id: string, food: string): boolean {
+    const m = this.owned.get(id);
+    if (!m || m.baby || MOB_TYPES[m.kind].food !== food || m.love > 0) return false;
+    m.love = MOBS.loveSeconds;
+    this.events.toast(`💕 ${m.name} tykkää!`);
+    return true;
+  }
+
+  /** Is this one of yours or someone else's? */
+  kindOf(id: string): MobKind | undefined {
+    return this.owned.get(id)?.kind ?? this.remote.get(id)?.net[1];
+  }
+
+  // --- Network ------------------------------------------------------------
+
+  /** Creatures from another player's position message. */
+  receive(owner: string, list: readonly MobNet[]): void {
+    const now = performance.now();
+    for (const net of list) {
+      // Two players may think they own the same creature: the smaller id wins.
+      const mine = this.owned.get(net[0]);
+      if (mine) {
+        if (owner < this.myId) this.owned.delete(net[0]);
+        else continue;
+      }
+      this.remote.set(net[0], { net, owner, seen: now });
+    }
+  }
+
+  /** A player left: their creatures go with them. */
+  forgetOwner(owner: string): void {
+    for (const [id, r] of this.remote) if (r.owner === owner) this.remote.delete(id);
+  }
+
+  /** Your creatures that other players are close enough to see. */
+  netList(others: readonly Seen[]): MobNet[] {
+    if (others.length === 0) return [];
+    const list: MobNet[] = [];
+    const round = (v: number) => Math.round(v * 100) / 100;
+    for (const m of this.owned.values()) {
+      const near = others.some(
+        (o) => Math.hypot(o.x - m.body.x, o.z - m.body.z) < MOBS.syncDistance,
+      );
+      if (!near) continue;
+      const flags =
+        (m.baby ? MOB_FLAG.baby : 0) |
+        (m.hurt < 0.3 ? MOB_FLAG.hurt : 0) |
+        (m.fuse > 0 ? MOB_FLAG.fuse : 0);
+      list.push([
+        m.id,
+        m.kind,
+        round(m.body.x),
+        round(m.body.y),
+        round(m.body.z),
+        round(m.body.yaw),
+        Math.max(0, Math.round(m.health * 10) / 10),
+        flags,
+        PERSONALITIES.indexOf(m.personality),
+        Math.max(0, MOB_NAMES.indexOf(m.name)),
+      ]);
+      if (list.length >= MOBS.maxSync) break;
+    }
+    return list;
+  }
+
+  // --- Drawing and aiming -------------------------------------------------
+
+  *views(): IterableIterator<MobView> {
+    for (const m of this.owned.values()) {
+      yield {
+        id: m.id,
+        kind: m.kind,
+        x: m.body.x,
+        y: m.body.y,
+        z: m.body.z,
+        yaw: m.body.yaw,
+        health: m.health,
+        baby: m.baby,
+        hurt: m.hurt < 0.05,
+        fuse: m.fuse > 0,
+        name: m.name,
+        personality: m.personality,
+        remote: false,
+      };
+    }
+    for (const { net } of this.remote.values()) {
+      yield {
+        id: net[0],
+        kind: net[1],
+        x: net[2],
+        y: net[3],
+        z: net[4],
+        yaw: net[5],
+        health: net[6],
+        baby: (net[7] & MOB_FLAG.baby) !== 0,
+        hurt: (net[7] & MOB_FLAG.hurt) !== 0,
+        fuse: (net[7] & MOB_FLAG.fuse) !== 0,
+        name: MOB_NAMES[net[9]] ?? '',
+        personality: PERSONALITIES[net[8]] ?? 'friendly',
+        remote: true,
+      };
+    }
+  }
+
+  /** The creature the ray hits first within `reach`, with the distance. */
+  pick(
+    origin: [number, number, number],
+    dir: [number, number, number],
+    reach: number,
+  ): { id: string; distance: number } | null {
+    let best: { id: string; distance: number } | null = null;
+    for (const v of this.views()) {
+      const body = MOB_TYPES[v.kind].body;
+      const scale = v.baby ? BABY_BODY_SCALE : 1;
+      const half = (body.width * scale) / 2;
+      const min = [v.x - half, v.y, v.z - half];
+      const max = [v.x + half, v.y + body.height * scale, v.z + half];
+      let t0 = 0;
+      let t1 = reach;
+      let hit = true;
+      for (let a = 0; a < 3 && hit; a++) {
+        const d = dir[a]!;
+        const o = origin[a]!;
+        if (Math.abs(d) < 1e-9) {
+          if (o < min[a]! || o > max[a]!) hit = false;
+          continue;
+        }
+        let near = (min[a]! - o) / d;
+        let far = (max[a]! - o) / d;
+        if (near > far) [near, far] = [far, near];
+        t0 = Math.max(t0, near);
+        t1 = Math.min(t1, far);
+        if (t0 > t1) hit = false;
+      }
+      if (hit && (!best || t0 < best.distance)) best = { id: v.id, distance: t0 };
+    }
+    return best;
+  }
+
+  clear(): void {
+    this.owned.clear();
+    this.remote.clear();
+  }
+}
