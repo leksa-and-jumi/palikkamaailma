@@ -130,6 +130,15 @@ export const SURVIVAL = {
   creativeBreakDelay: 0.2,
 } as const;
 
+/** Chests and furnaces. */
+export const CONTAINERS = {
+  chestSize: 27,
+  /** Seconds to smelt one item (Minecraft: 10). */
+  cookSeconds: 10,
+  /** A furnace catches up at most this much time when opened again. */
+  maxCatchUpSeconds: 3600,
+} as const;
+
 /** Items lying on the ground. */
 export const DROPS = {
   pickupDistance: 1.6,
@@ -301,4 +310,6 @@ export const STORAGE = {
   /** Inventory, health and position per world (this device only). */
   player: 'palikkamaailma.player',
   soloSettings: 'palikkamaailma.solo.settings',
+  /** Chests and furnaces when playing alone. */
+  containers: 'palikkamaailma.containers',
 } as const;

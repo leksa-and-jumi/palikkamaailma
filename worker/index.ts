@@ -10,6 +10,14 @@ import { DurableObject } from 'cloudflare:workers';
 import { DROPS, NET } from '../src/config';
 import { isValidWorldCode } from '../src/logic/codes';
 import {
+  advanceFurnace,
+  containerItems,
+  emptyContainer,
+  isContainerBlock,
+  positionKey,
+  type Container,
+} from '../src/logic/containers';
+import {
   parseClientMessage,
   type DroppedItem,
   type PlayerInfo,
@@ -17,6 +25,7 @@ import {
 } from '../src/logic/protocol';
 import type { Edit } from '../src/logic/world';
 import {
+  chunkKeyOf,
   groupByChunk,
   mergeEdits,
   packEdits,
@@ -94,6 +103,10 @@ export class WorldRoom extends DurableObject<Env> {
     this.sql.exec(
       'CREATE TABLE IF NOT EXISTS edit_chunks (chunk TEXT PRIMARY KEY, data BLOB NOT NULL)',
     );
+    // One row per chest or furnace; only read when someone opens it.
+    this.sql.exec(
+      'CREATE TABLE IF NOT EXISTS containers (pos TEXT PRIMARY KEY, data TEXT NOT NULL)',
+    );
     if (this.meta('schema') !== SCHEMA_VERSION) this.migrate();
   }
 
@@ -163,12 +176,20 @@ export class WorldRoom extends DurableObject<Env> {
     return this.editCount;
   }
 
-  /** Saves edits: one read (first time) and one write per chunk, plus the counter. */
-  private storeEdits(edits: Edit[]): boolean {
+  /**
+   * Saves edits: one read (first time) and one write per chunk, plus the counter.
+   * Chests and furnaces that were replaced are listed in `removedContainers`.
+   */
+  private storeEdits(edits: Edit[], removedContainers: Edit[] = []): boolean {
     if (this.getEditCount() + edits.length > NET.maxStoredEdits) return false;
     let added = 0;
     for (const [key, group] of groupByChunk(edits)) {
       const chunk = this.loadChunk(key);
+      // Containers only exist where a player placed one, so the old edit tells.
+      for (const edit of group) {
+        const old = chunk.get(`${edit[0]},${edit[1]},${edit[2]}`);
+        if (old && isContainerBlock(old[3]) && old[3] !== edit[3]) removedContainers.push(old);
+      }
       added += mergeEdits(chunk, group);
       this.writeChunk(key, chunk);
     }
@@ -188,6 +209,58 @@ export class WorldRoom extends DurableObject<Env> {
         this.chunks.set(row.chunk, toChunkEdits(unpackEdits(row.data)));
     }
     this.allChunksLoaded = true;
+  }
+
+  // --- Chests and furnaces -----------------------------------------------
+
+  /** The block a player placed here, if any (containers are never generated). */
+  private blockAt(p: [number, number, number]): number | undefined {
+    return this.loadChunk(chunkKeyOf(p[0], p[2])).get(positionKey(p))?.[3];
+  }
+
+  private loadContainer(p: [number, number, number]): Container | null {
+    const block = this.blockAt(p);
+    if (block === undefined || !isContainerBlock(block)) return null;
+    const row = this.sql
+      .exec<{ data: string }>('SELECT data FROM containers WHERE pos = ?', positionKey(p))
+      .toArray()[0];
+    const data = row ? (JSON.parse(row.data) as Container) : emptyContainer(block, Date.now())!;
+    if (data.kind === 'furnace') {
+      advanceFurnace(data, Date.now());
+      this.saveContainer(p, data);
+    }
+    return data;
+  }
+
+  private saveContainer(p: [number, number, number], data: Container): void {
+    this.sql.exec(
+      'INSERT OR REPLACE INTO containers (pos, data) VALUES (?, ?)',
+      positionKey(p),
+      JSON.stringify(data),
+    );
+  }
+
+  private spillContainer(p: [number, number, number]): void {
+    const key = positionKey(p);
+    const row = this.sql
+      .exec<{ data: string }>('DELETE FROM containers WHERE pos = ? RETURNING data', key)
+      .toArray()[0];
+    if (!row) return;
+    const data = JSON.parse(row.data) as Container;
+    if (data.kind === 'furnace') advanceFurnace(data, Date.now());
+    const items = this.items();
+    for (const item of containerItems(data)) {
+      const drop: DroppedItem = {
+        id: crypto.randomUUID(),
+        item,
+        p: [p[0] + 0.5, p[1] + 0.5, p[2] + 0.5],
+        v: [(Math.random() - 0.5) * 2, 3, (Math.random() - 0.5) * 2],
+        time: Date.now(),
+      };
+      items.push(drop);
+      this.broadcast({ t: 'item', drop });
+    }
+    this.saveItems();
   }
 
   // --- Items on the ground ------------------------------------------------
@@ -267,8 +340,27 @@ export class WorldRoom extends DurableObject<Env> {
       }
       case 'set': {
         if (!me.player) return;
-        if (!this.storeEdits(msg.edits)) return;
+        const removed: Edit[] = [];
+        if (!this.storeEdits(msg.edits, removed)) return;
         this.broadcast({ t: 'set', edits: msg.edits }, ws);
+        // A broken chest or furnace spills its items.
+        for (const [x, y, z] of removed) this.spillContainer([x, y, z]);
+        return;
+      }
+      case 'open': {
+        if (!me.player) return;
+        const data = this.loadContainer(msg.p);
+        if (data) this.send(ws, { t: 'container', p: msg.p, data });
+        return;
+      }
+      case 'container': {
+        if (!me.player) return;
+        const block = this.blockAt(msg.p);
+        const kind = block === undefined ? null : emptyContainer(block, 0)?.kind;
+        if (kind !== msg.data.kind) return;
+        if (msg.data.kind === 'furnace') msg.data.updated = Date.now();
+        this.saveContainer(msg.p, msg.data);
+        this.broadcast({ t: 'container', p: msg.p, data: msg.data }, ws);
         return;
       }
       case 'drop': {

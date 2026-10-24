@@ -4,6 +4,7 @@
 
 import { AVATAR_EMOJIS, NET, WORLD_LIMIT } from '../config';
 import { getBlockType, isValidBlockId } from './blocks';
+import { parseContainer, type Container } from './containers';
 import { parseStack, type ItemStack } from './inventory';
 import type { Edit } from './world';
 import { isInsideWorld } from './world';
@@ -34,7 +35,11 @@ export type ClientMessage =
   | { t: 'set'; edits: Edit[] }
   | { t: 'chat'; text: string }
   | { t: 'drop'; item: ItemStack; p: [number, number, number]; v: [number, number, number] }
-  | { t: 'pickup'; id: string };
+  | { t: 'pickup'; id: string }
+  /** Asks for the contents of a chest or furnace. */
+  | { t: 'open'; p: [number, number, number] }
+  /** New contents after the player moved items. */
+  | { t: 'container'; p: [number, number, number]; data: Container };
 
 export type ServerMessage =
   | { t: 'welcome'; you: string; players: PlayerInfo[]; items: DroppedItem[] }
@@ -48,6 +53,7 @@ export type ServerMessage =
   | { t: 'item'; drop: DroppedItem }
   /** Someone picked an item up; only the player `by` gets it. */
   | { t: 'picked'; id: string; by: string }
+  | { t: 'container'; p: [number, number, number]; data: Container }
   | { t: 'full' };
 
 const POSITION_LIMIT = WORLD_LIMIT + 100;
@@ -61,6 +67,13 @@ function parseVec3(v: unknown): [number, number, number] | null {
   if (!Array.isArray(v) || v.length !== 3) return null;
   if (!v.every((n) => isFiniteNumber(n))) return null;
   return [v[0] as number, v[1] as number, v[2] as number];
+}
+
+/** A whole-number block position inside the world. */
+export function parseBlockPos(v: unknown): [number, number, number] | null {
+  if (!Array.isArray(v) || v.length !== 3 || !v.every((n) => Number.isInteger(n))) return null;
+  const [x, y, z] = v as [number, number, number];
+  return isInsideWorld(x, y, z) ? [x, y, z] : null;
 }
 
 /** A block edit is valid if it is inside the world and the block exists. */
@@ -133,6 +146,15 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       const vel = parseVec3(msg.v);
       if (!item || !p || !vel || vel.some((n) => Math.abs(n) > MAX_DROP_SPEED)) return null;
       return { t: 'drop', item, p, v: vel };
+    }
+    case 'open': {
+      const p = parseBlockPos(msg.p);
+      return p ? { t: 'open', p } : null;
+    }
+    case 'container': {
+      const p = parseBlockPos(msg.p);
+      const data = parseContainer(msg.data, Date.now());
+      return p && data ? { t: 'container', p, data } : null;
     }
     case 'pickup':
       return typeof msg.id === 'string' && /^[a-z0-9-]{1,40}$/.test(msg.id)

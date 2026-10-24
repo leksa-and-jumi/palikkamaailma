@@ -680,3 +680,62 @@ kbd {
     width: 340px;
   }
 }
+
+/* --- Crafting, furnace, chest --- */
+
+.crafting-area {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.panel-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.craft-grid {
+  display: grid;
+  gap: 4px;
+}
+
+.panel-arrow {
+  font-size: 1.6rem;
+}
+
+.panel-column {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.panel-flame {
+  font-size: 1.3rem;
+  height: 26px;
+}
+
+.panel-progress {
+  width: 60px;
+  height: 14px;
+  border-radius: 7px;
+  background: #c9c2b2;
+  overflow: hidden;
+}
+
+.panel-progress i {
+  display: block;
+  height: 100%;
+  background: #f0a020;
+}
+
+.crafting-area .slot.result {
+  width: 60px;
+  height: 60px;
+}
+
+.crafting-area .slot-grid .slot {
+  width: 48px;
+  height: 48px;
+}
