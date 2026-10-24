@@ -99,6 +99,15 @@ const RULES: Record<string, BlockRules> = {
   lapis_block: { hardness: 3, tool: 'pickaxe', needsLevel: 1 },
   redstone_block: { hardness: 5, tool: 'pickaxe', needsLevel: 0 },
   coal_block: { hardness: 5, tool: 'pickaxe', needsLevel: 0 },
+  redstone_wire: { hardness: 0, drops: [{ key: 'redstone', count: 1 }] },
+  lever: { hardness: 0.5 },
+  lever_on: { hardness: 0.5, drops: [{ key: 'lever', count: 1 }] },
+  button: { hardness: 0.5 },
+  button_on: { hardness: 0.5, drops: [{ key: 'button', count: 1 }] },
+  redstone_torch: { hardness: 0 },
+  redstone_lamp: { hardness: 0.3 },
+  firework_launcher: { hardness: 3.5, tool: 'pickaxe', needsLevel: 0 },
+  tnt_lit: { hardness: Infinity },
 };
 
 const GRAVEL_FLINT_CHANCE = 0.1;

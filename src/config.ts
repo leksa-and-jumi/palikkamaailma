@@ -194,6 +194,47 @@ export const DROPS = {
   gravity: 18,
 } as const;
 
+// --- Redstone, TNT and fireworks ------------------------------------------
+export const REDSTONE = {
+  /** Power from a lever; dust gets one weaker per block. */
+  maxPower: 15,
+  /** Seconds per redstone tick (Minecraft: 0.1). */
+  tickSeconds: 0.1,
+  /** A button stays pressed this many seconds. */
+  buttonSeconds: 1,
+  /** A torch that turns on and off this often within the window burns out. */
+  burnoutFlips: 8,
+  burnoutWindow: 30,
+  burnoutTicks: 60,
+} as const;
+
+export const TNT_RULES = {
+  /** Seconds from lighting to the bang (Minecraft: 4). */
+  fuse: 4,
+  /** TNT lit by another explosion goes off sooner. */
+  chainFuseMin: 0.5,
+  chainFuseMax: 1.5,
+  /** Explosion strength (Minecraft TNT: 4). */
+  power: 4,
+  /** How hard the blast throws you up (blocks/s at the middle). */
+  knockback: 14,
+  /** The screen shakes this much (blocks) when it goes off right next to you. */
+  shake: 0.25,
+} as const;
+
+export const FIREWORKS = {
+  /** Seconds a rocket flies before it bursts. */
+  flightMin: 1.1,
+  flightMax: 1.6,
+  speed: 14,
+  /** Seconds between two rockets from your hand. */
+  cooldown: 0.35,
+  sparkLifetime: 1.6,
+  maxSparks: 6000,
+  /** Rockets from one player in NET.chatWindowMs (the room server checks). */
+  rateLimit: 20,
+} as const;
+
 // --- Rendering ------------------------------------------------------------
 export const RENDER = {
   /** Chunks drawn around the player. */

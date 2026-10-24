@@ -77,6 +77,18 @@ export const TILE_NAMES = [
   'redstone_block',
   'coal_block',
   'sugar_cane',
+  'redstone_dust',
+  'redstone_dust_on',
+  'lever_stick',
+  'lever_tip_on',
+  'redstone_torch',
+  'redstone_torch_off',
+  'redstone_lamp',
+  'redstone_lamp_on',
+  'launcher_front',
+  'launcher_side',
+  'tnt_lit_side',
+  'tnt_lit_top',
 ] as const;
 export type TileName = (typeof TILE_NAMES)[number];
 
@@ -86,6 +98,14 @@ export interface BlockTiles {
   bottom: TileName;
   /** Used on the north and south sides when set (furnace, crafting table). */
   front?: TileName;
+}
+
+/** A small box inside the block (0–1), for levers and buttons. */
+export interface BlockBox {
+  from: readonly [number, number, number];
+  to: readonly [number, number, number];
+  /** Picture for this box; default is the block's side picture. */
+  tile?: TileName;
 }
 
 export interface BlockType {
@@ -103,8 +123,20 @@ export interface BlockType {
   breakable: boolean;
   /** Shown in the creative block picker. */
   placeable: boolean;
-  /** 'cross' = drawn as two crossing pictures (flowers, grass, torches). */
-  shape: 'cube' | 'cross';
+  /**
+   * 'cross' = drawn as two crossing pictures (flowers, grass, torches),
+   * 'dust' = flat on the ground and joins its neighbours (redstone dust),
+   * 'boxes' = small boxes (levers and buttons).
+   */
+  shape: 'cube' | 'cross' | 'dust' | 'boxes';
+  boxes?: readonly BlockBox[];
+  /** Must stand on a solid block (dust, levers, buttons, torches). */
+  needsFloor: boolean;
+  /**
+   * Only shown by the redstone circuit (a lit lamp, powered dust). Never stored
+   * in the world or sent over the network.
+   */
+  shownOnly: boolean;
   /** Light the block gives (0–15): torches, lamps, lava. */
   light: number;
   tiles: BlockTiles;
@@ -113,7 +145,16 @@ export interface BlockType {
 type BlockOptions = Partial<
   Pick<
     BlockType,
-    'solid' | 'transparent' | 'liquid' | 'breakable' | 'placeable' | 'shape' | 'light'
+    | 'solid'
+    | 'transparent'
+    | 'liquid'
+    | 'breakable'
+    | 'placeable'
+    | 'shape'
+    | 'light'
+    | 'boxes'
+    | 'needsFloor'
+    | 'shownOnly'
   >
 >;
 
@@ -136,12 +177,38 @@ function block(
     placeable: options.placeable ?? true,
     shape: options.shape ?? 'cube',
     light: options.light ?? 0,
+    boxes: options.boxes,
+    needsFloor: options.needsFloor ?? false,
+    shownOnly: options.shownOnly ?? false,
     tiles: faces,
   };
 }
 
 /** Flowers, grass and torches: no collision, see-through, drawn as a cross. */
 const PLANT: BlockOptions = { solid: false, transparent: true, shape: 'cross' };
+/** Redstone things that stand on the floor. */
+const GADGET: BlockOptions = { solid: false, transparent: true, needsFloor: true };
+/** A circuit look that is never stored (lit lamp, powered dust, unlit torch). */
+const SHOWN: BlockOptions = { placeable: false, shownOnly: true };
+
+const LEVER_BASE: BlockBox = { from: [0.31, 0, 0.25], to: [0.69, 0.19, 0.75], tile: 'cobble' };
+const lever = (on: boolean): BlockBox[] => {
+  // The stick leans towards north (off) or south (on).
+  const z = on ? [0.56, 0.68] : [0.32, 0.44];
+  return [
+    LEVER_BASE,
+    { from: [0.44, 0.19, 0.44], to: [0.56, 0.4, 0.56], tile: 'lever_stick' },
+    { from: [0.44, 0.4, z[0]!], to: [0.56, 0.62, z[1]!], tile: 'lever_stick' },
+    {
+      from: [0.42, 0.62, z[0]! - 0.02],
+      to: [0.58, 0.72, z[1]! + 0.02],
+      tile: on ? 'lever_tip_on' : 'lever_stick',
+    },
+  ];
+};
+const button = (pressed: boolean): BlockBox[] => [
+  { from: [0.31, 0, 0.37], to: [0.69, pressed ? 0.06 : 0.13, 0.63], tile: 'stone' },
+];
 
 export const AIR = 0;
 export const GRASS = 1;
@@ -205,6 +272,18 @@ export const LAPIS_BLOCK = 58;
 export const REDSTONE_BLOCK = 59;
 export const COAL_BLOCK = 60;
 export const SUGAR_CANE = 61;
+export const REDSTONE_WIRE = 62;
+export const REDSTONE_WIRE_ON = 63;
+export const LEVER = 64;
+export const LEVER_ON = 65;
+export const BUTTON = 66;
+export const BUTTON_ON = 67;
+export const REDSTONE_TORCH = 68;
+export const REDSTONE_TORCH_OFF = 69;
+export const REDSTONE_LAMP = 70;
+export const REDSTONE_LAMP_ON = 71;
+export const FIREWORK_LAUNCHER = 72;
+export const TNT_LIT = 73;
 
 const LIST: BlockType[] = [
   block(AIR, 'air', 'Ilma', 'stone', { solid: false, transparent: true, placeable: false }),
@@ -318,6 +397,62 @@ const LIST: BlockType[] = [
   block(REDSTONE_BLOCK, 'redstone_block', 'Punakivipalikka', 'redstone_block', { light: 7 }),
   block(COAL_BLOCK, 'coal_block', 'Hiilipalikka', 'coal_block'),
   block(SUGAR_CANE, 'sugar_cane', 'Sokeriruoko', 'sugar_cane', PLANT),
+  // Placed with the redstone dust item, so it is not in the block picker.
+  block(REDSTONE_WIRE, 'redstone_wire', 'Punakivipöly', 'redstone_dust', {
+    ...GADGET,
+    shape: 'dust',
+    placeable: false,
+  }),
+  block(REDSTONE_WIRE_ON, 'redstone_wire_on', 'Punakivipöly', 'redstone_dust_on', {
+    ...GADGET,
+    ...SHOWN,
+    shape: 'dust',
+  }),
+  block(LEVER, 'lever', 'Vipu', 'lever_stick', { ...GADGET, shape: 'boxes', boxes: lever(false) }),
+  block(LEVER_ON, 'lever_on', 'Vipu', 'lever_stick', {
+    ...GADGET,
+    shape: 'boxes',
+    boxes: lever(true),
+    placeable: false,
+  }),
+  block(BUTTON, 'button', 'Nappi', 'stone', { ...GADGET, shape: 'boxes', boxes: button(false) }),
+  block(BUTTON_ON, 'button_on', 'Nappi', 'stone', {
+    ...GADGET,
+    shape: 'boxes',
+    boxes: button(true),
+    placeable: false,
+  }),
+  block(REDSTONE_TORCH, 'redstone_torch', 'Punakivisoihtu', 'redstone_torch', {
+    ...PLANT,
+    needsFloor: true,
+    light: 7,
+  }),
+  block(REDSTONE_TORCH_OFF, 'redstone_torch_off', 'Punakivisoihtu', 'redstone_torch_off', {
+    ...PLANT,
+    ...SHOWN,
+  }),
+  block(REDSTONE_LAMP, 'redstone_lamp', 'Punakivilamppu', 'redstone_lamp'),
+  block(REDSTONE_LAMP_ON, 'redstone_lamp_on', 'Punakivilamppu', 'redstone_lamp_on', {
+    ...SHOWN,
+    light: 15,
+  }),
+  block(FIREWORK_LAUNCHER, 'firework_launcher', 'Rakettilaukaisin', {
+    top: 'launcher_front',
+    side: 'launcher_side',
+    bottom: 'furnace_top',
+  }),
+  // Lit TNT is stored, so everyone sees it burning and it explodes for all.
+  block(
+    TNT_LIT,
+    'tnt_lit',
+    'Palava dynamiitti',
+    {
+      top: 'tnt_lit_top',
+      side: 'tnt_lit_side',
+      bottom: 'tnt_lit_top',
+    },
+    { placeable: false },
+  ),
 ];
 
 export const BLOCKS: readonly BlockType[] = LIST;
