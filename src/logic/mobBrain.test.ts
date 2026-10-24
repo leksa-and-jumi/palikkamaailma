@@ -64,3 +64,51 @@ describe('mob brain', () => {
     expect(rollDrops('cow', () => 0).map((d) => d.key)).toEqual(['beef']);
   });
 });
+
+describe('monster brain', () => {
+  it('zombies chase and hit players that come close', () => {
+    const z = createMob('z', 'zombie', 0, 50, 0, 'grumpy', 'Ruttu');
+    const far = think(z, [player(0, -10)], 0.1, random, { day: false });
+    expect(far.input.forward).toBe(1);
+    z.cooldown = 0;
+    const near = think(z, [player(0, -1)], 0.1, random, { day: false });
+    expect(near.action).toBe('attack');
+    expect(near.targetId).toBe('p');
+  });
+
+  it('leave creative players alone', () => {
+    const z = createMob('z', 'zombie', 0, 50, 0, 'grumpy', 'Ruttu');
+    z.cooldown = 0;
+    const t = think(z, [{ ...player(0, -1), safe: true }], 0.1, random, { day: false });
+    expect(t.action).toBeUndefined();
+  });
+
+  it('skeletons keep their distance and shoot', () => {
+    const s = createMob('s', 'skeleton', 0, 50, 0, 'brave', 'Luu');
+    expect(think(s, [player(0, -3)], 0.1, random, { day: false }).input.forward).toBeLessThan(0);
+    s.cooldown = 0;
+    expect(think(s, [player(0, -10)], 0.1, random, { day: false }).action).toBe('shoot');
+  });
+
+  it('creepers hiss before exploding', () => {
+    const c = createMob('c', 'creeper', 0, 50, 0, 'brave', 'Sihi');
+    let exploded = false;
+    for (let i = 0; i < 20 && !exploded; i++) {
+      exploded = think(c, [player(0, -1.5)], 0.1, random, { day: false }).action === 'explode';
+    }
+    expect(exploded).toBe(true);
+    // Running away stops the fuse.
+    const d = createMob('d', 'creeper', 0, 50, 0, 'brave', 'Sihi');
+    think(d, [player(0, -1.5)], 0.5, random, { day: false });
+    think(d, [player(0, -10)], 1, random, { day: false });
+    expect(d.fuse).toBe(0);
+  });
+
+  it('spiders are calm in the day unless hit', () => {
+    const sp = createMob('s', 'spider', 0, 50, 0, 'grumpy', 'Piki');
+    sp.cooldown = 0;
+    expect(think(sp, [player(0, -1)], 0.1, random, { day: true }).action).toBeUndefined();
+    sp.hurt = 0;
+    expect(think(sp, [player(0, -1)], 0.1, random, { day: true }).action).toBe('attack');
+  });
+});

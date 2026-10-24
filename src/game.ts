@@ -60,7 +60,7 @@ import {
   tickVitals,
   type Vitals,
 } from './logic/survival';
-import { dayLabel, timeOfDay } from './logic/daytime';
+import { dayLabel, daylight, timeOfDay } from './logic/daytime';
 import { BIOME_NAMES } from './logic/terrain';
 import { VoxelWorld, chunkOf, editKey, isInsideWorld, type Edit } from './logic/world';
 import { askBuilder } from './net/convex';
@@ -74,7 +74,7 @@ import type { Hud } from './ui/hud';
 import { Input } from './ui/input';
 import type { ExtraPanel, InventoryScreen } from './ui/inventoryScreen';
 import { ChestPanel, CraftingPanel, FurnacePanel } from './ui/panels';
-import { MobManager } from './play/mobManager';
+import { HURT_REASONS, MobManager } from './play/mobManager';
 import { MobRenderer } from './render/mobRenderer';
 
 export interface GameOptions {
@@ -226,6 +226,11 @@ export class Game {
       },
       sendHit: (id, damage, from) => this.room?.send({ t: 'hitMob', id, damage, from }),
       toast: (text) => this.hud.toast(text),
+      hurtPlayer: (id, damage, kind) => {
+        if (id === this.myId) this.takeDamage(damage, HURT_REASONS[kind] ?? 'Hirviö osui.');
+        else this.room?.send({ t: 'hurtPlayer', id, damage, kind });
+      },
+      blast: (x, y, z, radius) => this.blast(x, y, z, radius),
     });
     if (saved.inventory) this.inventory.load(saved.inventory);
     else if (this.mode === 'creative') this.giveCreativeKit();
@@ -658,10 +663,14 @@ export class Game {
         y: this.player.y,
         z: this.player.z,
         holding: stack ? getItem(stack.id)?.key : undefined,
+        safe: this.mode === 'creative',
       },
       others,
       dt,
+      difficulty: this.options.difficulty,
+      day: daylight(this.time) > 0.5,
     });
+    this.mobRenderer.syncArrows(this.mobs.arrows);
     this.attackCooldown -= dt;
     const [dx, dy, dz] = this.lookDirection();
     const eye: [number, number, number] = [
@@ -674,6 +683,25 @@ export class Game {
     this.targetMob = mob && (!this.target || mob.distance < this.target.distance) ? mob : null;
     this.mobRenderer.highlighted = this.targetMob?.id ?? null;
     this.mobRenderer.sync(this.mobs.views(), dt);
+  }
+
+  /** A creeper explosion on hard: blocks in a ball become air (bedrock stays). */
+  private blast(x: number, y: number, z: number, radius: number): void {
+    const edits: Edit[] = [];
+    const r = Math.ceil(radius);
+    for (let dy = -r; dy <= r; dy++) {
+      for (let dz = -r; dz <= r; dz++) {
+        for (let dx = -r; dx <= r; dx++) {
+          if (dx * dx + dy * dy + dz * dz > radius * radius) continue;
+          const bx = Math.floor(x + dx);
+          const by = Math.floor(y + dy);
+          const bz = Math.floor(z + dz);
+          const b = getBlockType(this.world.getBlock(bx, by, bz));
+          if (b.id !== AIR && b.breakable && !b.liquid) edits.push([bx, by, bz, AIR]);
+        }
+      }
+    }
+    this.change(edits);
   }
 
   /** Hits the creature with what you hold (swords hit hardest). */
@@ -1287,6 +1315,10 @@ export class Game {
         return;
       case 'hitMob':
         this.mobs.receiveHit(msg.id, msg.damage, msg.from);
+        return;
+      case 'hurtPlayer':
+        if (msg.id === this.myId)
+          this.takeDamage(msg.damage, HURT_REASONS[msg.kind] ?? 'Hirviö osui.');
         return;
       case 'set':
         this.world.applyEdits(msg.edits);
