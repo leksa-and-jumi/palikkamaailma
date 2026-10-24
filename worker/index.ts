@@ -335,7 +335,10 @@ export class WorldRoom extends DurableObject<Env> {
         if (!me.player) return;
         me.player = { ...me.player, p: msg.p, yaw: msg.yaw, pitch: msg.pitch };
         ws.serializeAttachment(me);
-        this.broadcast({ t: 'move', id: me.id, p: msg.p, yaw: msg.yaw, pitch: msg.pitch }, ws);
+        this.broadcast(
+          { t: 'move', id: me.id, p: msg.p, yaw: msg.yaw, pitch: msg.pitch, mobs: msg.mobs },
+          ws,
+        );
         return;
       }
       case 'set': {
@@ -388,6 +391,11 @@ export class WorldRoom extends DurableObject<Env> {
         items.splice(index, 1);
         this.saveItems();
         this.broadcast({ t: 'picked', id: msg.id, by: me.id });
+        return;
+      }
+      case 'hitMob': {
+        if (!me.player) return;
+        this.broadcast({ ...msg, by: me.id }, ws);
         return;
       }
       case 'chat': {

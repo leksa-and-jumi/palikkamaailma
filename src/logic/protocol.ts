@@ -5,6 +5,7 @@
 import { AVATAR_EMOJIS, NET, WORLD_LIMIT } from '../config';
 import { getBlockType, isValidBlockId } from './blocks';
 import { parseContainer, type Container } from './containers';
+import { MOB_KINDS, MOB_NAMES, PERSONALITIES, type MobKind } from './mobs';
 import { parseStack, type ItemStack } from './inventory';
 import type { Edit } from './world';
 import { isInsideWorld } from './world';
@@ -29,11 +30,33 @@ export interface DroppedItem {
   time: number;
 }
 
+/**
+ * A creature, sent with its owner's position: id, kind, x, y, z, yaw,
+ * health, flags (1 = baby, 2 = just hurt, 4 = creeper fuse lit),
+ * personality number, name number.
+ */
+export type MobNet = [
+  string,
+  MobKind,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+];
+
+export const MOB_FLAG = { baby: 1, hurt: 2, fuse: 4 } as const;
+
 export type ClientMessage =
   | { t: 'hello'; avatar: string }
-  | { t: 'move'; p: [number, number, number]; yaw: number; pitch: number }
+  | { t: 'move'; p: [number, number, number]; yaw: number; pitch: number; mobs?: MobNet[] }
   | { t: 'set'; edits: Edit[] }
   | { t: 'chat'; text: string }
+  /** You hit someone else's creature; its owner works out what happens. */
+  | { t: 'hitMob'; id: string; damage: number; from: [number, number] }
   | { t: 'drop'; item: ItemStack; p: [number, number, number]; v: [number, number, number] }
   | { t: 'pickup'; id: string }
   /** Asks for the contents of a chest or furnace. */
@@ -47,8 +70,16 @@ export type ServerMessage =
   | { t: 'edits'; edits: Edit[]; done: boolean }
   | { t: 'join'; player: PlayerInfo }
   | { t: 'leave'; id: string }
-  | { t: 'move'; id: string; p: [number, number, number]; yaw: number; pitch: number }
+  | {
+      t: 'move';
+      id: string;
+      p: [number, number, number];
+      yaw: number;
+      pitch: number;
+      mobs?: MobNet[];
+    }
   | { t: 'set'; edits: Edit[] }
+  | { t: 'hitMob'; id: string; damage: number; from: [number, number]; by: string }
   | { t: 'chat'; id: string; avatar: string; text: string }
   | { t: 'item'; drop: DroppedItem }
   /** Someone picked an item up; only the player `by` gets it. */
@@ -98,6 +129,25 @@ export function parseEdits(v: unknown): Edit[] | null {
   return edits.length > 0 ? edits : null;
 }
 
+const ID_PATTERN = /^[a-z0-9-]{1,40}$/;
+const MAX_MOB_HEALTH = 100;
+const MAX_HIT_DAMAGE = 50;
+
+export function parseMob(v: unknown): MobNet | null {
+  if (!Array.isArray(v) || v.length !== 10) return null;
+  const [id, kind, x, y, z, yaw, health, flags, personality, name] = v as unknown[];
+  if (typeof id !== 'string' || !ID_PATTERN.test(id)) return null;
+  if (typeof kind !== 'string' || !MOB_KINDS.includes(kind as MobKind)) return null;
+  if (![x, y, z].every((n) => isFiniteNumber(n)) || !isFiniteNumber(yaw, 1000)) return null;
+  if (!isFiniteNumber(health, MAX_MOB_HEALTH)) return null;
+  const ints = [flags, personality, name];
+  if (!ints.every((n) => typeof n === 'number' && Number.isInteger(n) && n >= 0)) return null;
+  if ((personality as number) >= PERSONALITIES.length || (name as number) >= MOB_NAMES.length) {
+    return null;
+  }
+  return v as MobNet;
+}
+
 /** Cleans a chat message: no control characters, trimmed, not too long. */
 export function cleanChatText(v: unknown): string | null {
   if (typeof v !== 'string') return null;
@@ -130,7 +180,10 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
     case 'move': {
       const p = parseVec3(msg.p);
       if (!p || !isFiniteNumber(msg.yaw, 1000) || !isFiniteNumber(msg.pitch, 10)) return null;
-      return { t: 'move', p, yaw: msg.yaw, pitch: msg.pitch };
+      if (msg.mobs === undefined) return { t: 'move', p, yaw: msg.yaw, pitch: msg.pitch };
+      if (!Array.isArray(msg.mobs) || msg.mobs.length > NET.maxMobsPerMove) return null;
+      const mobs = msg.mobs.map(parseMob).filter((m): m is MobNet => m !== null);
+      return { t: 'move', p, yaw: msg.yaw, pitch: msg.pitch, mobs };
     }
     case 'set': {
       const edits = parseEdits(msg.edits);
@@ -155,6 +208,13 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       const p = parseBlockPos(msg.p);
       const data = parseContainer(msg.data, Date.now());
       return p && data ? { t: 'container', p, data } : null;
+    }
+    case 'hitMob': {
+      const from = Array.isArray(msg.from) && msg.from.length === 2 ? msg.from : null;
+      if (typeof msg.id !== 'string' || !ID_PATTERN.test(msg.id)) return null;
+      if (!isFiniteNumber(msg.damage, MAX_HIT_DAMAGE) || msg.damage <= 0) return null;
+      if (!from || !from.every((n) => isFiniteNumber(n))) return null;
+      return { t: 'hitMob', id: msg.id, damage: msg.damage, from: from as [number, number] };
     }
     case 'pickup':
       return typeof msg.id === 'string' && /^[a-z0-9-]{1,40}$/.test(msg.id)

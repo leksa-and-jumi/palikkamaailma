@@ -65,6 +65,7 @@ export interface SavedPlayer {
   position?: [number, number, number];
   yaw?: number;
   mode?: string;
+  xp?: number;
 }
 
 export function loadPlayer(code: string): SavedPlayer {

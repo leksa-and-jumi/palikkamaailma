@@ -3,6 +3,7 @@
 
 import {
   BUILDER,
+  MOBS,
   NET,
   PLAYER,
   SEA_LEVEL,
@@ -59,6 +60,8 @@ import type { Hud } from './ui/hud';
 import { Input } from './ui/input';
 import type { ExtraPanel, InventoryScreen } from './ui/inventoryScreen';
 import { ChestPanel, CraftingPanel, FurnacePanel } from './ui/panels';
+import { MobManager } from './play/mobManager';
+import { MobRenderer } from './render/mobRenderer';
 
 export interface GameOptions {
   code: string;
@@ -124,6 +127,14 @@ export class Game {
 
   mode: GameMode;
   vitals: Vitals;
+  /** Experience points (from defeating creatures; enchanting uses them). */
+  xp = 0;
+  readonly mobs: MobManager;
+  private readonly mobRenderer: MobRenderer;
+  /** The creature under the crosshair (closer than any block), if any. */
+  private targetMob: { id: string; distance: number } | null = null;
+  private attackCooldown = 0;
+  private mobSyncTimer = 0;
   /** Moves the clock (ms), for testing day and night. */
   timeShift = 0;
   private readonly spawn: [number, number, number];
@@ -162,6 +173,17 @@ export class Game {
     this.lastZ = this.player.z;
     this.mode = saved.mode === 'creative' || saved.mode === 'survival' ? saved.mode : options.mode;
     this.vitals = loadVitals(saved.vitals);
+    this.xp = typeof saved.xp === 'number' && saved.xp >= 0 ? Math.floor(saved.xp) : 0;
+    this.mobRenderer = new MobRenderer(renderer.scene);
+    this.mobs = new MobManager({
+      drop: (stack, p) => this.spawnDrop(stack, p, true),
+      xp: (amount) => {
+        this.xp += amount;
+        this.hud.toast(`✨ +${amount} kokemusta`);
+      },
+      sendHit: (id, damage, from) => this.room?.send({ t: 'hitMob', id, damage, from }),
+      toast: (text) => this.hud.toast(text),
+    });
     if (saved.inventory) this.inventory.load(saved.inventory);
     else if (this.mode === 'creative') this.giveCreativeKit();
     hud.setInventory(this.inventory);
@@ -296,6 +318,7 @@ export class Game {
     this.updateCamera();
     this.updateTarget();
     this.others.update(dt);
+    if (this.ready && !this.dead) this.updateMobs(dt);
     this.renderer.render();
   }
 
@@ -389,6 +412,10 @@ export class Game {
   }
 
   private onBreakPressed(): void {
+    if (this.targetMob) {
+      this.attack(this.targetMob.id);
+      return;
+    }
     if (this.mode === 'creative') {
       this.breakTarget();
       this.breakCooldown = SURVIVAL.creativeBreakDelay;
@@ -402,7 +429,7 @@ export class Game {
     if (this.input.isMouseDown(2) && this.placeCooldown <= 0) this.useItem();
 
     const t = this.target;
-    if (!this.input.isMouseDown(0) || !t) {
+    if (!this.input.isMouseDown(0) || !t || this.targetMob) {
       this.mining = null;
       return;
     }
@@ -475,9 +502,14 @@ export class Game {
   private useItem(): void {
     this.placeCooldown = PLACE_REPEAT;
     const sneaking = this.input.isDown('ShiftLeft') || this.input.isDown('ShiftRight');
-    if (this.target && !sneaking && this.interact(this.target)) return;
     const stack = this.selectedStack();
     const item = stack ? getItem(stack.id) : undefined;
+    // Feeding an animal its favourite food.
+    if (this.targetMob && item && this.mobs.feed(this.targetMob.id, item.key)) {
+      if (this.mode === 'survival') this.inventory.takeOne(this.hud.selected);
+      return;
+    }
+    if (this.target && !sneaking && this.interact(this.target)) return;
 
     if (item?.food && this.mode === 'survival') {
       if (eat(this.vitals, item.food.hunger, item.food.saturation)) {
@@ -508,6 +540,54 @@ export class Game {
     if (this.change([[x, y, z, item.block]]).length === 0) return;
     if (this.mode === 'survival') this.inventory.takeOne(this.hud.selected);
     sounds.place();
+  }
+
+  // --- Creatures --------------------------------------------------------
+
+  private updateMobs(dt: number): void {
+    const stack = this.selectedStack();
+    const others = this.others.positions();
+    this.mobs.update({
+      world: this.world,
+      me: {
+        id: this.myId,
+        x: this.player.x,
+        y: this.player.y,
+        z: this.player.z,
+        holding: stack ? getItem(stack.id)?.key : undefined,
+      },
+      others,
+      dt,
+    });
+    this.attackCooldown -= dt;
+    const [dx, dy, dz] = this.lookDirection();
+    const eye: [number, number, number] = [
+      this.player.x,
+      this.player.y + PLAYER.eyeHeight,
+      this.player.z,
+    ];
+    const mob = this.mobs.pick(eye, [dx, dy, dz], MOBS.attackReach);
+    // A block in front of the creature wins.
+    this.targetMob = mob && (!this.target || mob.distance < this.target.distance) ? mob : null;
+    this.mobRenderer.highlighted = this.targetMob?.id ?? null;
+    this.mobRenderer.sync(this.mobs.views(), dt);
+  }
+
+  /** Hits the creature with what you hold (swords hit hardest). */
+  private attack(id: string): void {
+    if (this.attackCooldown > 0) return;
+    this.attackCooldown = MOBS.attackCooldown;
+    const stack = this.selectedStack();
+    const item = stack ? getItem(stack.id) : undefined;
+    const sharpness = stack?.enchants?.sharpness ?? 0;
+    const damage =
+      (item?.tool?.damage ?? MOBS.fistDamage) + (sharpness > 0 ? 0.5 * sharpness + 0.5 : 0);
+    if (!this.mobs.hit(id, damage, [this.player.x, this.player.z])) return;
+    sounds.break();
+    if (this.mode === 'survival') {
+      addExhaustion(this.vitals, SURVIVAL.exhaustion.attack);
+      if (item?.tool) this.wearSelected();
+    }
   }
 
   /** Opens the block you right-clicked, if it opens. Returns true if it did. */
@@ -655,6 +735,7 @@ export class Game {
       position: [this.player.x, this.player.y, this.player.z],
       yaw: this.player.yaw,
       mode: this.mode,
+      xp: this.xp,
     });
   }
 
@@ -888,8 +969,13 @@ export class Game {
     if (this.moveTimer > 0) return;
     this.moveTimer = 1 / NET.moveSendRate;
     const p = this.player;
+    // Your creatures travel in the same message, so they cost nothing extra.
+    // When you stand still they are still sent, but less often.
+    this.mobSyncTimer -= 1 / NET.moveSendRate;
+    const mobs = this.mobSyncTimer <= 0 ? this.mobs.netList(this.others.positions()) : [];
+    if (mobs.length > 0) this.mobSyncTimer = 1 / NET.mobSendRate;
     const last = this.lastSentMove;
-    if (last) {
+    if (last && mobs.length === 0) {
       const moved = Math.hypot(p.x - last[0], p.y - last[1], p.z - last[2]);
       const turned = Math.abs(p.yaw - last[3]) + Math.abs(p.pitch - last[4]);
       const small = moved < NET.moveDeadZone && turned < NET.turnDeadZone;
@@ -901,7 +987,9 @@ export class Game {
     const pitch = round(p.pitch);
     this.lastSentMove = [p.x, p.y, p.z, p.yaw, p.pitch];
     this.moveIdle = 0;
-    this.room.send({ t: 'move', p: pos, yaw, pitch });
+    this.room.send(
+      mobs.length > 0 ? { t: 'move', p: pos, yaw, pitch, mobs } : { t: 'move', p: pos, yaw, pitch },
+    );
   }
 
   private onRoomStatus(status: RoomStatus): void {
@@ -917,6 +1005,7 @@ export class Game {
     switch (msg.t) {
       case 'welcome':
         this.myId = msg.you;
+        this.mobs.myId = msg.you;
         this.others.clear();
         for (const p of msg.players) {
           this.others.add(p);
@@ -945,12 +1034,17 @@ export class Game {
         }
         return;
       case 'leave':
+        this.mobs.forgetOwner(msg.id);
         this.others.remove(msg.id);
         this.avatars.delete(msg.id);
         this.updatePlayerList();
         return;
       case 'move':
         this.others.move(msg.id, msg.p, msg.yaw, msg.pitch);
+        if (msg.mobs) this.mobs.receive(msg.id, msg.mobs);
+        return;
+      case 'hitMob':
+        this.mobs.receiveHit(msg.id, msg.damage, msg.from);
         return;
       case 'set':
         this.world.applyEdits(msg.edits);
