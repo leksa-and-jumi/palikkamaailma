@@ -33,6 +33,14 @@ Suunnittelijat: **Julius ja Leo**. Koodi: Claude.
 | `R`                       | käännä taikarakennusta                                       |
 | `Esc`                     | tauko                                                        |
 
+## Eläimet
+
+Niityillä ja metsissä asuu possuja, lehmiä, kanoja ja lampaita. Jokaisella on oma nimi ja luonne: utelias tulee katsomaan, arka pysyy kaukana, laiska löhöää ja leikkisä hyppii. Kun katsot eläintä, näet sen nimen ja sydämet.
+
+- Pidä kädessä **vehnää** (lehmä, kana, lammas) tai **omenaa** (possu), niin eläin seuraa sinua.
+- Ruoki kahta samanlaista eläintä (oikea hiiri), niin ne saavat vauvan 💕
+- Kana munii välillä munan.
+
 ## Nikkarointi
 
 Reseptit ovat samat kuin Minecraftissa:

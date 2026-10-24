@@ -88,6 +88,39 @@ export const DAY = {
   sunsetColor: 0xf6a35e,
 } as const;
 
+// --- Computer characters -------------------------------------------------
+export const MOBS = {
+  /** Animals around each player (the one who spawned them simulates them). */
+  maxAnimals: 10,
+  /** Animals appear this far away, so you don't see them pop up. */
+  spawnMin: 20,
+  spawnMax: 44,
+  /** Creatures further than this from their owner disappear. */
+  despawnDistance: 96,
+  spawnInterval: 3,
+  fleeSeconds: 5,
+  followDistance: 8,
+  followStop: 2,
+  noticeDistance: 10,
+  wanderDistance: 8,
+  growSeconds: 300,
+  loveSeconds: 30,
+  breedDistance: 3,
+  /** Chickens lay an egg every so often. */
+  eggSeconds: 300,
+  /** Hand damage and how often you can hit. */
+  fistDamage: 1,
+  attackCooldown: 0.45,
+  attackReach: 3.5,
+  knockback: 6,
+  /** Others' creatures are sent with your position, at most this many. */
+  maxSync: 30,
+  /** Creatures only sent if another player is this close to them. */
+  syncDistance: 80,
+  /** A creature not heard about for this long is gone (seconds). */
+  remoteTimeout: 3,
+} as const;
+
 // --- Game modes and survival ---------------------------------------------
 /** Nikkaroija (creative) or selviytyjä (survival). */
 export type GameMode = 'creative' | 'survival';
@@ -189,6 +222,8 @@ export const NET = {
    * between, so 5 still looks smooth.
    */
   moveSendRate: 5,
+  /** Your creatures are sent this often (per second) when you stand still near friends. */
+  mobSendRate: 2.5,
   /** Small moves (blocks / radians) are not sent at all. */
   moveDeadZone: 0.05,
   turnDeadZone: 0.03,
@@ -201,6 +236,8 @@ export const NET = {
   editsPerWelcomePage: 5000,
   /** A world keeps at most this many changed blocks. */
   maxStoredEdits: 300_000,
+  /** Most creatures in one position message. */
+  maxMobsPerMove: 40,
   /** Longest chat message. */
   maxChatLength: 200,
   /** Chat messages per player in CHAT_WINDOW_MS (stops spamming). */

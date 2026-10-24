@@ -81,6 +81,16 @@ export class OtherPlayers {
     return this.figures.size;
   }
 
+  /** Where the other players are (for creatures that follow or avoid them). */
+  positions(): { id: string; x: number; y: number; z: number }[] {
+    return [...this.figures.entries()].map(([id, f]) => ({
+      id,
+      x: f.group.position.x,
+      y: f.group.position.y,
+      z: f.group.position.z,
+    }));
+  }
+
   add(player: PlayerInfo): void {
     this.remove(player.id);
     const color = colorFor(player.avatar);
