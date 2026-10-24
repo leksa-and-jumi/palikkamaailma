@@ -2,7 +2,8 @@
 // the game never freezes, nearest chunks first.
 
 import * as THREE from 'three';
-import { CHUNK_SIZE, RENDER } from '../config';
+import { CHUNK_SIZE, DAY, LIGHT, RENDER } from '../config';
+import { daylight, sunHeight, sunsetGlow } from '../logic/daytime';
 import { buildChunkMesh, type MeshData } from '../logic/mesher';
 import { chunkKey, type VoxelWorld } from '../logic/world';
 import { createAtlasTexture } from './textures';
@@ -13,6 +14,44 @@ interface ChunkMeshes {
 }
 
 const HIGHLIGHT_GROW = 0.004;
+const SUN_DISTANCE = 80;
+const SUN_SIZE = 12;
+const MOON_SIZE = 8;
+
+/**
+ * Block colours carry r = shade, g = sunlight, b = torch light (see mesher).
+ * This turns them into brightness with the current daylight.
+ */
+function addDaylight(material: THREE.Material, uniform: { value: number }): void {
+  material.onBeforeCompile = (shader) => {
+    shader.uniforms.uDaylight = uniform;
+    shader.fragmentShader = `uniform float uDaylight;\n${shader.fragmentShader}`.replace(
+      '#include <color_fragment>',
+      `float skyLight = vColor.g * mix(${DAY.nightSky.toFixed(3)}, 1.0, uDaylight);
+      float light = max(skyLight, vColor.b);
+      float bright = max(${LIGHT.minBrightness.toFixed(3)}, pow(0.82, 15.0 * (1.0 - light)));
+      diffuseColor.rgb *= vColor.r * bright;`,
+    );
+  };
+}
+
+function disc(size: number, color: string, glow: string): THREE.Sprite {
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = 32;
+  const ctx = canvas.getContext('2d')!;
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, 32, 32);
+  ctx.fillStyle = color;
+  ctx.fillRect(6, 6, 20, 20);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.magFilter = THREE.NearestFilter;
+  const sprite = new THREE.Sprite(
+    new THREE.SpriteMaterial({ map: texture, fog: false, depthWrite: false, transparent: true }),
+  );
+  sprite.scale.set(size, size, size);
+  sprite.renderOrder = -1;
+  return sprite;
+}
 
 function toGeometry(data: MeshData): THREE.BufferGeometry | null {
   if (data.indices.length === 0) return null;
@@ -35,6 +74,15 @@ export class WorldRenderer {
   private readonly highlight: THREE.LineSegments;
   private readonly fog: THREE.Fog;
   private world: VoxelWorld | null = null;
+  private readonly daylightUniform = { value: 1 };
+  private readonly hemisphere: THREE.HemisphereLight;
+  private readonly sunLight: THREE.DirectionalLight;
+  private readonly sun = disc(SUN_SIZE, '#fff6c0', 'rgba(255,230,120,0.35)');
+  private readonly moon = disc(MOON_SIZE, '#e8ecf4', 'rgba(200,210,255,0.2)');
+  private readonly skyColor = new THREE.Color(RENDER.skyColor);
+  private underwater = false;
+  /** Current time of day (0…1), set every frame by the game. */
+  time = 0.25;
 
   constructor(container: HTMLElement) {
     this.renderer = new THREE.WebGLRenderer({
@@ -56,11 +104,13 @@ export class WorldRenderer {
     this.scene.background = new THREE.Color(RENDER.skyColor);
     this.fog = new THREE.Fog(RENDER.skyColor, RENDER.fogNear, RENDER.fogFar);
     this.scene.fog = this.fog;
-    // Lights only shade the player figures; blocks have their light baked in.
-    this.scene.add(new THREE.HemisphereLight(0xffffff, 0x777788, 2.2));
-    const sun = new THREE.DirectionalLight(0xffffff, 1.2);
-    sun.position.set(0.4, 1, 0.3);
-    this.scene.add(sun);
+    // Lights only shade the player figures and animals; blocks have their light baked in.
+    this.hemisphere = new THREE.HemisphereLight(0xffffff, 0x777788, 2.2);
+    this.scene.add(this.hemisphere);
+    this.sunLight = new THREE.DirectionalLight(0xffffff, 1.2);
+    this.sunLight.position.set(0.4, 1, 0.3);
+    this.scene.add(this.sunLight);
+    this.scene.add(this.sun, this.moon);
 
     const atlas = createAtlasTexture();
     this.solidMaterial = new THREE.MeshBasicMaterial({
@@ -76,6 +126,8 @@ export class WorldRenderer {
       depthWrite: false,
       side: THREE.DoubleSide,
     });
+    addDaylight(this.solidMaterial, this.daylightUniform);
+    addDaylight(this.waterMaterial, this.daylightUniform);
 
     const box = new THREE.EdgesGeometry(
       new THREE.BoxGeometry(1 + HIGHLIGHT_GROW * 2, 1 + HIGHLIGHT_GROW * 2, 1 + HIGHLIGHT_GROW * 2),
@@ -102,11 +154,34 @@ export class WorldRenderer {
   }
 
   setUnderwater(underwater: boolean): void {
-    const color = underwater ? RENDER.underwaterColor : RENDER.skyColor;
-    (this.scene.background as THREE.Color).setHex(color);
-    this.fog.color.setHex(color);
+    this.underwater = underwater;
     this.fog.near = underwater ? 1 : RENDER.fogNear;
     this.fog.far = underwater ? 16 : RENDER.fogFar;
+  }
+
+  /** Sky colour, sun, moon and light for the current time of day. */
+  private updateSky(): void {
+    const light = daylight(this.time);
+    this.daylightUniform.value = light;
+    const sky = this.skyColor
+      .setHex(DAY.nightColor)
+      .lerp(new THREE.Color(DAY.dayColor), light)
+      .lerp(new THREE.Color(DAY.sunsetColor), sunsetGlow(this.time) * 0.6);
+    const color = this.underwater
+      ? new THREE.Color(RENDER.underwaterColor).multiplyScalar(0.3 + 0.7 * light)
+      : sky;
+    (this.scene.background as THREE.Color).copy(color);
+    this.fog.color.copy(color);
+    this.hemisphere.intensity = 0.5 + 1.7 * light;
+    this.sunLight.intensity = 1.2 * light;
+
+    // The sun goes round from east (+x) over the top to west; the moon is opposite.
+    const angle = this.time * Math.PI * 2;
+    const cam = this.camera.position;
+    const dir = new THREE.Vector3(Math.cos(angle), sunHeight(this.time), 0.25).normalize();
+    this.sun.position.copy(cam).addScaledVector(dir, SUN_DISTANCE);
+    this.moon.position.copy(cam).addScaledVector(dir, -SUN_DISTANCE);
+    this.sunLight.position.copy(dir);
   }
 
   showHighlight(x: number, y: number, z: number): void {
@@ -187,6 +262,7 @@ export class WorldRenderer {
   }
 
   render(): void {
+    this.updateSky();
     this.renderer.render(this.scene, this.camera);
   }
 

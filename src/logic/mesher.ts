@@ -164,11 +164,6 @@ const OPAQUE: readonly boolean[] = BLOCKS.map((b) => b.solid && !b.transparent);
 /** Leaves and water dim the light passing through them. */
 const DIMS: readonly boolean[] = BLOCKS.map((b) => b.key.endsWith('leaves') || b.id === WATER);
 
-/** Brightness (0–1) for a light level (0–15). */
-export const BRIGHTNESS: readonly number[] = Array.from({ length: LIGHT.max + 1 }, (_, l) =>
-  Math.max(LIGHT.minBrightness, Math.pow(0.82, LIGHT.max - l)),
-);
-
 function padIndex(x: number, y: number, z: number): number {
   return x + PAD + (z + PAD) * STEP_Z + (y + 1) * STEP_Y;
 }
@@ -202,38 +197,13 @@ function fillPadded(world: VoxelWorld, cx: number, cz: number): Uint8Array {
 const QUEUE_SIZE = CELLS * 4;
 const LIGHT_QUEUE = new Int32Array(QUEUE_SIZE);
 
-/** Sunlight from above plus light from torches, spread by flood fill. */
-function computeLight(padded: Uint8Array): Uint8Array {
-  const light = new Uint8Array(CELLS);
-  const queue = LIGHT_QUEUE;
+/** Spreads light from the seeded cells (flood fill), dropping LIGHT.falloff per block. */
+function spread(padded: Uint8Array, light: Uint8Array, queue: Int32Array, tail: number): void {
   let head = 0;
-  let tail = 0;
   const push = (i: number) => {
     queue[tail] = i;
     tail = (tail + 1) % QUEUE_SIZE;
   };
-
-  // Sun: straight down each column until something blocks it.
-  for (let column = 0; column < STEP_Y; column++) {
-    let level: number = LIGHT.max;
-    for (let y = HEIGHT - 1; y >= 0; y--) {
-      const i = column + y * STEP_Y;
-      const id = padded[i]!;
-      if (OPAQUE[id]) break;
-      if (DIMS[id]) level = Math.max(0, level - LIGHT.falloff);
-      light[i] = level;
-      if (level > LIGHT.falloff) push(i);
-    }
-  }
-  // Torches, lamps and lava.
-  for (let i = 0; i < CELLS; i++) {
-    const glow = BLOCKS[padded[i]!]!.light;
-    if (glow > light[i]!) {
-      light[i] = glow;
-      push(i);
-    }
-  }
-
   while (head !== tail) {
     const i = queue[head]!;
     head = (head + 1) % QUEUE_SIZE;
@@ -260,7 +230,45 @@ function computeLight(padded: Uint8Array): Uint8Array {
       }
     }
   }
-  return light;
+}
+
+/**
+ * Two kinds of light: sunlight (straight down, then spreading under
+ * overhangs; it dims at night) and block light from torches, lamps and lava.
+ */
+function computeLight(padded: Uint8Array): { sky: Uint8Array; block: Uint8Array } {
+  const sky = new Uint8Array(CELLS);
+  const block = new Uint8Array(CELLS);
+  const queue = LIGHT_QUEUE;
+
+  let tail = 0;
+  for (let column = 0; column < STEP_Y; column++) {
+    let level: number = LIGHT.max;
+    for (let y = HEIGHT - 1; y >= 0; y--) {
+      const i = column + y * STEP_Y;
+      const id = padded[i]!;
+      if (OPAQUE[id]) break;
+      if (DIMS[id]) level = Math.max(0, level - LIGHT.falloff);
+      sky[i] = level;
+      if (level > LIGHT.falloff) {
+        queue[tail] = i;
+        tail = (tail + 1) % QUEUE_SIZE;
+      }
+    }
+  }
+  spread(padded, sky, queue, tail);
+
+  tail = 0;
+  for (let i = 0; i < CELLS; i++) {
+    const glow = BLOCKS[padded[i]!]!.light;
+    if (glow > 0) {
+      block[i] = glow;
+      queue[tail] = i;
+      tail = (tail + 1) % QUEUE_SIZE;
+    }
+  }
+  spread(padded, block, queue, tail);
+  return { sky, block };
 }
 
 /** Does the face of `block` towards `neighbour` need to be drawn? */
@@ -294,12 +302,14 @@ class MeshBuilder {
 export function buildChunkMesh(world: VoxelWorld, cx: number, cz: number): ChunkMesh {
   const padded = fillPadded(world, cx, cz);
   const light = computeLight(padded);
+  const max = LIGHT.max;
   const solid = new MeshBuilder();
   const water = new MeshBuilder();
   const at = (x: number, y: number, z: number): BlockType => BLOCKS[padded[padIndex(x, y, z)]!]!;
   const opaqueAt = (x: number, y: number, z: number): number =>
     OPAQUE[padded[padIndex(x, y, z)]!] ? 1 : 0;
-  const lightAt = (x: number, y: number, z: number): number => light[padIndex(x, y, z)]!;
+  const skyAt = (x: number, y: number, z: number): number => light.sky[padIndex(x, y, z)]!;
+  const blockAt = (x: number, y: number, z: number): number => light.block[padIndex(x, y, z)]!;
 
   for (let y = 0; y < WORLD_HEIGHT; y++) {
     for (let z = 0; z < CHUNK_SIZE; z++) {
@@ -311,14 +321,15 @@ export function buildChunkMesh(world: VoxelWorld, cx: number, cz: number): Chunk
 
         if (block.shape === 'cross') {
           const [u0, v0, u1, v1] = tileUV(block.tiles.side);
-          const bright = glows ? 1 : BRIGHTNESS[lightAt(x, y, z)]!;
+          const sky = glows ? 1 : skyAt(x, y, z) / max;
+          const lit = glows ? 1 : blockAt(x, y, z) / max;
           for (const quad of CROSS_QUADS) {
             const base = out.positions.length / 3;
             quad.forEach(([ox, oy, oz], i) => {
               out.positions.push(x + ox, y + oy, z + oz);
               const [cu, cv] = CORNER_UVS[i]!;
               out.uvs.push(cu ? u1 : u0, cv ? v1 : v0);
-              out.colors.push(bright, bright, bright);
+              out.colors.push(1, sky, lit);
             });
             // Both sides, so the plant can be seen from everywhere.
             out.indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
@@ -342,7 +353,8 @@ export function buildChunkMesh(world: VoxelWorld, cx: number, cz: number): Chunk
           face.corners.forEach((corner, i) => {
             const [ox, oy, oz] = corner;
             let level = 3;
-            let bright = 1;
+            let sky = 1;
+            let lit = 1;
             if (!glows) {
               const [s1, s2, c] = AO_OFFSETS[faceIndex]![i]!;
               const a = opaqueAt(x + s1[0], y + s1[1], z + s1[2]);
@@ -350,21 +362,18 @@ export function buildChunkMesh(world: VoxelWorld, cx: number, cz: number): Chunk
               const d = opaqueAt(x + c[0], y + c[1], z + c[2]);
               level = a && b ? 0 : 3 - (a + b + d);
               // Smooth light: average the open blocks around this corner.
-              let sum = lightAt(x + nx, y + ny, z + nz);
-              let count = 1;
-              if (!a) {
-                sum += lightAt(x + s1[0], y + s1[1], z + s1[2]);
-                count++;
+              const cells: (readonly [number, number, number])[] = [[x + nx, y + ny, z + nz]];
+              if (!a) cells.push([x + s1[0], y + s1[1], z + s1[2]]);
+              if (!b) cells.push([x + s2[0], y + s2[1], z + s2[2]]);
+              if (!d && !(a && b)) cells.push([x + c[0], y + c[1], z + c[2]]);
+              let skySum = 0;
+              let blockSum = 0;
+              for (const [cx, cy, cz] of cells) {
+                skySum += skyAt(cx, cy, cz);
+                blockSum += blockAt(cx, cy, cz);
               }
-              if (!b) {
-                sum += lightAt(x + s2[0], y + s2[1], z + s2[2]);
-                count++;
-              }
-              if (!d && !(a && b)) {
-                sum += lightAt(x + c[0], y + c[1], z + c[2]);
-                count++;
-              }
-              bright = BRIGHTNESS[Math.round(sum / count)]!;
+              sky = skySum / cells.length / max;
+              lit = blockSum / cells.length / max;
             }
             ao.push(level);
 
@@ -372,8 +381,10 @@ export function buildChunkMesh(world: VoxelWorld, cx: number, cz: number): Chunk
             out.positions.push(x + ox, y + top, z + oz);
             const [cu, cv] = CORNER_UVS[i]!;
             out.uvs.push(cu ? u1 : u0, cv ? v1 : v0);
-            const shade = glows ? 1 : face.shade * AO_LEVELS[level as 0 | 1 | 2 | 3] * bright;
-            out.colors.push(shade, shade, shade);
+            // Colour channels: r = shade and corner darkness, g = sunlight, b = torch light.
+            // The shader mixes them with the time of day (see worldRenderer).
+            const shade = glows ? 1 : face.shade * AO_LEVELS[level as 0 | 1 | 2 | 3];
+            out.colors.push(shade, sky, lit);
           });
 
           // Split the square along the brighter diagonal so shading looks even.
