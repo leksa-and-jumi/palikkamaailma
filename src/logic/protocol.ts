@@ -5,6 +5,7 @@
 import { AVATAR_EMOJIS, NET, WORLD_LIMIT } from '../config';
 import { getBlockType, isValidBlockId } from './blocks';
 import { parseContainer, type Container } from './containers';
+import { isFireworkKind } from './fireworks';
 import { MOB_KINDS, MOB_NAMES, PERSONALITIES, type MobKind } from './mobs';
 import { parseStack, type ItemStack } from './inventory';
 import type { Edit } from './world';
@@ -62,7 +63,9 @@ export type ClientMessage =
   /** Asks for the contents of a chest or furnace. */
   | { t: 'open'; p: [number, number, number] }
   /** New contents after the player moved items. */
-  | { t: 'container'; p: [number, number, number]; data: Container };
+  | { t: 'container'; p: [number, number, number]; data: Container }
+  /** A rocket launched from the hand (not stored, just shown to the others). */
+  | { t: 'firework'; p: [number, number, number]; kind: number; seed: number };
 
 export type ServerMessage =
   | { t: 'welcome'; you: string; players: PlayerInfo[]; items: DroppedItem[] }
@@ -85,6 +88,7 @@ export type ServerMessage =
   /** Someone picked an item up; only the player `by` gets it. */
   | { t: 'picked'; id: string; by: string }
   | { t: 'container'; p: [number, number, number]; data: Container }
+  | { t: 'firework'; p: [number, number, number]; kind: number; seed: number }
   | { t: 'full' };
 
 const POSITION_LIMIT = WORLD_LIMIT + 100;
@@ -116,6 +120,8 @@ export function parseEdit(v: unknown): Edit | null {
   if (!isInsideWorld(x as number, y as number, z as number)) return null;
   // Nobody may place bedrock: it could never be removed.
   if (!getBlockType(id).breakable) return null;
+  // Lit lamps and powered dust are only a look made by the circuit.
+  if (getBlockType(id).shownOnly) return null;
   return [x as number, y as number, z as number, id];
 }
 
@@ -220,6 +226,15 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       return typeof msg.id === 'string' && /^[a-z0-9-]{1,40}$/.test(msg.id)
         ? { t: 'pickup', id: msg.id }
         : null;
+    case 'firework': {
+      const p = parseVec3(msg.p);
+      const seed = msg.seed;
+      if (!p || !isFireworkKind(msg.kind)) return null;
+      if (typeof seed !== 'number' || !Number.isInteger(seed) || seed < 0 || seed > 0xffffffff) {
+        return null;
+      }
+      return { t: 'firework', p, kind: msg.kind, seed };
+    }
     default:
       return null;
   }

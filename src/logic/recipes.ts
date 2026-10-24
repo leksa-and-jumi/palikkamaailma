@@ -86,6 +86,19 @@ export const RECIPES: readonly Recipe[] = [
   shaped(['GSG', 'SGS', 'GSG'], { G: 'gunpowder', S: 'sand' }, 'tnt'),
   // Minecraft's jack o'lantern: here it makes a glowing lamp block.
   shapeless(['pumpkin', 'torch'], 'lamp'),
+  // Redstone and fireworks.
+  shaped(['S', 'C'], { S: 'stick', C: 'cobblestone' }, 'lever'),
+  shapeless(['stone'], 'button'),
+  shaped(['R', 'S'], { R: 'redstone', S: 'stick' }, 'redstone_torch'),
+  shaped([' R ', 'RGR', ' R '], { R: 'redstone', G: 'lamp' }, 'redstone_lamp'),
+  shapeless(['iron_ingot', 'flint'], 'flint_and_steel'),
+  // Minecraft's dispenser, but it shoots rockets.
+  shaped(['CCC', 'CBC', 'CRC'], { C: 'cobblestone', B: 'bow', R: 'redstone' }, 'firework_launcher'),
+  shapeless(['paper', 'gunpowder'], 'firework_rocket', 3),
+  shapeless(['paper', 'gunpowder', 'gunpowder'], 'firework_big', 3),
+  shapeless(['paper', 'gunpowder', 'gold_ingot'], 'firework_star', 3),
+  shapeless(['paper', 'gunpowder', 'green'], 'firework_creeper', 3),
+  shapeless(['paper', 'gunpowder', 'pink'], 'firework_heart', 3),
   ...STORAGE_BLOCKS.flatMap(([block, item]) => [
     shaped(['MMM', 'MMM', 'MMM'], { M: item }, block),
     shapeless([block], item, 9),

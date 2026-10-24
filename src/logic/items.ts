@@ -2,7 +2,7 @@
 // armor, food and materials (ids from 256). Names and numbers follow
 // Minecraft, because the boys know them.
 
-import { BLOCKS, type BlockType } from './blocks';
+import { BLOCKS, REDSTONE_WIRE, type BlockType } from './blocks';
 
 export const FIRST_ITEM_ID = 256;
 
@@ -52,7 +52,17 @@ export interface ItemType {
   /** Seconds this item burns in a furnace. */
   fuel?: number;
   /** Bow, arrows, buckets and other special items. */
-  special?: 'bow' | 'arrow' | 'bucket' | 'water_bucket' | 'lava_bucket' | 'enchanted_book';
+  special?:
+    | 'bow'
+    | 'arrow'
+    | 'bucket'
+    | 'water_bucket'
+    | 'lava_bucket'
+    | 'enchanted_book'
+    | 'flint_and_steel'
+    | 'firework';
+  /** Which firework this rocket makes (index in FIREWORK_KINDS). */
+  firework?: number;
 }
 
 // --- Tools ------------------------------------------------------------------
@@ -162,7 +172,7 @@ const ITEM_SPECS: ItemSpec[] = [
   { key: 'diamond', name: 'Timantti' },
   { key: 'emerald', name: 'Smaragdi' },
   { key: 'lapis_lazuli', name: 'Lasuuri' },
-  { key: 'redstone', name: 'Punakivipöly' },
+  { key: 'redstone', name: 'Punakivipöly', block: REDSTONE_WIRE },
   { key: 'flint', name: 'Piikivi' },
   { key: 'string', name: 'Lanka' },
   { key: 'feather', name: 'Sulka' },
@@ -191,6 +201,12 @@ const ITEM_SPECS: ItemSpec[] = [
   { key: 'enchanted_book', name: 'Lumottu kirja', stack: 1, special: 'enchanted_book' },
   { key: 'wheat', name: 'Vehnä' },
   { key: 'egg', name: 'Muna', stack: 16 },
+  { key: 'flint_and_steel', name: 'Tulukset', stack: 1, special: 'flint_and_steel' },
+  { key: 'firework_rocket', name: 'Ilotulitusraketti', special: 'firework', firework: 0 },
+  { key: 'firework_big', name: 'Iso raketti', special: 'firework', firework: 1 },
+  { key: 'firework_star', name: 'Tähtiraketti', special: 'firework', firework: 2 },
+  { key: 'firework_creeper', name: 'Creeper-raketti', special: 'firework', firework: 3 },
+  { key: 'firework_heart', name: 'Sydänraketti', special: 'firework', firework: 4 },
 ];
 
 for (const kind of ['pickaxe', 'axe', 'shovel', 'sword', 'hoe'] as const) {
@@ -275,6 +291,8 @@ export function isValidItemId(id: unknown): id is number {
 /** Uses left before the item breaks, or undefined if it never wears out. */
 export function maxDurability(item: ItemType): number | undefined {
   return (
-    item.tool?.durability ?? item.armor?.durability ?? (item.special === 'bow' ? 384 : undefined)
+    item.tool?.durability ??
+    item.armor?.durability ??
+    (item.special === 'bow' ? 384 : item.special === 'flint_and_steel' ? 64 : undefined)
   );
 }

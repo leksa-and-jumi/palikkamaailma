@@ -134,6 +134,46 @@ describe('recipes', () => {
     ).toEqual({ id: itemId('diamond'), count: 9 });
   });
 
+  it('makes redstone things and rockets', () => {
+    expect(
+      craft([
+        ['stick', '.'],
+        ['cobblestone', '.'],
+      ])?.id,
+    ).toBe(itemId('lever'));
+    expect(
+      craft([
+        ['redstone', '.'],
+        ['stick', '.'],
+      ])?.id,
+    ).toBe(itemId('redstone_torch'));
+    expect(
+      craft([
+        ['.', 'redstone', '.'],
+        ['redstone', 'lamp', 'redstone'],
+        ['.', 'redstone', '.'],
+      ])?.id,
+    ).toBe(itemId('redstone_lamp'));
+    expect(
+      craft([
+        ['flint', 'iron_ingot'],
+        ['.', '.'],
+      ])?.id,
+    ).toBe(itemId('flint_and_steel'));
+    expect(
+      craft([
+        ['gunpowder', '.'],
+        ['paper', '.'],
+      ]),
+    ).toEqual({ id: itemId('firework_rocket'), count: 3 });
+    expect(
+      craft([
+        ['gunpowder', 'paper'],
+        ['pink', '.'],
+      ])?.id,
+    ).toBe(itemId('firework_heart'));
+  });
+
   it('gives nothing for a wrong pattern', () => {
     expect(
       craft([

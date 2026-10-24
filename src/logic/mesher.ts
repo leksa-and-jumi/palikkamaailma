@@ -4,7 +4,17 @@
 // little next to other blocks (ambient occlusion) so shapes pop out.
 
 import { CHUNK_SIZE, LIGHT, WORLD_HEIGHT } from '../config';
-import { AIR, BEDROCK, BLOCKS, WATER, type BlockType, type TileName } from './blocks';
+import {
+  AIR,
+  BEDROCK,
+  BLOCKS,
+  REDSTONE_WIRE,
+  REDSTONE_WIRE_ON,
+  WATER,
+  type BlockType,
+  type TileName,
+} from './blocks';
+import { isRedstoneThing } from './redstone';
 import { tileUV } from './atlas';
 import { chunkIndex } from './terrain';
 import { chunkOf, type VoxelWorld } from './world';
@@ -110,6 +120,28 @@ const FACES: readonly Face[] = [
   },
 ];
 
+/** Redstone dust lies this high above the ground. */
+const DUST_HEIGHT = 0.02;
+/** The dust line is this wide (from DUST_EDGE to 1 - DUST_EDGE). */
+const DUST_EDGE = 0.3125;
+const DIRECTIONS = [
+  [1, 0],
+  [-1, 0],
+  [0, 1],
+  [0, -1],
+] as const;
+const WIRES: readonly boolean[] = BLOCKS.map(
+  (b) => b.id === REDSTONE_WIRE || b.id === REDSTONE_WIRE_ON,
+);
+const JOINS_DUST: readonly boolean[] = BLOCKS.map((b) => isRedstoneThing(b.id));
+
+/** Picture position (0–1) of a point on a box face, so pictures are not squashed. */
+function boxUV(normal: Vec3, x: number, y: number, z: number): [number, number] {
+  if (normal[0] !== 0) return [normal[0] > 0 ? 1 - z : z, y];
+  if (normal[2] !== 0) return [normal[2] > 0 ? x : 1 - x, y];
+  return [x, normal[1] > 0 ? 1 - z : z];
+}
+
 /** Two pictures crossing diagonally, for flowers, grass and torches. */
 const CROSS_QUADS: readonly (readonly [Vec3, Vec3, Vec3, Vec3])[] = [
   [
@@ -188,6 +220,17 @@ function fillPadded(world: VoxelWorld, cx: number, cz: number): Uint8Array {
         padded[column + (y + 1) * STEP_Y] = chunk[chunkIndex(lx, y, lz)]!;
       }
       // The top row (y = WORLD_HEIGHT) stays air.
+    }
+  }
+  // Redstone looks (lit lamps, powered dust) cover the real blocks.
+  for (let ncz = chunkOf(z0 - PAD); ncz <= chunkOf(z0 + CHUNK_SIZE + PAD - 1); ncz++) {
+    for (let ncx = chunkOf(x0 - PAD); ncx <= chunkOf(x0 + CHUNK_SIZE + PAD - 1); ncx++) {
+      for (const [x, y, z, id] of world.shownIn(ncx, ncz)) {
+        const px = x - x0 + PAD;
+        const pz = z - z0 + PAD;
+        if (px < 0 || pz < 0 || px >= SIZE || pz >= SIZE) continue;
+        padded[px + pz * STEP_Z + (y + 1) * STEP_Y] = id;
+      }
     }
   }
   return padded;
@@ -275,7 +318,7 @@ function computeLight(padded: Uint8Array): { sky: Uint8Array; block: Uint8Array 
 export function isFaceVisible(block: BlockType, neighbour: BlockType): boolean {
   if (block.liquid) return neighbour.id !== block.id && !OPAQUE[neighbour.id];
   if (!neighbour.transparent) return false;
-  if (neighbour.shape === 'cross') return true;
+  if (neighbour.shape !== 'cube') return true;
   if (neighbour.id === block.id) {
     // Glass next to glass looks like one big window; leaves stay bushy.
     return block.key.endsWith('leaves');
@@ -334,6 +377,105 @@ export function buildChunkMesh(world: VoxelWorld, cx: number, cz: number): Chunk
             // Both sides, so the plant can be seen from everywhere.
             out.indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
             out.indices.push(base, base + 2, base + 1, base, base + 3, base + 2);
+          }
+          continue;
+        }
+
+        if (block.shape === 'dust') {
+          const [u0, v0, u1, v1] = tileUV(block.tiles.top);
+          // Powered dust shines so you can see the signal, also at night.
+          const on = block.id === REDSTONE_WIRE_ON;
+          const sky = on ? 1 : skyAt(x, y, z) / max;
+          const lit = on ? 1 : blockAt(x, y, z) / max;
+          /** `wall` = 'x' or 'z' for dust climbing up a side, null for the floor. */
+          const quad = (corners: readonly Vec3[], wall: 'x' | 'z' | null = null) => {
+            const base = out.positions.length / 3;
+            for (const [px, py, pz] of corners) {
+              out.positions.push(x + px, y + py, z + pz);
+              const [fu, fv] = wall ? [wall === 'x' ? pz : px, py] : [px, 1 - pz];
+              out.uvs.push(u0 + (u1 - u0) * fu, v0 + (v1 - v0) * fv);
+              out.colors.push(1, sky, lit);
+            }
+            out.indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
+            out.indices.push(base, base + 2, base + 1, base, base + 3, base + 2);
+          };
+          const flat = (ax: number, az: number, bx: number, bz: number) =>
+            quad([
+              [ax, DUST_HEIGHT, bz],
+              [bx, DUST_HEIGHT, bz],
+              [bx, DUST_HEIGHT, az],
+              [ax, DUST_HEIGHT, az],
+            ]);
+          const above = OPAQUE[at(x, y + 1, z).id]!;
+          const joined = DIRECTIONS.map(([dx, dz]) => {
+            const side = at(x + dx, y, z + dz);
+            if (JOINS_DUST[side.id]) return 'flat';
+            if (!above && WIRES[at(x + dx, y + 1, z + dz).id]!) return 'up';
+            if (!OPAQUE[side.id] && WIRES[at(x + dx, y - 1, z + dz).id]!) return 'flat';
+            return null;
+          });
+          const count = joined.filter(Boolean).length;
+          const lo = DUST_EDGE;
+          const hi = 1 - DUST_EDGE;
+          flat(lo, lo, hi, hi);
+          DIRECTIONS.forEach(([dx, dz], i) => {
+            // A lonely dot shows all four arms; one line goes straight through.
+            const opposite = joined[i ^ 1];
+            const show = count === 0 || !!joined[i] || (count === 1 && !!opposite);
+            if (!show) return;
+            if (dx === 1) flat(hi, lo, 1, hi);
+            if (dx === -1) flat(0, lo, lo, hi);
+            if (dz === 1) flat(lo, hi, hi, 1);
+            if (dz === -1) flat(lo, 0, hi, lo);
+            if (joined[i] !== 'up') return;
+            // Climbs up the side of the block next to it.
+            const e = 1 - DUST_HEIGHT;
+            const w = dx !== 0 ? 'x' : 'z';
+            const at0 = dx === -1 || dz === -1 ? 1 - e : e;
+            if (w === 'x')
+              quad(
+                [
+                  [at0, 0, lo],
+                  [at0, 0, hi],
+                  [at0, 1, hi],
+                  [at0, 1, lo],
+                ],
+                w,
+              );
+            else
+              quad(
+                [
+                  [lo, 0, at0],
+                  [hi, 0, at0],
+                  [hi, 1, at0],
+                  [lo, 1, at0],
+                ],
+                w,
+              );
+          });
+          continue;
+        }
+
+        if (block.shape === 'boxes') {
+          const sky = skyAt(x, y, z) / max;
+          const lit = blockAt(x, y, z) / max;
+          for (const box of block.boxes ?? []) {
+            const [u0, v0, u1, v1] = tileUV(box.tile ?? block.tiles.side);
+            for (const face of FACES) {
+              const base = out.positions.length / 3;
+              for (const corner of face.corners) {
+                const p = [0, 1, 2].map((a) => (corner[a] ? box.to[a]! : box.from[a]!)) as [
+                  number,
+                  number,
+                  number,
+                ];
+                out.positions.push(x + p[0], y + p[1], z + p[2]);
+                const [fu, fv] = boxUV(face.normal, ...p);
+                out.uvs.push(u0 + (u1 - u0) * fu, v0 + (v1 - v0) * fv);
+                out.colors.push(face.shade, sky, lit);
+              }
+              out.indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
+            }
           }
           continue;
         }

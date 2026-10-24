@@ -29,8 +29,15 @@ export class VoxelWorld {
   private readonly chunks = new Map<string, Uint8Array>();
   /** Blocks changed by players, grouped by chunk. */
   private readonly editsByChunk = new Map<string, Map<string, Edit>>();
+  /**
+   * How redstone things look right now (lit lamp, powered dust), by chunk.
+   * Only for drawing: the real block stays the same, and nothing is sent.
+   */
+  private readonly shown = new Map<string, Map<string, Edit>>();
   /** Chunks whose mesh must be rebuilt. */
   readonly dirtyChunks = new Set<string>();
+  /** Called after every block change (from players, the network or a save). */
+  onChange: ((x: number, y: number, z: number, old: number, id: number) => void) | null = null;
   private lastKey = '';
   private lastChunk: Uint8Array | null = null;
 
@@ -98,9 +105,14 @@ export class VoxelWorld {
       this.editsByChunk.set(key, edits);
     }
     edits.set(editKey(x, y, z), [x, y, z, id]);
+    this.markDirty(cx, cz);
+    this.onChange?.(x, y, z, old, id);
+    return true;
+  }
 
-    // Light and faces change up to LIGHT range away, so redraw the neighbours too.
-    this.dirtyChunks.add(key);
+  /** Light and faces change up to LIGHT range away, so redraw the neighbours too. */
+  private markDirty(cx: number, cz: number): void {
+    this.dirtyChunks.add(chunkKey(cx, cz));
     for (let dz = -1; dz <= 1; dz++) {
       for (let dx = -1; dx <= 1; dx++) {
         if ((dx !== 0 || dz !== 0) && this.hasChunk(cx + dx, cz + dz)) {
@@ -108,7 +120,38 @@ export class VoxelWorld {
         }
       }
     }
-    return true;
+  }
+
+  /** Shows the block as another one (the redstone look), or the real one with null. */
+  setShown(x: number, y: number, z: number, id: number | null): void {
+    const cx = chunkOf(x);
+    const cz = chunkOf(z);
+    const key = chunkKey(cx, cz);
+    let looks = this.shown.get(key);
+    const k = editKey(x, y, z);
+    if (id === null) {
+      if (!looks?.delete(k)) return;
+      if (looks.size === 0) this.shown.delete(key);
+    } else {
+      if (looks?.get(k)?.[3] === id) return;
+      if (!looks) {
+        looks = new Map();
+        this.shown.set(key, looks);
+      }
+      looks.set(k, [x, y, z, id]);
+    }
+    if (this.hasChunk(cx, cz)) this.markDirty(cx, cz);
+  }
+
+  /** Redstone looks in one chunk. */
+  shownIn(cx: number, cz: number): Iterable<Edit> {
+    return this.shown.get(chunkKey(cx, cz))?.values() ?? [];
+  }
+
+  /** The block as it is drawn (the redstone look if it has one). */
+  shownBlock(x: number, y: number, z: number): number {
+    const look = this.shown.get(chunkKey(chunkOf(x), chunkOf(z)))?.get(editKey(x, y, z));
+    return look ? look[3] : this.getBlock(x, y, z);
   }
 
   /** Applies many edits (from the network or a save). Returns how many changed. */

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { CHUNK_SIZE, WORLD_HEIGHT, WORLD_LIMIT } from '../config';
-import { AIR, BEDROCK, GOLD_BLOCK, PLANKS } from './blocks';
+import { AIR, BEDROCK, GOLD_BLOCK, PLANKS, REDSTONE_LAMP, REDSTONE_LAMP_ON } from './blocks';
 import { VoxelWorld, chunkKey, isInsideWorld } from './world';
 
 describe('world', () => {
@@ -61,5 +61,26 @@ describe('world', () => {
     world.unloadFarChunks(100, 100, 2);
     expect(world.hasChunk(-3, 18)).toBe(false);
     expect(world.getBlock(-40, 85, 300)).toBe(GOLD_BLOCK);
+  });
+
+  it('shows a redstone look without changing the real block', () => {
+    const world = new VoxelWorld(1);
+    world.setBlock(3, 80, 3, REDSTONE_LAMP);
+    const edits = world.editCount;
+    world.setShown(3, 80, 3, REDSTONE_LAMP_ON);
+    expect(world.shownBlock(3, 80, 3)).toBe(REDSTONE_LAMP_ON);
+    expect(world.getBlock(3, 80, 3)).toBe(REDSTONE_LAMP);
+    expect(world.editCount).toBe(edits);
+    world.setShown(3, 80, 3, null);
+    expect(world.shownBlock(3, 80, 3)).toBe(REDSTONE_LAMP);
+  });
+
+  it('tells about every change', () => {
+    const world = new VoxelWorld(1);
+    const seen: number[][] = [];
+    world.onChange = (x, y, z, old, id) => seen.push([x, y, z, old, id]);
+    world.setBlock(3, 90, 3, PLANKS);
+    world.setBlock(3, 90, 3, PLANKS);
+    expect(seen).toEqual([[3, 90, 3, AIR, PLANKS]]);
   });
 });
