@@ -23,7 +23,7 @@ function $(id: string): HTMLElement {
 const STATUS_TEXT: Record<RoomStatus | 'solo', string> = {
   connecting: '🟡 Yhdistetään…',
   online: '🟢 Moninpeli päällä',
-  offline: '🔴 Ei yhteyttä kavereihin – rakennukset tallentuvat, kun yhteys palaa',
+  offline: '🔴 Ei yhteyttä kavereihin – pidä peli auki, rakennukset lähtevät kun yhteys palaa',
   full: '⛔ Maailma on täynnä',
   missing: '❓ Maailmaa ei löytynyt',
   solo: '🧍 Pelaat yksin',

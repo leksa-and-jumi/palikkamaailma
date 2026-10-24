@@ -66,6 +66,8 @@ export interface ExtraPanel {
   render(el: HTMLElement, screen: InventoryScreen): void;
   /** Called when the screen closes, so items can be handed back. */
   close(screen: InventoryScreen): void;
+  /** Crafting tables, furnaces and chests don't show the armor slots. */
+  hideArmor?: boolean;
 }
 
 /** Made once (it listens to the keyboard); each game gives it its inventory. */
@@ -141,7 +143,7 @@ export class InventoryScreen {
     const creative = this.mode === 'creative';
     $('creative-tabs').hidden = !creative;
     $('creative-grid').hidden = !creative;
-    $('armor-slots').hidden = creative;
+    $('armor-slots').hidden = creative || !!this.extra?.hideArmor;
     if (creative) this.renderCatalog();
 
     const armor = $('armor-slots');

@@ -12,9 +12,21 @@ import {
 } from './config';
 import { sounds } from './audio/sounds';
 import { loadLocalEdits, loadPlayer, saveLocalEdits, savePlayer } from './data/storage';
-import { AIR, DEFAULT_HOTBAR, LAVA, OBSIDIAN, WATER, getBlockType, isSolid } from './logic/blocks';
+import {
+  AIR,
+  CHEST,
+  CRAFTING_TABLE,
+  DEFAULT_HOTBAR,
+  FURNACE,
+  LAVA,
+  OBSIDIAN,
+  WATER,
+  getBlockType,
+  isSolid,
+} from './logic/blocks';
 import { seedFromCode } from './logic/codes';
 import { canPickUp, isExpired, liveDrop, stepDrop, type LiveDrop } from './logic/drops';
+import { isContainerBlock, positionKey } from './logic/containers';
 import { HOTBAR_SIZE, Inventory, stackLimit, type ItemStack } from './logic/inventory';
 import { getItem, itemId } from './logic/items';
 import { blockDrops, breakTime, wearsWhenMining } from './logic/mining';
@@ -37,13 +49,15 @@ import {
 import { BIOME_NAMES } from './logic/terrain';
 import { VoxelWorld, isInsideWorld, type Edit } from './logic/world';
 import { askBuilder } from './net/convex';
+import { ContainerService } from './net/containers';
 import { ROOM_URL, RoomClient, type RoomStatus } from './net/room';
 import { OtherPlayers } from './render/avatars';
 import { CrackOverlay, DropRenderer } from './render/dropRenderer';
 import type { WorldRenderer } from './render/worldRenderer';
 import type { Hud } from './ui/hud';
 import { Input } from './ui/input';
-import type { InventoryScreen } from './ui/inventoryScreen';
+import type { ExtraPanel, InventoryScreen } from './ui/inventoryScreen';
+import { ChestPanel, CraftingPanel, FurnacePanel } from './ui/panels';
 
 export interface GameOptions {
   code: string;
@@ -83,6 +97,9 @@ export class Game {
   private readonly dropRenderer: DropRenderer;
   private readonly cracks: CrackOverlay;
   private room: RoomClient | null = null;
+  private containers!: ContainerService;
+  /** The chest or furnace window that is open (to show others' changes). */
+  private openContainer: { key: string; panel: FurnacePanel | ChestPanel } | null = null;
   private myId = 'me';
   private readonly avatars = new Map<string, string>();
   private target: RayHit | null = null;
@@ -174,6 +191,13 @@ export class Game {
         onStatus: (status) => this.onRoomStatus(status),
       });
     }
+    this.containers = new ContainerService(this.room, options.code);
+    this.containers.onUpdate = (p, data) => {
+      const open = this.openContainer;
+      if (!open || open.key !== positionKey(p) || open.panel.state.kind !== data.kind) return;
+      open.panel.state = data as never;
+      this.inventoryScreen.refresh();
+    };
     requestAnimationFrame(() => this.frame());
   }
 
@@ -401,6 +425,12 @@ export class Game {
     if (!getBlockType(block).breakable) return;
     this.change([[t.x, t.y, t.z, AIR]]);
     sounds.break();
+    // Alone, the chest's items fall out here (the room server does it in multiplayer).
+    if (!this.room && isContainerBlock(block)) {
+      for (const item of this.containers.removeLocal([t.x, t.y, t.z])) {
+        this.spawnDrop(item, [t.x + 0.5, t.y + 0.5, t.z + 0.5], true);
+      }
+    }
     if (this.mode !== 'survival') return;
 
     const stack = this.selectedStack();
@@ -432,9 +462,11 @@ export class Game {
     }
   }
 
-  /** Right click: eat, use a bucket or place a block. */
+  /** Right click: open a table/furnace/chest, eat, use a bucket or place a block. */
   private useItem(): void {
     this.placeCooldown = PLACE_REPEAT;
+    const sneaking = this.input.isDown('ShiftLeft') || this.input.isDown('ShiftRight');
+    if (this.target && !sneaking && this.interact(this.target)) return;
     const stack = this.selectedStack();
     const item = stack ? getItem(stack.id) : undefined;
 
@@ -467,6 +499,52 @@ export class Game {
     if (this.change([[x, y, z, item.block]]).length === 0) return;
     if (this.mode === 'survival') this.inventory.takeOne(this.hud.selected);
     sounds.place();
+  }
+
+  /** Opens the block you right-clicked, if it opens. Returns true if it did. */
+  private interact(t: RayHit): boolean {
+    const block = this.world.getBlock(t.x, t.y, t.z);
+    if (block === CRAFTING_TABLE) {
+      this.openScreen(new CraftingPanel(3), '🪚 Työpöytä');
+      return true;
+    }
+    if (block !== FURNACE && block !== CHEST) return false;
+    const p: [number, number, number] = [t.x, t.y, t.z];
+    this.input.unlock();
+    this.overlayOpen = true;
+    void this.containers.open(p, block).then((data) => {
+      if (!data) {
+        this.overlayOpen = false;
+        this.hud.toast('📡 En saanut tätä auki. Kokeile uudestaan!');
+        this.resume();
+        return;
+      }
+      const save = (state: typeof data) => this.containers.save(p, state);
+      const panel =
+        data.kind === 'furnace' ? new FurnacePanel(data, save) : new ChestPanel(data, save);
+      this.openContainer = { key: positionKey(p), panel };
+      this.openScreen(panel, data.kind === 'furnace' ? '🔥 Uuni' : '📦 Arkku', () => {
+        this.openContainer = null;
+      });
+    });
+    return true;
+  }
+
+  /** Shows the inventory screen with a crafting grid, furnace or chest. */
+  private openScreen(extra: ExtraPanel | null, title?: string, onClosed?: () => void): void {
+    this.openOverlay((done) =>
+      this.inventoryScreen.open(
+        this.inventory,
+        (s) => this.dropStack(s),
+        this.mode,
+        () => {
+          onClosed?.();
+          done();
+        },
+        extra,
+        title,
+      ),
+    );
   }
 
   private fillBucket(): void {
@@ -752,9 +830,8 @@ export class Game {
     if (!this.ready || this.dead) return false;
     if (this.inventoryScreen.isOpen || this.hud.builderOpen || this.hud.chatOpen) return false;
     if (code === 'KeyE') {
-      this.openOverlay((done) =>
-        this.inventoryScreen.open(this.inventory, (s) => this.dropStack(s), this.mode, done),
-      );
+      // The survival backpack has the small 2 × 2 crafting grid, like Minecraft.
+      this.openScreen(this.mode === 'survival' ? new CraftingPanel(2) : null);
     } else if (code === 'KeyB') {
       this.openOverlay((done) => this.hud.openBuilder((prompt) => this.magicBuild(prompt), done));
     } else if (code === 'KeyT' || code === 'Enter') {
@@ -882,6 +959,9 @@ export class Game {
         if (drop && msg.by === this.myId) this.collect(drop.item);
         return;
       }
+      case 'container':
+        this.containers.receive(msg.p, msg.data);
+        return;
       case 'full':
         this.hud.toast('⛔ Maailma on täynnä. Kokeile myöhemmin!');
         return;

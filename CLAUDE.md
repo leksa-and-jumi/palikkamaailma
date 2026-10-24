@@ -39,6 +39,7 @@ Tämä repo kuuluu Julius (7 v) ja Leo (10 v) -veljesten pelistudioon (GitHub-or
 - Pelitilat: 🛠️ Nikkaroija (creative) ja ⚔️ Selviytyjä (survival). Maailmalla on oletustila ja vaikeustaso (Convex `worlds`), pelaaja voi vaihtaa tilaa taukovalikosta. `SURVIVAL.keepInventory` = true (lapset eivät menetä tavaroitaan kuollessaan).
 - Reppu, terveys ja sijainti tallentuvat laitteelle maailmakohtaisesti (`STORAGE.player`). Maassa olevat esineet ovat huonepalvelimella (`items`-taulu), ja vain ensimmäinen poimija saa esineen.
 - Ämpärit: vesi + laava = obsidiaani.
+- Nikkarointi (`src/logic/recipes.ts`): Minecraftin reseptit (muodolliset + muodottomat, peilikuvat käyvät), 2 × 2 repussa, 3 × 3 työpöydällä. Uuni (`src/logic/containers.ts`): 10 s / esine, polttoaineen kesto `fuel`-kentästä; tila lasketaan aikaleimasta, joten uuni toimii vaikka kukaan ei katso. Arkut ja uunit ovat huonepalvelimen `containers`-taulussa (rivi luetaan vain avattaessa) tai yksinpelissä laitteella; rikottu arkku pudottaa sisältönsä.
 - Valo: aurinko ylhäältä + soihdut/laava/hehkukivi (flood fill `computeLight` mesherissä, kantama `LIGHT`). Muuttunut palikka piirtää myös naapurichunkit uudestaan.
 
 ## Cloudflare-kiintiö (tärkeä)
