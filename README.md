@@ -30,6 +30,7 @@ Suunnittelijat: **Julius ja Leo**. Koodi: Claude.
 | `T` tai `Enter`           | chatti                       |
 | `B`                       | ✨ taikarakentaja            |
 | `Z`                       | kumoa taikarakennus          |
+| `R`                       | käännä taikarakennusta       |
 | `Esc`                     | tauko                        |
 
 ## Turvallisuus

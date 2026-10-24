@@ -14,7 +14,7 @@ interface ChunkMeshes {
 
 const HIGHLIGHT_GROW = 0.004;
 
-function toGeometry(data: MeshData): THREE.BufferGeometry | null {
+export function toGeometry(data: MeshData): THREE.BufferGeometry | null {
   if (data.indices.length === 0) return null;
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.BufferAttribute(data.positions, 3));
