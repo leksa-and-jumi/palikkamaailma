@@ -77,6 +77,17 @@ export const PLAYER = {
   mouseSensitivity: 0.0022,
 } as const;
 
+// --- Day and night --------------------------------------------------------
+export const DAY = {
+  /** Seconds in one whole day (Minecraft: 20 minutes). */
+  length: 1200,
+  /** How much sunlight is left at night (moonlight). */
+  nightSky: 0.27,
+  dayColor: 0x8ecbff,
+  nightColor: 0x0b1026,
+  sunsetColor: 0xf6a35e,
+} as const;
+
 // --- Game modes and survival ---------------------------------------------
 /** Nikkaroija (creative) or selviytyjä (survival). */
 export type GameMode = 'creative' | 'survival';
@@ -128,6 +139,15 @@ export const SURVIVAL = {
   keepInventory: true,
   /** Hand reach is the same in both modes; creative breaks instantly. */
   creativeBreakDelay: 0.2,
+} as const;
+
+/** Chests and furnaces. */
+export const CONTAINERS = {
+  chestSize: 27,
+  /** Seconds to smelt one item (Minecraft: 10). */
+  cookSeconds: 10,
+  /** A furnace catches up at most this much time when opened again. */
+  maxCatchUpSeconds: 3600,
 } as const;
 
 /** Items lying on the ground. */
@@ -305,4 +325,6 @@ export const STORAGE = {
   /** Inventory, health and position per world (this device only). */
   player: 'palikkamaailma.player',
   soloSettings: 'palikkamaailma.solo.settings',
+  /** Chests and furnaces when playing alone. */
+  containers: 'palikkamaailma.containers',
 } as const;
