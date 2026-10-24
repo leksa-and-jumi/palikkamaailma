@@ -1,7 +1,7 @@
 // What a computer character wants to do right now. Pure rules: given where
 // the players are, the brain picks a goal and turns it into movement.
 
-import { MOBS } from '../config';
+import { MOBS, MONSTERS } from '../config';
 import { mobType, PERSONALITY_TRAITS, type MobKind, type Personality } from './mobs';
 import { createPlayer, type MoveInput, type PlayerState } from './physics';
 
@@ -43,6 +43,14 @@ export interface Seen {
   z: number;
   /** Item key in the player's hand. */
   holding?: string;
+  /** Monsters leave creative players alone. */
+  safe?: boolean;
+}
+
+/** What the creature knows about the world right now. */
+export interface Surroundings {
+  /** Bright daytime (spiders are calm in the day). */
+  day: boolean;
 }
 
 export interface Thought {
@@ -109,17 +117,97 @@ function walkTo(m: Mob, x: number, z: number, sprint: boolean, stopAt = 0.6): Th
   return { input: { ...STILL, forward: 1, sprint, jump: m.blocked }, yaw };
 }
 
+/** Monsters: notice a player, then chase, shoot or explode. Null = nothing to fight. */
+function thinkHostile(
+  m: Mob,
+  players: readonly Seen[],
+  dt: number,
+  around: Surroundings,
+): Thought | null {
+  const traits = PERSONALITY_TRAITS[m.personality];
+  const targets = players.filter((p) => !p.safe);
+  const close = nearest(m, targets);
+  const hurtRecently = m.hurt < MOBS.fleeSeconds * 2;
+  // Spiders are calm in daylight unless you hit them.
+  if (m.kind === 'spider' && around.day && !hurtRecently) {
+    m.fuse = 0;
+    return null;
+  }
+  const notice = MONSTERS.noticeDistance * traits.notice;
+  if (!close || (close.d > notice && !hurtRecently)) {
+    m.fuse = Math.max(0, m.fuse - dt);
+    return null;
+  }
+  const { p, d } = close;
+  const yaw = yawTowards(m.body.x, m.body.z, p.x, p.z);
+  const go = (forward: number, sprint = false): MoveInput => ({
+    ...STILL,
+    forward,
+    sprint,
+    jump: m.blocked,
+  });
+  m.mode = 'chase';
+
+  switch (m.kind) {
+    case 'skeleton': {
+      // Keep a safe distance and shoot arrows. Shy skeletons stay further away.
+      const keep = MONSTERS.skeletonKeep * (m.personality === 'shy' ? 1.4 : 1);
+      if (d < keep) return { input: go(-0.8), yaw };
+      if (d > MONSTERS.shootRange) return { input: go(1), yaw };
+      if (m.cooldown <= 0) {
+        m.cooldown = MONSTERS.shootCooldown;
+        return { input: STILL, yaw, action: 'shoot', targetId: p.id };
+      }
+      return { input: STILL, yaw };
+    }
+    case 'creeper': {
+      // Sneak up, hiss and explode.
+      if (d < MONSTERS.fuseStart) {
+        m.mode = 'fuse';
+        m.fuse += dt;
+        if (m.fuse >= MONSTERS.fuseSeconds) return { input: STILL, yaw, action: 'explode' };
+        return { input: STILL, yaw };
+      }
+      m.fuse = Math.max(0, m.fuse - dt);
+      return { input: go(1), yaw };
+    }
+    default: {
+      // Zombies and spiders run at you and hit when close.
+      if (d < MONSTERS.meleeRange && Math.abs(p.y - m.body.y) < 2) {
+        if (m.cooldown <= 0) {
+          m.cooldown = MONSTERS.meleeCooldown;
+          return { input: go(0.3), yaw, action: 'attack', targetId: p.id };
+        }
+        return { input: go(0.3), yaw };
+      }
+      return { input: go(1, m.personality === 'brave'), yaw };
+    }
+  }
+}
+
 /**
  * Decides what to do. `random` gives 0…1. Animals rest, wander, follow food,
  * run away when hurt and come say hello depending on their personality.
  */
-export function think(m: Mob, players: readonly Seen[], dt: number, random: () => number): Thought {
+export function think(
+  m: Mob,
+  players: readonly Seen[],
+  dt: number,
+  random: () => number,
+  around: Surroundings = { day: true },
+): Thought {
   const type = mobType(m.kind);
   const traits = PERSONALITY_TRAITS[m.personality];
   m.timer -= dt;
   m.hurt += dt;
   m.love = Math.max(0, m.love - dt);
+  m.cooldown -= dt;
   const close = nearest(m, players);
+
+  if (type.hostile) {
+    const fight = thinkHostile(m, players, dt, around);
+    if (fight) return fight;
+  }
 
   // Hurt animals run away from whoever hit them.
   if (!type.hostile && m.hurt < MOBS.fleeSeconds && m.hurtFrom) {

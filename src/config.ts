@@ -121,6 +121,33 @@ export const MOBS = {
   remoteTimeout: 3,
 } as const;
 
+export const MONSTERS = {
+  /** Most monsters around one player by difficulty (peaceful: none). */
+  max: { peaceful: 0, easy: 4, normal: 7, hard: 10 },
+  noticeDistance: 16,
+  meleeRange: 1.6,
+  meleeCooldown: 1,
+  skeletonKeep: 6,
+  shootRange: 15,
+  shootCooldown: 2.2,
+  arrowSpeed: 18,
+  arrowGravity: 20,
+  arrowDamage: 3,
+  fuseStart: 2.6,
+  fuseSeconds: 1.5,
+  /** Creeper explosion: radius and damage at the middle (normal difficulty). */
+  blastRadius: 5,
+  blastDamage: 22,
+  /** Blocks broken by a creeper (only on hard, so builds are safe on easier levels). */
+  blastBlockRadius: 2.5,
+  /** Zombies and skeletons burn in sunlight (damage per second). */
+  burnDamage: 1,
+  /** Monsters only spawn this far from a torch or lamp (blocks). */
+  torchSafe: 7,
+  spawnMin: 22,
+  spawnMax: 40,
+} as const;
+
 // --- Game modes and survival ---------------------------------------------
 /** Nikkaroija (creative) or selviytyjä (survival). */
 export type GameMode = 'creative' | 'survival';

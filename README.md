@@ -40,6 +40,17 @@ Niityillä ja metsissä asuu possuja, lehmiä, kanoja ja lampaita. Jokaisella on
 - Ruoki kahta samanlaista eläintä (oikea hiiri), niin ne saavat vauvan 💕
 - Kana munii välillä munan.
 
+## Hirviöt
+
+Yöllä ja pimeissä luolissa liikkuu hirviöitä – soihtujen lähelle ne eivät tule!
+
+- 🧟 **Zombi** jahtaa ja lyö. Palaa auringossa.
+- 💀 **Luuranko** pitää etäisyyttä ja ampuu nuolia. Palaa auringossa.
+- 💚 **Creeper** hiipii viereen, sihisee ja räjähtää. Juokse karkuun, kun se vilkkuu!
+- 🕷️ **Hämähäkki** kiipeää seiniä. Päivällä se on rauhallinen, ellei sitä lyö.
+
+Vaikeustaso: 😊 Rauhallinen = ei hirviöitä, 🙂 Helppo = vähän hirviöitä ja puolet vahingosta, 😐 Normaali, 😈 Vaikea = eniten hirviöitä ja creeperit rikkovat palikoita. Nikkaroija-tilassa hirviöt eivät hyökkää.
+
 ## Nikkarointi
 
 Reseptit ovat samat kuin Minecraftissa:

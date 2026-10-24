@@ -398,6 +398,15 @@ export class WorldRoom extends DurableObject<Env> {
         this.broadcast({ ...msg, by: me.id }, ws);
         return;
       }
+      case 'hurtPlayer': {
+        if (!me.player) return;
+        // Only the player who got hurt needs to hear it.
+        for (const other of this.ctx.getWebSockets()) {
+          const a = other.deserializeAttachment() as Attachment | null;
+          if (a?.id === msg.id) this.send(other, msg);
+        }
+        return;
+      }
       case 'chat': {
         if (!me.player) return;
         const now = Date.now();
