@@ -46,6 +46,7 @@ import {
   tickVitals,
   type Vitals,
 } from './logic/survival';
+import { dayLabel, timeOfDay } from './logic/daytime';
 import { BIOME_NAMES } from './logic/terrain';
 import { VoxelWorld, isInsideWorld, type Edit } from './logic/world';
 import { askBuilder } from './net/convex';
@@ -123,6 +124,8 @@ export class Game {
 
   mode: GameMode;
   vitals: Vitals;
+  /** Moves the clock (ms), for testing day and night. */
+  timeShift = 0;
   private readonly spawn: [number, number, number];
   private readonly drops = new Map<string, LiveDrop>();
   private readonly pickupsAsked = new Set<string>();
@@ -220,6 +223,11 @@ export class Game {
     this.hud.show(false);
   }
 
+  /** Time of day, the same for everyone in this world. */
+  get time(): number {
+    return timeOfDay(Date.now() + this.timeShift, this.world.seed);
+  }
+
   /** Switches between creative and survival (from the pause menu). */
   toggleMode(): GameMode {
     this.mode = this.mode === 'creative' ? 'survival' : 'creative';
@@ -269,7 +277,7 @@ export class Game {
         Math.floor(this.player.x),
         Math.floor(this.player.z),
       );
-      this.hud.setBiome(BIOME_NAMES[biome]);
+      this.hud.setBiome(`${BIOME_NAMES[biome]} · ${dayLabel(this.time)}`);
       this.sendMove(dt);
       this.playerSaveTimer += dt;
       if (this.playerSaveTimer >= PLAYER_SAVE_INTERVAL) {
@@ -283,6 +291,7 @@ export class Game {
       this.headInWater(),
     );
 
+    this.renderer.time = this.time;
     this.updateDrops(dt);
     this.updateCamera();
     this.updateTarget();
