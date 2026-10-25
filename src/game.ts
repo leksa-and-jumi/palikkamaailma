@@ -3,7 +3,10 @@
 
 import {
   BUILDER,
+  COMMANDS,
+  DAY,
   FIREWORKS,
+  MAP,
   MOBS,
   MONSTERS,
   NET,
@@ -69,7 +72,17 @@ import {
   tickVitals,
   type Vitals,
 } from './logic/survival';
-import { dayLabel, daylight, timeOfDay } from './logic/daytime';
+import { dayLabel, dayNumber, daylight, isNight, timeOfDay } from './logic/daytime';
+import {
+  COMMAND_LIST,
+  animalName,
+  commandHints,
+  findPlayer,
+  parseCommand,
+  type Command,
+  type RequestKind,
+  type Someone,
+} from './logic/commands';
 import { BIOME_NAMES } from './logic/terrain';
 import { VoxelWorld, chunkOf, editKey, isInsideWorld, type Edit } from './logic/world';
 import { askBuilder } from './net/convex';
@@ -90,6 +103,8 @@ import { PROFESSION_NAMES } from './logic/villages';
 import { MOB_TYPES, PERSONALITY_NAMES } from './logic/mobs';
 import { HURT_REASONS, MobManager, villagerProfession } from './play/mobManager';
 import { MobRenderer } from './render/mobRenderer';
+import { MapScreen } from './ui/mapScreen';
+import { MapTiles, drawMap, villagesIn, type MapMarker } from './ui/worldMap';
 
 export interface GameOptions {
   code: string;
@@ -130,6 +145,22 @@ function parseKey(key: string): [number, number, number] {
 /** A dice number from a block position (the same on every computer). */
 function positionSeed(x: number, y: number, z: number): number {
   return (Math.imul(x, 73856093) ^ Math.imul(y, 19349663) ^ Math.imul(z, 83492791)) >>> 0;
+}
+
+const REQUEST_ERRORS = {
+  nobody: '🧍 Muita pelaajia ei ole nyt maailmassa.',
+  who: '❓ Kenen luo? Kirjoita esimerkiksi /tpa kettu (tai /pelaajat)',
+  many: '🦊🦊 Samoja eläimiä on monta. Kirjoita numero perään, esim. /tpa kettu 2',
+  missing: '🔍 En löytänyt sitä pelaajaa. Kirjoita /pelaajat',
+} as const;
+
+/** Times of day that /aika and sleeping jump to (0 = sunrise). */
+const MORNING = 0.02;
+const NIGHT = 0.6;
+
+/** How many ms until the time of day `target` comes (0…1). */
+function skipTo(now: number, target: number): number {
+  return Math.round(((((target - now) % 1) + 1) % 1) * DAY.length * 1000);
 }
 
 const BUILDER_ERRORS: Record<string, string> = {
@@ -196,6 +227,16 @@ export class Game {
   private mobSyncTimer = 0;
   /** Moves the clock (ms), for testing day and night. */
   timeShift = 0;
+  /** Nights slept and /aika (ms), the same for everyone in the room. */
+  private timeOffset = 0;
+  /** Your home (/asetakoti), or null. */
+  private home: [number, number, number] | null = null;
+  /** A /tpa or /kutsu from someone, waiting for yes or no. */
+  private request: { from: string; avatar: string; kind: RequestKind; until: number } | null = null;
+  /** Players we asked, so only their answers can move us. */
+  private readonly asked = new Map<string, RequestKind>();
+  /** Lying in a bed. */
+  private sleeping = false;
   private readonly spawn: [number, number, number];
   /** Where you wake up after dying (your bed), or null for the world's start. */
   private bedSpawn: [number, number, number] | null = null;
@@ -209,6 +250,10 @@ export class Game {
   private lastZ = 0;
 
   private readonly circuit = new Circuit();
+  private readonly mapTiles: MapTiles;
+  private readonly mapScreen = new MapScreen();
+  private mapTimer = 0;
+  private minimapOn = true;
   private readonly effects: Effects;
   private redstoneTimer = 0;
   /** Lit TNT and seconds until it goes off, by "x,y,z". */
@@ -231,6 +276,7 @@ export class Game {
   ) {
     this.world = new VoxelWorld(seedFromCode(options.code));
     this.world.onChange = (x, y, z, old, id) => this.onBlockChange(x, y, z, old, id);
+    this.mapTiles = new MapTiles(this.world);
     renderer.setWorld(this.world);
     this.effects = new Effects(renderer.scene);
     this.effects.onBurst = (x, y, z) => sounds.pop(this.distanceTo(x, y, z));
@@ -260,6 +306,10 @@ export class Game {
     this.vitals = loadVitals(saved.vitals);
     this.xp = typeof saved.xp === 'number' && saved.xp >= 0 ? Math.floor(saved.xp) : 0;
     this.bedSpawn = isPosition(saved.bed) ? saved.bed : null;
+    this.home = isPosition(saved.home) ? saved.home : null;
+    if (options.solo && typeof saved.timeOffset === 'number' && saved.timeOffset >= 0) {
+      this.timeOffset = saved.timeOffset;
+    }
     this.mobRenderer = new MobRenderer(renderer.scene);
     this.mobs = new MobManager({
       drop: (stack, p) => this.spawnDrop(stack, p, true),
@@ -343,7 +393,12 @@ export class Game {
 
   /** Time of day, the same for everyone in this world. */
   get time(): number {
-    return timeOfDay(Date.now() + this.timeShift, this.world.seed);
+    return timeOfDay(this.clock, this.world.seed);
+  }
+
+  /** The world's clock (ms): the real clock plus nights slept and /aika. */
+  get clock(): number {
+    return Date.now() + this.timeShift + this.timeOffset;
   }
 
   /** Switches between creative and survival (from the pause menu). */
@@ -410,6 +465,8 @@ export class Game {
     );
 
     this.renderer.time = this.time;
+    this.renderer.clock = this.clock;
+    this.renderer.day = dayNumber(this.renderer.clock, this.world.seed);
     this.updateDrops(dt);
     if (this.ready) this.updateRedstone(dt);
     this.effects.update(dt);
@@ -417,6 +474,11 @@ export class Game {
     this.updateTarget();
     this.others.update(dt);
     if (this.ready && !this.dead) this.updateMobs(dt);
+    if (this.ready) this.updateMaps(dt);
+    if (this.request && performance.now() > this.request.until) {
+      this.request = null;
+      this.hud.showRequest(null);
+    }
     this.renderer.render();
   }
 
@@ -518,6 +580,39 @@ export class Game {
     } else this.renderer.hideHighlight();
     const m = this.mining;
     this.cracks.show(m?.x ?? 0, m?.y ?? 0, m?.z ?? 0, m ? m.progress : null);
+  }
+
+  // --- Maps ---------------------------------------------------------------
+
+  private updateMaps(dt: number): void {
+    const { x, z } = this.player;
+    const big = this.mapScreen.isOpen;
+    const radius = big ? this.mapScreen.radius : MAP.miniRadius;
+    this.mapTiles.update(x, z, radius, big ? MAP.bigBudgetMs : MAP.budgetMs);
+    this.mapTimer -= dt;
+    if (this.mapTimer > 0) return;
+    this.mapTimer = MAP.redraw;
+    const mini = document.getElementById('minimap') as HTMLCanvasElement | null;
+    if (mini) {
+      mini.hidden = !this.minimapOn;
+      if (this.minimapOn) drawMap(mini, this.mapTiles, x, z, 1, this.mapMarkers(MAP.miniRadius));
+    }
+    if (big) this.mapScreen.draw(this.mapTiles, x, z, this.mapMarkers(radius));
+  }
+
+  /** You, your friends, villages, your bed and the start, for the maps. */
+  private mapMarkers(radius: number): MapMarker[] {
+    const markers: MapMarker[] = [];
+    for (const v of villagesIn(this.world, this.player.x, this.player.z, radius)) {
+      markers.push({ x: v.x, z: v.z, icon: '🏘️', label: 'Kylä' });
+    }
+    markers.push({ x: this.spawn[0], z: this.spawn[2], icon: '⭐', label: 'Alku' });
+    if (this.bedSpawn) markers.push({ x: this.bedSpawn[0], z: this.bedSpawn[2], icon: '🛏️' });
+    for (const p of this.others.positions()) {
+      markers.push({ x: p.x, z: p.z, icon: this.avatars.get(p.id) ?? '🙂' });
+    }
+    markers.push({ x: this.player.x, z: this.player.z, icon: 'me', yaw: this.player.yaw });
+    return markers;
   }
 
   // --- Mining and building ----------------------------------------------
@@ -749,7 +844,8 @@ export class Game {
       type.partner && type.noDrop ? [x + type.partner[0], y, z + type.partner[2]] : [x, y, z];
     this.bedSpawn = [foot[0]! + 0.5, foot[1]! + 0.6, foot[2]! + 0.5];
     this.savePlayerNow();
-    this.hud.toast('🛏️ Herätyspaikka tallennettu! Heräät tästä sängystä.');
+    if (isNight(this.time)) this.sleepIn(...this.bedSpawn);
+    else this.hud.toast('🛏️ Herätyspaikka tallennettu! Heräät tästä sängystä. Nukkua voi yöllä.');
   }
 
   // --- Creatures --------------------------------------------------------
@@ -1025,6 +1121,8 @@ export class Game {
       mode: this.mode,
       xp: this.xp,
       bed: this.bedSpawn ?? undefined,
+      home: this.home ?? undefined,
+      timeOffset: this.room ? undefined : this.timeOffset,
     });
   }
 
@@ -1183,6 +1281,7 @@ export class Game {
   /** Every block change goes through here (ours, the others' and saved ones). */
   private onBlockChange(x: number, y: number, z: number, old: number, id: number): void {
     this.circuit.track(x, y, z, id);
+    this.mapTiles.markDirty(x, z);
     const k = editKey(x, y, z);
     if (id === TNT_LIT && !this.fuses.has(k)) {
       this.fuses.set(k, TNT_RULES.fuse);
@@ -1459,6 +1558,7 @@ export class Game {
   private onKey(code: string, e: KeyboardEvent): boolean {
     if (!this.ready || this.dead) return false;
     if (this.inventoryScreen.isOpen || this.builder.isOpen || this.hud.chatOpen) return false;
+    if (this.mapScreen.isOpen) return false;
     if (code === 'KeyE') {
       // The survival backpack has the small 2 × 2 crafting grid, like Minecraft.
       this.openScreen(this.mode === 'survival' ? new CraftingPanel(2) : null);
@@ -1474,8 +1574,23 @@ export class Game {
     } else if (code === 'KeyX' && this.placing) {
       this.cancelPlacing();
       this.hud.toast('✖️ Taikarakennus jäi asettamatta');
+    } else if (code === 'KeyY' && this.request) {
+      this.answerRequest(true);
+    } else if (code === 'KeyX' && this.request && !this.placing) {
+      this.answerRequest(false);
+    } else if (code === 'Slash' || e.key === '/') {
+      this.openOverlay((done) =>
+        this.hud.openChat((text) => this.sendChat(text), done, '/', commandHints),
+      );
+    } else if (code === 'KeyM') {
+      this.openOverlay((done) => this.mapScreen.open(done));
+    } else if (code === 'KeyN') {
+      this.minimapOn = !this.minimapOn;
+      this.mapTimer = 0;
     } else if (code === 'KeyT' || code === 'Enter') {
-      this.openOverlay((done) => this.hud.openChat((text) => this.sendChat(text), done));
+      this.openOverlay((done) =>
+        this.hud.openChat((text) => this.sendChat(text), done, '', commandHints),
+      );
     } else if (code === 'KeyZ' && this.input.locked) {
       this.undoBuild();
     } else if (code === 'KeyQ' && this.input.locked) {
@@ -1489,8 +1604,221 @@ export class Game {
   private sendChat(raw: string): void {
     const text = cleanChatText(raw);
     if (!text) return;
+    const command = parseCommand(text);
+    if (command) {
+      this.runCommand(command);
+      return;
+    }
     this.hud.addChat(this.options.avatar, text);
     this.room?.send({ t: 'chat', text });
+  }
+
+  // --- Commands, teleport requests and sleeping ---------------------------
+
+  /** A line from the game itself in the chat. */
+  private say(text: string): void {
+    this.hud.addChat('💡', text);
+  }
+
+  /** Other players with their animals (for /tpa and /pelaajat). */
+  private otherPlayers(): Someone[] {
+    return [...this.avatars.entries()]
+      .filter(([id]) => id !== 'me' && id !== this.myId)
+      .map(([id, avatar]) => ({ id, avatar }));
+  }
+
+  private runCommand(c: Command): void {
+    switch (c.kind) {
+      case 'help':
+        for (const info of COMMAND_LIST) this.say(info.help);
+        return;
+      case 'tpa':
+      case 'invite': {
+        if (!this.room?.isOpen) {
+          this.say('🧍 Olet yksin tässä maailmassa. Kutsu kaveri maailmakoodilla!');
+          return;
+        }
+        const result = findPlayer(c.target, this.otherPlayers());
+        if ('error' in result) {
+          this.say(REQUEST_ERRORS[result.error]);
+          return;
+        }
+        const who = result.found;
+        this.asked.set(who.id, c.kind);
+        this.room.send({ t: 'ask', to: who.id, kind: c.kind });
+        this.say(
+          c.kind === 'tpa'
+            ? `📨 Pyysit päästä ${who.avatar}:n luo. Odotetaan vastausta…`
+            : `📨 Kutsuit ${who.avatar}:n luoksesi. Odotetaan vastausta…`,
+        );
+        return;
+      }
+      case 'accept':
+      case 'deny':
+        if (!this.request) this.say('📭 Kukaan ei ole pyytänyt mitään.');
+        else this.answerRequest(c.kind === 'accept');
+        return;
+      case 'home':
+        if (!this.home) this.say('🏠 Sinulla ei ole vielä kotia. Kirjoita /asetakoti');
+        else {
+          this.teleportTo(...this.home);
+          this.say('🏠 Tervetuloa kotiin!');
+        }
+        return;
+      case 'sethome':
+        this.home = [this.player.x, this.player.y, this.player.z];
+        this.savePlayerNow();
+        this.say('🏠 Tämä on nyt kotisi. /koti tuo sinut tänne.');
+        return;
+      case 'spawn':
+        this.teleportTo(...this.spawn);
+        this.say('⭐ Takaisin alussa!');
+        return;
+      case 'players': {
+        const all = [this.options.avatar, ...this.otherPlayers().map((p) => p.avatar)];
+        this.say(`👥 Maailmassa: ${all.map((a) => `${a} ${animalName(a)}`).join(', ')}`);
+        return;
+      }
+      case 'where': {
+        const { x, y, z } = this.player;
+        const biome = BIOME_NAMES[this.world.terrain.biomeAt(Math.floor(x), Math.floor(z))];
+        this.say(`📍 x ${Math.floor(x)}, y ${Math.floor(y)}, z ${Math.floor(z)} (${biome})`);
+        return;
+      }
+      case 'time': {
+        if (!c.value) {
+          this.say('⏰ Kirjoita /aika päivä tai /aika yö');
+          return;
+        }
+        const skip = skipTo(this.time, c.value === 'day' ? MORNING : NIGHT);
+        if (this.room?.isOpen) this.room.send({ t: 'time', skip });
+        else {
+          this.timeOffset += skip;
+          this.savePlayerNow();
+        }
+        this.say(c.value === 'day' ? '☀️ Nyt on päivä!' : '🌙 Nyt on yö!');
+        return;
+      }
+      case 'mode':
+        if (c.value && c.value !== this.mode) this.toggleMode();
+        else if (!c.value) this.say('🛠️ Kirjoita /tila luova tai /tila selviytyjä');
+        return;
+      case 'unknown':
+        this.say(`❓ En tunne komentoa /${c.name}. Kirjoita /apua`);
+        return;
+    }
+  }
+
+  /** Someone asked to come here (tpa) or asked you to come (invite). */
+  private receiveRequest(from: string, avatar: string, kind: RequestKind): void {
+    this.request = {
+      from,
+      avatar,
+      kind,
+      until: performance.now() + COMMANDS.requestSeconds * 1000,
+    };
+    sounds.join();
+    const text =
+      kind === 'tpa' ? `${avatar} haluaa tulla luoksesi.` : `${avatar} kutsuu sinut luokseen!`;
+    this.hud.showRequest(
+      text,
+      () => this.answerRequest(true),
+      () => this.answerRequest(false),
+    );
+  }
+
+  private answerRequest(yes: boolean): void {
+    const r = this.request;
+    if (!r) return;
+    this.request = null;
+    this.hud.showRequest(null);
+    const p: [number, number, number] = [this.player.x, this.player.y, this.player.z];
+    this.room?.send({ t: 'answer', to: r.from, kind: r.kind, yes, ...(yes ? { p } : {}) });
+    if (!yes) {
+      this.say(`❌ Sanoit ei ${r.avatar}:lle.`);
+      return;
+    }
+    if (r.kind === 'invite') {
+      // Go to the one who invited you.
+      const them = this.others.positions().find((o) => o.id === r.from);
+      if (them) this.teleportTo(them.x, them.y, them.z);
+      this.say(`✨ Hyppäsit ${r.avatar}:n luo!`);
+    } else this.say(`✅ ${r.avatar} tulee luoksesi!`);
+  }
+
+  private receiveAnswer(
+    from: string,
+    avatar: string,
+    kind: RequestKind,
+    yes: boolean,
+    p?: [number, number, number],
+  ): void {
+    if (this.asked.get(from) !== kind) return;
+    this.asked.delete(from);
+    if (!yes) {
+      this.say(`🙅 ${avatar} sanoi ei.`);
+      return;
+    }
+    if (kind === 'tpa' && p) {
+      this.teleportTo(...p);
+      this.say(`✨ Hyppäsit ${avatar}:n luo!`);
+    } else this.say(`🎉 ${avatar} tulee luoksesi!`);
+  }
+
+  /** Jumps to a place, a little higher if it is inside blocks. */
+  private teleportTo(x: number, y: number, z: number): void {
+    const free = (by: number) =>
+      !isSolid(this.world.getBlock(Math.floor(x), by, Math.floor(z))) &&
+      !isSolid(this.world.getBlock(Math.floor(x), by + 1, Math.floor(z)));
+    let ty = Math.floor(y);
+    for (let i = 0; i < COMMANDS.freeSpotSearch && !free(ty); i++) ty++;
+    const p = this.player;
+    p.x = x;
+    p.y = Math.max(y, ty);
+    p.z = z;
+    p.vx = p.vy = p.vz = 0;
+    this.fallStart = null;
+    this.lastSentMove = null;
+    this.moveTimer = 0;
+    sounds.magic();
+  }
+
+  /** Lies down in a bed at night; when everyone sleeps it becomes morning. */
+  private sleepIn(x: number, y: number, z: number): void {
+    if (!isNight(this.time)) {
+      this.hud.toast('🛏️ Herätyspaikka tallennettu! Nukkua voi vain yöllä.');
+      return;
+    }
+    this.sleeping = true;
+    [this.player.x, this.player.y, this.player.z] = [x, y, z];
+    this.player.vx = this.player.vy = this.player.vz = 0;
+    this.overlayOpen = true;
+    this.input.unlock();
+    const skip = skipTo(this.time, MORNING);
+    if (!this.room?.isOpen) {
+      this.hud.showSleep('Hyvää yötä…');
+      setTimeout(() => {
+        this.timeOffset += skip;
+        this.wakeUp('☀️ Hyvää huomenta!');
+      }, COMMANDS.sleepFadeMs);
+      return;
+    }
+    this.hud.showSleep('Odotetaan, että kaikki menevät nukkumaan…', () => this.wakeUp(null));
+    this.room.send({ t: 'sleep', on: true, skip });
+  }
+
+  /** Gets up from the bed; `greeting` is shown when the night was skipped. */
+  private wakeUp(greeting: string | null): void {
+    if (!this.sleeping) return;
+    this.sleeping = false;
+    this.hud.showSleep(null);
+    if (greeting) this.hud.toast(greeting);
+    else this.room?.send({ t: 'sleep', on: false, skip: 0 });
+    this.savePlayerNow();
+    this.overlayOpen = false;
+    this.resume();
+    // Without a click the mouse can't be caught again: show the pause menu.
+    if (!this.input.locked) this.callbacks.onPause(true);
   }
 
   /** Shows a window over the game; the mouse comes back when it closes. */
@@ -1555,6 +1883,7 @@ export class Game {
     switch (msg.t) {
       case 'welcome':
         this.myId = msg.you;
+        this.timeOffset = msg.timeOffset ?? 0;
         this.mobs.myId = msg.you;
         this.others.clear();
         for (const p of msg.players) {
@@ -1621,6 +1950,27 @@ export class Game {
         return;
       case 'full':
         this.hud.toast('⛔ Maailma on täynnä. Kokeile myöhemmin!');
+        return;
+      case 'ask':
+        this.receiveRequest(msg.from, msg.avatar, msg.kind);
+        return;
+      case 'answer':
+        this.receiveAnswer(msg.from, msg.avatar, msg.kind, msg.yes, msg.p);
+        return;
+      case 'time':
+        this.timeOffset = msg.offset;
+        if (msg.slept && this.sleeping) this.wakeUp('☀️ Hyvää huomenta! Kaikki nukkuivat yön yli.');
+        else if (msg.slept) this.hud.toast('☀️ Yö nukuttiin yli!');
+        else if (msg.avatar) this.hud.toast(`⏰ ${msg.avatar} vaihtoi aikaa.`);
+        return;
+      case 'sleepers':
+        if (this.sleeping) {
+          this.hud.showSleep(`💤 ${msg.sleeping}/${msg.total} nukkuu. Odotetaan muita…`, () =>
+            this.wakeUp(null),
+          );
+        } else if (msg.sleeping > 0) {
+          this.hud.toast(`🛏️ ${msg.sleeping}/${msg.total} nukkuu. Mene sänkyyn, niin yö loppuu!`);
+        }
         return;
       case 'firework':
         this.effects.launch(...msg.p, msg.kind, msg.seed);

@@ -68,6 +68,10 @@ export interface SavedPlayer {
   xp?: number;
   /** Where your bed is (you wake up there). */
   bed?: [number, number, number];
+  /** Your home (/asetakoti). */
+  home?: [number, number, number];
+  /** Alone: how far the clock was moved by sleeping and /aika (ms). */
+  timeOffset?: number;
 }
 
 export function loadPlayer(code: string): SavedPlayer {

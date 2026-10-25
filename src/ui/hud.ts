@@ -8,7 +8,9 @@ import type { Vitals } from '../logic/survival';
 import type { RoomStatus } from '../net/room';
 import { fillSlot } from './slots';
 
-const CHAT_LINES = 8;
+const CHAT_LINES = 10;
+/** Command hints shown under the chat box at most. */
+const CHAT_HINTS = 6;
 const CHAT_FADE_MS = 10_000;
 const TOAST_MS = 2600;
 const ITEM_NAME_MS = 1400;
@@ -188,18 +190,43 @@ export class Hud {
     setTimeout(() => line.classList.add('faded'), CHAT_FADE_MS);
   }
 
-  openChat(onSend: (text: string) => void, onClose: () => void): void {
+  /**
+   * Opens the chat box. `start` is typed in already ("/" for commands);
+   * `hints` lists commands that match what is typed.
+   */
+  openChat(
+    onSend: (text: string) => void,
+    onClose: () => void,
+    start = '',
+    hints: (text: string) => string[] = () => [],
+  ): void {
     const form = $('chat-form') as HTMLFormElement;
     const input = $('chat-input') as HTMLInputElement;
     const log = $('chat-log');
+    const hint = $('chat-hint');
     form.hidden = false;
     log.classList.add('open');
-    input.value = '';
+    input.value = start;
     input.focus();
+    const showHints = () => {
+      const list = hints(input.value);
+      hint.hidden = list.length === 0;
+      hint.replaceChildren(
+        ...list.slice(0, CHAT_HINTS).map((h) => {
+          const row = document.createElement('div');
+          row.textContent = h;
+          return row;
+        }),
+      );
+    };
+    input.oninput = showHints;
+    showHints();
     const close = () => {
       form.hidden = true;
+      hint.hidden = true;
       log.classList.remove('open');
       input.onkeydown = null;
+      input.oninput = null;
       onClose();
     };
     form.onsubmit = (e) => {
@@ -210,6 +237,27 @@ export class Hud {
     input.onkeydown = (e) => {
       if (e.key === 'Escape') close();
     };
+  }
+
+  // --- Teleport requests and sleeping ------------------------------------
+
+  /** A question from another player with yes and no buttons (null hides it). */
+  showRequest(text: string | null, onYes?: () => void, onNo?: () => void): void {
+    const box = $('request');
+    box.hidden = text === null;
+    if (text === null) return;
+    $('request-text').textContent = text;
+    $('request-yes').onclick = () => onYes?.();
+    $('request-no').onclick = () => onNo?.();
+  }
+
+  /** The dark sleep screen (null hides it). */
+  showSleep(text: string | null, onWake?: () => void): void {
+    const screen = $('sleep');
+    screen.hidden = text === null;
+    if (text === null) return;
+    $('sleep-text').textContent = text;
+    $('wake').onclick = () => onWake?.();
   }
 
   get chatOpen(): boolean {

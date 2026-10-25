@@ -76,6 +76,17 @@ export const LIGHT = {
   falloff: 2,
   /** Darkest a block can look (0 = black). */
   minBrightness: 0.07,
+  /**
+   * How fast torch light fades per light level (Minecraft-like: a torch lights
+   * a room). Sunlight uses `skyCurve`.
+   */
+  torchCurve: 0.9,
+  skyCurve: 0.82,
+  /** Torch light colour (warm) and moonlight colour (blue). */
+  torchColor: [1.0, 0.84, 0.62],
+  moonColor: [0.62, 0.7, 1.0],
+  /** Torches flicker this much (0 = not at all). */
+  flicker: 0.05,
 } as const;
 
 // --- Player ---------------------------------------------------------------
@@ -108,7 +119,7 @@ export const DAY = {
   /** Seconds in one whole day (Minecraft: 20 minutes). */
   length: 1200,
   /** How much sunlight is left at night (moonlight). */
-  nightSky: 0.27,
+  nightSky: 0.32,
   dayColor: 0x8ecbff,
   nightColor: 0x0b1026,
   sunsetColor: 0xf6a35e,
@@ -289,6 +300,58 @@ export const FIREWORKS = {
 } as const;
 
 // --- Rendering ------------------------------------------------------------
+/** The sky: gradient, stars, moon and clouds. */
+export const SKY = {
+  /** The sky dome must be closer than the camera's far end. */
+  radius: 100,
+  sunSize: 14,
+  moonSize: 10,
+  /** How much the sun's path leans to the south. */
+  tilt: 0.25,
+  stars: 700,
+  horizonDay: 0xc4e4ff,
+  horizonNight: 0x141c38,
+  /** Clouds float above the highest mountains. */
+  cloudHeight: 112,
+  /** One cloud pixel is this many blocks; the picture is this many pixels wide. */
+  cloudBlock: 8,
+  cloudPixels: 64,
+  /** How many cloud blobs are in the picture. */
+  cloudBlobs: 70,
+  /** The cloud layer drawn around you (blocks). */
+  cloudSpan: 480,
+  /** Blocks per second the clouds drift east. */
+  cloudSpeed: 0.8,
+} as const;
+
+/** Chat commands (/tpa, /kutsu, /koti…) and sleeping in a bed. */
+export const COMMANDS = {
+  /** A teleport request waits this long for an answer (seconds). */
+  requestSeconds: 60,
+  /** Requests and time changes from one player in NET.chatWindowMs (the room server checks). */
+  rateLimit: 4,
+  /** How far up a teleport looks for a free spot. */
+  freeSpotSearch: 12,
+  /** The night skip fades the screen this long (ms). */
+  sleepFadeMs: 1500,
+} as const;
+
+/** The map (M) and the small map in the corner. */
+export const MAP = {
+  /** Blocks from you to the edge of the small map. */
+  miniRadius: 64,
+  /** Pictures kept in memory (one per chunk). */
+  maxTiles: 8000,
+  /** Milliseconds per frame for drawing new map pictures. */
+  budgetMs: 2,
+  bigBudgetMs: 10,
+  /** How often the maps are drawn again (seconds). */
+  redraw: 0.25,
+  /** Zoom steps of the big map (blocks per pixel). */
+  zooms: [0.5, 1, 2],
+  iconSize: 14,
+} as const;
+
 export const PISTONS = {
   /** A piston pushes at most this many blocks (Minecraft: 12). */
   maxPush: 12,
@@ -429,16 +492,16 @@ export const CODE_NUMBER_MAX = 100;
 // --- Avatars --------------------------------------------------------------
 // Players are animals. Never names or other personal data.
 export const AVATARS = [
-  { emoji: '🦊', color: 0xf08a24 },
-  { emoji: '🐻', color: 0x8b5a2b },
-  { emoji: '🐼', color: 0xeeeeee },
-  { emoji: '🐸', color: 0x4caf50 },
-  { emoji: '🐷', color: 0xf4a7b9 },
-  { emoji: '🐰', color: 0xd8d0c8 },
-  { emoji: '🦁', color: 0xe8b43a },
-  { emoji: '🐧', color: 0x333a44 },
-  { emoji: '🦖', color: 0x5aa04a },
-  { emoji: '🐙', color: 0xb05cc8 },
+  { emoji: '🦊', color: 0xf08a24, name: 'kettu' },
+  { emoji: '🐻', color: 0x8b5a2b, name: 'karhu' },
+  { emoji: '🐼', color: 0xeeeeee, name: 'panda' },
+  { emoji: '🐸', color: 0x4caf50, name: 'sammakko' },
+  { emoji: '🐷', color: 0xf4a7b9, name: 'possu' },
+  { emoji: '🐰', color: 0xd8d0c8, name: 'pupu' },
+  { emoji: '🦁', color: 0xe8b43a, name: 'leijona' },
+  { emoji: '🐧', color: 0x333a44, name: 'pingviini' },
+  { emoji: '🦖', color: 0x5aa04a, name: 'dino' },
+  { emoji: '🐙', color: 0xb05cc8, name: 'mustekala' },
 ] as const;
 export const AVATAR_EMOJIS: readonly string[] = AVATARS.map((a) => a.emoji);
 

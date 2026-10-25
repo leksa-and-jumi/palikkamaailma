@@ -3,10 +3,11 @@
 
 import * as THREE from 'three';
 import { CHUNK_SIZE, DAY, LIGHT, RENDER } from '../config';
-import { daylight, sunHeight, sunsetGlow } from '../logic/daytime';
+import { daylight } from '../logic/daytime';
 import type { BlockBox } from '../logic/blocks';
 import { buildChunkMesh, type MeshData } from '../logic/mesher';
 import { chunkKey, type VoxelWorld } from '../logic/world';
+import { Sky } from './sky';
 import { createAtlasTexture } from './textures';
 
 interface ChunkMeshes {
@@ -15,43 +16,31 @@ interface ChunkMeshes {
 }
 
 const HIGHLIGHT_GROW = 0.004;
-const SUN_DISTANCE = 80;
-const SUN_SIZE = 12;
-const MOON_SIZE = 8;
 
 /**
  * Block colours carry r = shade, g = sunlight, b = torch light (see mesher).
  * This turns them into brightness with the current daylight.
  */
-function addDaylight(material: THREE.Material, uniform: { value: number }): void {
+function addDaylight(
+  material: THREE.Material,
+  uniforms: { uDaylight: { value: number }; uTorch: { value: number } },
+): void {
+  const v3 = (c: readonly number[]) => `vec3(${c.map((n) => n.toFixed(3)).join(', ')})`;
   material.onBeforeCompile = (shader) => {
-    shader.uniforms.uDaylight = uniform;
-    shader.fragmentShader = `uniform float uDaylight;\n${shader.fragmentShader}`.replace(
-      '#include <color_fragment>',
-      `float skyLight = vColor.g * mix(${DAY.nightSky.toFixed(3)}, 1.0, uDaylight);
-      float light = max(skyLight, vColor.b);
-      float bright = max(${LIGHT.minBrightness.toFixed(3)}, pow(0.82, 15.0 * (1.0 - light)));
-      diffuseColor.rgb *= vColor.r * bright;`,
-    );
+    Object.assign(shader.uniforms, uniforms);
+    shader.fragmentShader =
+      `uniform float uDaylight;\nuniform float uTorch;\n${shader.fragmentShader}`.replace(
+        '#include <color_fragment>',
+        `float skyLight = vColor.g * mix(${DAY.nightSky.toFixed(3)}, 1.0, uDaylight);
+      float skyBright = pow(${LIGHT.skyCurve.toFixed(3)}, 15.0 * (1.0 - skyLight));
+      float torchBright = vColor.b > 0.0 ? pow(${LIGHT.torchCurve.toFixed(3)}, 15.0 * (1.0 - vColor.b)) * uTorch : 0.0;
+      // Moonlight is blue, torch light is warm (like Minecraft).
+      vec3 skyColor = mix(${v3(LIGHT.moonColor)}, vec3(1.0), uDaylight);
+      vec3 light = max(skyColor * skyBright, ${v3(LIGHT.torchColor)} * torchBright);
+      light = max(light, vec3(${LIGHT.minBrightness.toFixed(3)}));
+      diffuseColor.rgb *= vColor.r * light;`,
+      );
   };
-}
-
-function disc(size: number, color: string, glow: string): THREE.Sprite {
-  const canvas = document.createElement('canvas');
-  canvas.width = canvas.height = 32;
-  const ctx = canvas.getContext('2d')!;
-  ctx.fillStyle = glow;
-  ctx.fillRect(0, 0, 32, 32);
-  ctx.fillStyle = color;
-  ctx.fillRect(6, 6, 20, 20);
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.magFilter = THREE.NearestFilter;
-  const sprite = new THREE.Sprite(
-    new THREE.SpriteMaterial({ map: texture, fog: false, depthWrite: false, transparent: true }),
-  );
-  sprite.scale.set(size, size, size);
-  sprite.renderOrder = -1;
-  return sprite;
 }
 
 export function toGeometry(data: MeshData): THREE.BufferGeometry | null {
@@ -75,15 +64,16 @@ export class WorldRenderer {
   private readonly highlight: THREE.LineSegments;
   private readonly fog: THREE.Fog;
   private world: VoxelWorld | null = null;
-  private readonly daylightUniform = { value: 1 };
+  private readonly lightUniforms = { uDaylight: { value: 1 }, uTorch: { value: 1 } };
+  private readonly sky: Sky;
   private readonly hemisphere: THREE.HemisphereLight;
   private readonly sunLight: THREE.DirectionalLight;
-  private readonly sun = disc(SUN_SIZE, '#fff6c0', 'rgba(255,230,120,0.35)');
-  private readonly moon = disc(MOON_SIZE, '#e8ecf4', 'rgba(200,210,255,0.2)');
-  private readonly skyColor = new THREE.Color(RENDER.skyColor);
   private underwater = false;
   /** Current time of day (0…1), set every frame by the game. */
   time = 0.25;
+  /** The shared clock (ms) and day number, for clouds and the moon. */
+  clock = 0;
+  day = 0;
 
   constructor(container: HTMLElement) {
     this.renderer = new THREE.WebGLRenderer({
@@ -111,7 +101,7 @@ export class WorldRenderer {
     this.sunLight = new THREE.DirectionalLight(0xffffff, 1.2);
     this.sunLight.position.set(0.4, 1, 0.3);
     this.scene.add(this.sunLight);
-    this.scene.add(this.sun, this.moon);
+    this.sky = new Sky(this.scene);
 
     const atlas = createAtlasTexture();
     this.solidMaterial = new THREE.MeshBasicMaterial({
@@ -127,8 +117,8 @@ export class WorldRenderer {
       depthWrite: false,
       side: THREE.DoubleSide,
     });
-    addDaylight(this.solidMaterial, this.daylightUniform);
-    addDaylight(this.waterMaterial, this.daylightUniform);
+    addDaylight(this.solidMaterial, this.lightUniforms);
+    addDaylight(this.waterMaterial, this.lightUniforms);
 
     const box = new THREE.EdgesGeometry(
       new THREE.BoxGeometry(1 + HIGHLIGHT_GROW * 2, 1 + HIGHLIGHT_GROW * 2, 1 + HIGHLIGHT_GROW * 2),
@@ -163,26 +153,21 @@ export class WorldRenderer {
   /** Sky colour, sun, moon and light for the current time of day. */
   private updateSky(): void {
     const light = daylight(this.time);
-    this.daylightUniform.value = light;
-    const sky = this.skyColor
-      .setHex(DAY.nightColor)
-      .lerp(new THREE.Color(DAY.dayColor), light)
-      .lerp(new THREE.Color(DAY.sunsetColor), sunsetGlow(this.time) * 0.6);
+    this.lightUniforms.uDaylight.value = light;
+    // Torches flicker a little (two waves, so it never looks like a loop).
+    const t = performance.now() / 1000;
+    this.lightUniforms.uTorch.value =
+      1 - LIGHT.flicker * (0.5 + 0.3 * Math.sin(t * 7.3) + 0.2 * Math.sin(t * 17.9));
+    this.sky.update(this.camera, this.time, this.clock, this.day);
     const color = this.underwater
       ? new THREE.Color(RENDER.underwaterColor).multiplyScalar(0.3 + 0.7 * light)
-      : sky;
+      : this.sky.horizon;
     (this.scene.background as THREE.Color).copy(color);
     this.fog.color.copy(color);
+    this.sky.setVisible(!this.underwater);
     this.hemisphere.intensity = 0.5 + 1.7 * light;
     this.sunLight.intensity = 1.2 * light;
-
-    // The sun goes round from east (+x) over the top to west; the moon is opposite.
-    const angle = this.time * Math.PI * 2;
-    const cam = this.camera.position;
-    const dir = new THREE.Vector3(Math.cos(angle), sunHeight(this.time), 0.25).normalize();
-    this.sun.position.copy(cam).addScaledVector(dir, SUN_DISTANCE);
-    this.moon.position.copy(cam).addScaledVector(dir, -SUN_DISTANCE);
-    this.sunLight.position.copy(dir);
+    this.sunLight.position.copy(this.sky.sunDir);
   }
 
   /** Frames the block you look at; `box` fits it around a door, slab or torch. */

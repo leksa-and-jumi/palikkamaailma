@@ -2,7 +2,8 @@
 // Both sides use this file. Everything from the network is checked here, so
 // a broken or nasty message can never put strange data into the world.
 
-import { AVATAR_EMOJIS, NET, WORLD_LIMIT } from '../config';
+import { AVATAR_EMOJIS, DAY, NET, WORLD_LIMIT } from '../config';
+import type { RequestKind } from './commands';
 import { getBlockType, isValidBlockId } from './blocks';
 import { parseContainer, type Container } from './containers';
 import { isFireworkKind } from './fireworks';
@@ -67,10 +68,25 @@ export type ClientMessage =
   /** New contents after the player moved items. */
   | { t: 'container'; p: [number, number, number]; data: Container }
   /** A rocket launched from the hand (not stored, just shown to the others). */
-  | { t: 'firework'; p: [number, number, number]; kind: number; seed: number };
+  | { t: 'firework'; p: [number, number, number]; kind: number; seed: number }
+  /** /tpa or /kutsu: asks another player (only they hear it). */
+  | { t: 'ask'; to: string; kind: RequestKind }
+  /** The answer to a request; `p` is where you are (so they can come). */
+  | { t: 'answer'; to: string; kind: RequestKind; yes: boolean; p?: [number, number, number] }
+  /** Lying down in a bed (or getting up). `skip` = ms from now to the morning. */
+  | { t: 'sleep'; on: boolean; skip: number }
+  /** /aika: move the world's clock forward by `skip` ms. */
+  | { t: 'time'; skip: number };
 
 export type ServerMessage =
-  | { t: 'welcome'; you: string; players: PlayerInfo[]; items: DroppedItem[] }
+  | {
+      t: 'welcome';
+      you: string;
+      players: PlayerInfo[];
+      items: DroppedItem[];
+      /** How far the world's clock has been moved (sleeping, /aika), ms. */
+      timeOffset?: number;
+    }
   /** Changed blocks, sent in pages after welcome. `done` is true on the last page. */
   | { t: 'edits'; edits: Edit[]; done: boolean }
   | { t: 'join'; player: PlayerInfo }
@@ -92,9 +108,29 @@ export type ServerMessage =
   | { t: 'picked'; id: string; by: string }
   | { t: 'container'; p: [number, number, number]; data: Container }
   | { t: 'firework'; p: [number, number, number]; kind: number; seed: number }
+  | { t: 'ask'; from: string; avatar: string; kind: RequestKind }
+  | {
+      t: 'answer';
+      from: string;
+      avatar: string;
+      kind: RequestKind;
+      yes: boolean;
+      p?: [number, number, number];
+    }
+  /** The world's clock moved: everyone uses the new offset. */
+  | { t: 'time'; offset: number; avatar?: string; slept?: boolean }
+  /** How many are sleeping in beds now. */
+  | { t: 'sleepers'; sleeping: number; total: number }
   | { t: 'full' };
 
 const POSITION_LIMIT = WORLD_LIMIT + 100;
+const REQUEST_KINDS: readonly RequestKind[] = ['tpa', 'invite'];
+/** A clock jump is never more than a whole day. */
+const MAX_SKIP = DAY.length * 1000;
+
+function isSkip(v: unknown): v is number {
+  return typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= MAX_SKIP;
+}
 const MAX_DROP_SPEED = 20;
 
 function isFiniteNumber(v: unknown, limit = POSITION_LIMIT): v is number {
@@ -243,6 +279,30 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       }
       return { t: 'firework', p, kind: msg.kind, seed };
     }
+    case 'ask':
+      if (typeof msg.to !== 'string' || !ID_PATTERN.test(msg.to)) return null;
+      if (!REQUEST_KINDS.includes(msg.kind as RequestKind)) return null;
+      return { t: 'ask', to: msg.to, kind: msg.kind as RequestKind };
+    case 'answer': {
+      if (typeof msg.to !== 'string' || !ID_PATTERN.test(msg.to)) return null;
+      if (!REQUEST_KINDS.includes(msg.kind as RequestKind) || typeof msg.yes !== 'boolean') {
+        return null;
+      }
+      const p = msg.p === undefined ? undefined : parseVec3(msg.p);
+      if (p === null) return null;
+      const answer = {
+        t: 'answer',
+        to: msg.to,
+        kind: msg.kind as RequestKind,
+        yes: msg.yes,
+      } as const;
+      return p ? { ...answer, p } : answer;
+    }
+    case 'sleep':
+      if (typeof msg.on !== 'boolean' || !isSkip(msg.skip)) return null;
+      return { t: 'sleep', on: msg.on, skip: msg.skip };
+    case 'time':
+      return isSkip(msg.skip) ? { t: 'time', skip: msg.skip } : null;
     default:
       return null;
   }

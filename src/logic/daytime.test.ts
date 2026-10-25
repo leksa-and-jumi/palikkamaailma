@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DAY } from '../config';
-import { dayLabel, daylight, isNight, timeOfDay } from './daytime';
+import { dayLabel, daylight, isNight, timeOfDay, dayNumber, moonPhase } from './daytime';
 
 describe('day and night', () => {
   it('goes round once per day length', () => {
@@ -22,5 +22,13 @@ describe('day and night', () => {
     expect(isNight(0.25)).toBe(false);
     expect(dayLabel(0.25)).toBe('☀️ Päivä');
     expect(dayLabel(0.75)).toBe('🌙 Yö');
+  });
+
+  it('counts days and goes round the moon phases', () => {
+    const day = DAY.length * 1000;
+    expect(dayNumber(day * 3 + 10, 0)).toBe(3);
+    expect(moonPhase(3)).toBe(3);
+    expect(moonPhase(9)).toBe(1);
+    expect(moonPhase(-1)).toBe(7);
   });
 });
