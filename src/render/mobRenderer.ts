@@ -419,6 +419,9 @@ interface Model {
 
 export class MobRenderer {
   private readonly models = new Map<string, Model>();
+  private readonly arrows = new Map<number, THREE.Mesh>();
+  private readonly arrowGeometry = new THREE.BoxGeometry(0.06, 0.06, 0.6);
+  private readonly arrowMaterial = new THREE.MeshLambertMaterial({ color: 0x8a6a40 });
   /** The creature under the crosshair shows its name tag. */
   highlighted: string | null = null;
 
@@ -557,7 +560,39 @@ export class MobRenderer {
     }
   }
 
+  /** Skeleton arrows in flight. */
+  syncArrows(
+    arrows: readonly {
+      id: number;
+      x: number;
+      y: number;
+      z: number;
+      vx: number;
+      vy: number;
+      vz: number;
+    }[],
+  ): void {
+    const seen = new Set<number>();
+    for (const a of arrows) {
+      seen.add(a.id);
+      let mesh = this.arrows.get(a.id);
+      if (!mesh) {
+        mesh = new THREE.Mesh(this.arrowGeometry, this.arrowMaterial);
+        this.scene.add(mesh);
+        this.arrows.set(a.id, mesh);
+      }
+      mesh.position.set(a.x, a.y, a.z);
+      mesh.lookAt(a.x + a.vx, a.y + a.vy, a.z + a.vz);
+    }
+    for (const [id, mesh] of this.arrows) {
+      if (seen.has(id)) continue;
+      this.scene.remove(mesh);
+      this.arrows.delete(id);
+    }
+  }
+
   clear(): void {
     this.sync([], 0);
+    this.syncArrows([]);
   }
 }
