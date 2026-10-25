@@ -511,7 +511,78 @@ const SPRITES: Record<string, Sprite> = {
     ],
     colors: { e: [240, 230, 200] },
   },
+  flint_and_steel: {
+    rows: [
+      '................',
+      '..mmmm..........',
+      '.m....m.........',
+      '.m.....m........',
+      '..m.....m.......',
+      '...mm....m......',
+      '.....m...m...f..',
+      '......mmm...fff.',
+      '...........fffff',
+      '............fff.',
+      '.............f..',
+    ],
+    colors: { m: [200, 200, 206], f: [60, 60, 66] },
+  },
+  lever: {
+    rows: [
+      '................',
+      '.....r..........',
+      '.....s..........',
+      '......s.........',
+      '......s.........',
+      '.......s........',
+      '.......s........',
+      '........s.......',
+      '....cccccccc....',
+      '....cccccccc....',
+      '....cccccccc....',
+    ],
+    colors: { s: HANDLE, r: [130, 92, 50], c: [130, 130, 130] },
+  },
+  button: {
+    rows: [
+      '................',
+      '....bbbbbbbb....',
+      '...bwwwwwwwwb...',
+      '..bwwwwwwwwwwb..',
+      '..bbbbbbbbbbbb..',
+      '..bbbbbbbbbbbb..',
+      '..BBBBBBBBBBBB..',
+      '................',
+    ],
+    colors: { b: [140, 140, 140], w: [185, 185, 185], B: [95, 95, 95] },
+  },
+  firework_rocket: rocket([255, 59, 48]),
+  firework_big: rocket([10, 132, 255]),
+  firework_star: rocket([255, 214, 10]),
+  firework_creeper: rocket([52, 199, 89]),
+  firework_heart: rocket([255, 79, 139]),
 };
+
+/** A paper rocket with a coloured top and a stick. */
+function rocket(top: RGB): Sprite {
+  return {
+    rows: [
+      '.......tt.......',
+      '......tttt......',
+      '......pppp......',
+      '......pPpp......',
+      '......pppp......',
+      '......pppP......',
+      '......pppp......',
+      '.......s........',
+      '.......s........',
+      '.......s........',
+      '.......s........',
+      '.......s........',
+    ],
+    colors: { t: top, p: [235, 225, 205], P: [200, 60, 50], s: HANDLE },
+  };
+}
 
 function spriteFor(id: number): Sprite | null {
   const item = getItem(id);
@@ -557,7 +628,8 @@ function spriteCanvas(id: number): HTMLCanvasElement | null {
 /** Draws any item (block or not) into a square canvas. */
 export function drawItemIcon(canvas: HTMLCanvasElement, id: number): void {
   const item = getItem(id);
-  if (item?.block !== undefined) {
+  // Levers, buttons and redstone dust have their own little pictures.
+  if (item?.block !== undefined && !SPRITES[item.key]) {
     drawBlockIcon(canvas, item.block);
     return;
   }

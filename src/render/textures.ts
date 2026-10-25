@@ -112,6 +112,96 @@ function framed(base: RGB, frame: RGB, inside: (px: Pixel, rnd: () => number) =>
   };
 }
 
+/** TNT; `flash` > 0 makes it whiter (lit TNT). */
+function tntSide(flash: number): Painter {
+  return (px, rnd) => {
+    for (let y = 0; y < S; y++) {
+      for (let x = 0; x < S; x++) {
+        const band = y >= 5 && y <= 10;
+        const c: RGB = band ? [236, 236, 236] : [206, 52, 40];
+        px(x, y, vary(whiter(c, flash), rnd, band ? 10 : 16));
+      }
+    }
+    // "TNT" letters on the white band.
+    const letters = ['111.1..1.111', '.1..11.1..1.', '.1..1.11..1.', '.1..1..1..1.'];
+    letters.forEach((row, dy) =>
+      [...row].forEach((c, dx) => c === '1' && px(dx + 2, dy + 6, whiter([30, 30, 30], flash))),
+    );
+  };
+}
+
+function tntTop(flash: number): Painter {
+  return (px, rnd) => {
+    noisy(whiter([206, 52, 40], flash), 16)(px, rnd);
+    for (let y = 6; y < 10; y++) for (let x = 6; x < 10; x++) px(x, y, whiter([60, 60, 60], flash));
+  };
+}
+
+function whiter(c: RGB, amount: number): RGB {
+  return [c[0] + (255 - c[0]) * amount, c[1] + (255 - c[1]) * amount, c[2] + (255 - c[2]) * amount];
+}
+
+/** Redstone dust: red specks with small gaps. */
+function dust(base: RGB): Painter {
+  return (px, rnd) => {
+    for (let y = 0; y < S; y++) {
+      for (let x = 0; x < S; x++) {
+        if (rnd() < 0.12) px(x, y, [0, 0, 0], 0);
+        else px(x, y, vary(base, rnd, 40));
+      }
+    }
+  };
+}
+
+/** Redstone lamp: a glass-like grid over the light. */
+function redstoneLamp(on: boolean): Painter {
+  return (px, rnd) => {
+    for (let y = 0; y < S; y++) {
+      for (let x = 0; x < S; x++) {
+        const frame = x === 0 || y === 0 || x === S - 1 || y === S - 1;
+        const grid = x % 5 === 0 || y % 5 === 0;
+        const glow = 1 - Math.hypot(x - 7.5, y - 7.5) / 12;
+        const c: RGB = frame
+          ? on
+            ? [150, 96, 50]
+            : [92, 58, 34]
+          : grid
+            ? on
+              ? [255, 214, 140]
+              : [120, 76, 44]
+            : on
+              ? [255, 196 + glow * 50, 90 + glow * 90]
+              : [150, 90, 50];
+        px(x, y, vary(c, rnd, 14));
+      }
+    }
+  };
+}
+
+function redstoneTorch(head: RGB): Painter {
+  return sprite(
+    [
+      '................',
+      '................',
+      '................',
+      '................',
+      '.......hh.......',
+      '......hHHh......',
+      '......hHHh......',
+      '.......ww.......',
+      '.......ww.......',
+      '.......ww.......',
+      '.......ww.......',
+      '.......ww.......',
+      '.......ww.......',
+      '.......ww.......',
+      '.......ww.......',
+      '.......ww.......',
+    ],
+    { h: head, H: whiter(head, 0.35), w: [130, 92, 50] },
+  );
+}
+
 const GRASS: RGB = [96, 170, 58];
 const DIRT: RGB = [134, 96, 67];
 const SNOW: RGB = [240, 246, 252];
@@ -240,23 +330,8 @@ const PAINTERS: Record<TileName, Painter> = {
     noisy([214, 122, 26], 16)(px, rnd);
     for (let y = 6; y < 10; y++) for (let x = 6; x < 10; x++) px(x, y, [86, 110, 40]);
   },
-  tnt_side: (px, rnd) => {
-    for (let y = 0; y < S; y++) {
-      for (let x = 0; x < S; x++) {
-        const band = y >= 5 && y <= 10;
-        px(x, y, band ? vary([236, 236, 236], rnd, 10) : vary([206, 52, 40], rnd, 16));
-      }
-    }
-    // "TNT" letters on the white band.
-    const letters = ['111.1..1.111', '.1..11.1..1.', '.1..1.11..1.', '.1..1..1..1.'];
-    letters.forEach((row, dy) =>
-      [...row].forEach((c, dx) => c === '1' && px(dx + 2, dy + 6, [30, 30, 30])),
-    );
-  },
-  tnt_top: (px, rnd) => {
-    noisy([206, 52, 40], 16)(px, rnd);
-    for (let y = 6; y < 10; y++) for (let x = 6; x < 10; x++) px(x, y, [60, 60, 60]);
-  },
+  tnt_side: tntSide(0),
+  tnt_top: tntTop(0),
   coal_ore: ore([40, 40, 40]),
   iron_ore: ore([216, 176, 140]),
   gold_ore: ore([250, 214, 60]),
@@ -530,6 +605,37 @@ const PAINTERS: Record<TileName, Painter> = {
     ],
     { g: [130, 190, 80], G: [90, 140, 60] },
   ),
+  redstone_dust: dust([120, 10, 8]),
+  redstone_dust_on: dust([255, 34, 24]),
+  lever_stick: noisy([130, 92, 50], 18),
+  lever_tip_on: noisy([255, 40, 30], 20),
+  redstone_torch: redstoneTorch([255, 40, 30]),
+  redstone_torch_off: redstoneTorch([96, 24, 20]),
+  redstone_lamp: redstoneLamp(false),
+  redstone_lamp_on: redstoneLamp(true),
+  launcher_front: framed([120, 120, 120], [90, 90, 90], (px) => {
+    // A dark hole where the rockets fly out.
+    for (let y = 4; y < 12; y++) {
+      for (let x = 4; x < 12; x++) {
+        if (Math.hypot(x - 7.5, y - 7.5) < 4) px(x, y, [24, 24, 28]);
+      }
+    }
+  }),
+  launcher_side: framed([128, 128, 128], [96, 96, 96], (px) => {
+    // A coloured stripe so you can tell it from a furnace.
+    const colors: RGB[] = [
+      [255, 59, 48],
+      [255, 214, 10],
+      [52, 199, 89],
+      [10, 132, 255],
+    ];
+    for (let x = 2; x < 14; x++) {
+      px(x, 7, colors[Math.floor((x - 2) / 3)]!);
+      px(x, 8, colors[Math.floor((x - 2) / 3)]!);
+    }
+  }),
+  tnt_lit_side: tntSide(0.55),
+  tnt_lit_top: tntTop(0.55),
 };
 
 function paintTile(name: TileName, image: ImageData, ox: number, oy: number): void {
@@ -581,7 +687,7 @@ export function drawBlockIcon(canvas: HTMLCanvasElement, blockId: number): void 
   const atlas = getAtlasCanvas();
   const type = getBlockType(blockId);
   const tiles = type.tiles;
-  if (type.shape === 'cross') {
+  if (type.shape !== 'cube') {
     // Flowers and torches look best as a flat picture.
     const i = tileIndex(tiles.side);
     ctx.drawImage(

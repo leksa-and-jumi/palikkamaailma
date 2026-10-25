@@ -2,7 +2,16 @@
 // your things and armor. Items move with the mouse like in Minecraft.
 
 import type { GameMode } from '../config';
-import { PLACEABLE_BLOCKS } from '../logic/blocks';
+import {
+  BUTTON,
+  FIREWORK_LAUNCHER,
+  LEVER,
+  PLACEABLE_BLOCKS,
+  REDSTONE_BLOCK,
+  REDSTONE_LAMP,
+  REDSTONE_TORCH,
+  TNT,
+} from '../logic/blocks';
 import {
   ARMOR_SLOTS,
   HOTBAR_SIZE,
@@ -14,7 +23,7 @@ import {
   type ItemStack,
   type Slot,
 } from '../logic/inventory';
-import { ITEMS, getItem, type ItemType } from '../logic/items';
+import { ITEMS, getItem, itemId, type ItemType } from '../logic/items';
 import { fillSlot } from './slots';
 
 function $(id: string): HTMLElement {
@@ -38,7 +47,9 @@ const CATEGORIES: readonly Category[] = [
     items: () =>
       nonBlockItems(
         (i) =>
-          (!!i.tool && i.tool.kind !== 'sword') || (!!i.special && i.special.includes('bucket')),
+          (!!i.tool && i.tool.kind !== 'sword') ||
+          (!!i.special && i.special.includes('bucket')) ||
+          i.special === 'flint_and_steel',
       ),
   },
   {
@@ -50,11 +61,34 @@ const CATEGORIES: readonly Category[] = [
           i.tool?.kind === 'sword' || !!i.armor || i.special === 'bow' || i.special === 'arrow',
       ),
   },
+  {
+    id: 'redstone',
+    label: '⚡ Punakivi',
+    items: () => [
+      itemId('redstone'),
+      LEVER,
+      BUTTON,
+      REDSTONE_TORCH,
+      REDSTONE_LAMP,
+      REDSTONE_BLOCK,
+      TNT,
+      itemId('flint_and_steel'),
+      FIREWORK_LAUNCHER,
+    ],
+  },
+  {
+    id: 'fireworks',
+    label: '🎆 Ilotulitteet',
+    items: () => [...nonBlockItems((i) => i.special === 'firework'), FIREWORK_LAUNCHER],
+  },
   { id: 'food', label: '🍎 Ruoka', items: () => nonBlockItems((i) => !!i.food) },
   {
     id: 'materials',
     label: '💎 Tarvikkeet',
-    items: () => nonBlockItems((i) => !i.tool && !i.armor && !i.food && !i.special),
+    items: () =>
+      ITEMS.filter((i) => (i.block === undefined || i.key === 'redstone') && !i.tool)
+        .filter((i) => !i.armor && !i.food && !i.special)
+        .map((i) => i.id),
   },
 ];
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { NET, WORLD_HEIGHT, WORLD_LIMIT } from '../config';
-import { BEDROCK, GOLD_BLOCK } from './blocks';
+import { BEDROCK, GOLD_BLOCK, LEVER_ON, REDSTONE_LAMP_ON } from './blocks';
 import { parseClientMessage, parseEdit, parseEdits } from './protocol';
 
 describe('protocol', () => {
@@ -55,5 +55,18 @@ describe('protocol', () => {
     expect(parseClientMessage('not json')).toBeNull();
     expect(parseClientMessage(JSON.stringify({ t: 'shout', text: 'hi' }))).toBeNull();
     expect(parseClientMessage(42)).toBeNull();
+  });
+
+  it('refuses redstone looks but accepts switches', () => {
+    expect(parseEdit([1, 50, 1, REDSTONE_LAMP_ON])).toBeNull();
+    expect(parseEdit([1, 50, 1, LEVER_ON])).toEqual([1, 50, 1, LEVER_ON]);
+  });
+
+  it('checks rockets', () => {
+    const rocket = { t: 'firework', p: [1, 50, 2], kind: 2, seed: 12345 };
+    expect(parseClientMessage(JSON.stringify(rocket))).toEqual(rocket);
+    expect(parseClientMessage(JSON.stringify({ ...rocket, kind: 99 }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ ...rocket, seed: -1 }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ ...rocket, p: [1, 2] }))).toBeNull();
   });
 });

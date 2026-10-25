@@ -7,7 +7,7 @@
 // Only the game's own web pages may connect (ALLOWED_ORIGINS).
 
 import { DurableObject } from 'cloudflare:workers';
-import { DROPS, NET } from '../src/config';
+import { DROPS, FIREWORKS, NET } from '../src/config';
 import { isValidWorldCode } from '../src/logic/codes';
 import {
   advanceFurnace,
@@ -83,6 +83,8 @@ interface Attachment {
   player: PlayerInfo | null;
   /** When this player's recent chat messages were sent (ms). */
   chatTimes?: number[];
+  /** When this player's recent rockets were launched (ms). */
+  fireworkTimes?: number[];
 }
 
 /** Storage layout version; 2 = edits packed per chunk, items in one row. */
@@ -406,6 +408,17 @@ export class WorldRoom extends DurableObject<Env> {
         me.chatTimes = [...recent, now];
         ws.serializeAttachment(me);
         this.broadcast({ t: 'chat', id: me.id, avatar: me.player.avatar, text: msg.text }, ws);
+        return;
+      }
+      case 'firework': {
+        // Not stored: the others just see it fly. Rate limited like chat.
+        if (!me.player) return;
+        const now = Date.now();
+        const recent = (me.fireworkTimes ?? []).filter((t) => now - t < NET.chatWindowMs);
+        if (recent.length >= FIREWORKS.rateLimit) return;
+        me.fireworkTimes = [...recent, now];
+        ws.serializeAttachment(me);
+        this.broadcast({ t: 'firework', p: msg.p, kind: msg.kind, seed: msg.seed }, ws);
         return;
       }
     }

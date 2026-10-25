@@ -3,11 +3,14 @@
 
 import {
   BUILDER,
+  FIREWORKS,
   MOBS,
   NET,
   PLAYER,
+  REDSTONE,
   SEA_LEVEL,
   SURVIVAL,
+  TNT_RULES,
   type Difficulty,
   type GameMode,
 } from './config';
@@ -15,19 +18,28 @@ import { sounds } from './audio/sounds';
 import { loadLocalEdits, loadPlayer, saveLocalEdits, savePlayer } from './data/storage';
 import {
   AIR,
+  BUTTON,
+  BUTTON_ON,
   CHEST,
   CRAFTING_TABLE,
   DEFAULT_HOTBAR,
   FURNACE,
   LAVA,
+  LEVER,
+  LEVER_ON,
   OBSIDIAN,
+  TNT,
+  TNT_LIT,
   WATER,
   getBlockType,
+  isOpaque,
   isSolid,
 } from './logic/blocks';
 import { seedFromCode } from './logic/codes';
 import { canPickUp, isExpired, liveDrop, stepDrop, type LiveDrop } from './logic/drops';
 import { isContainerBlock, positionKey } from './logic/containers';
+import { blastHit, explode } from './logic/explosion';
+import { randomKind } from './logic/fireworks';
 import { HOTBAR_SIZE, Inventory, stackLimit, type ItemStack } from './logic/inventory';
 import { getItem, itemId } from './logic/items';
 import { blockDrops, breakTime, wearsWhenMining } from './logic/mining';
@@ -43,6 +55,7 @@ import {
   type BuildBlock,
   type Vec3,
 } from './logic/shapes';
+import { Circuit } from './logic/redstone';
 import { findSpawn } from './logic/spawn';
 import {
   addExhaustion,
@@ -57,13 +70,14 @@ import {
 } from './logic/survival';
 import { dayLabel, timeOfDay } from './logic/daytime';
 import { BIOME_NAMES } from './logic/terrain';
-import { VoxelWorld, isInsideWorld, type Edit } from './logic/world';
+import { VoxelWorld, chunkOf, editKey, isInsideWorld, type Edit } from './logic/world';
 import { askBuilder } from './net/convex';
 import { ContainerService } from './net/containers';
 import { ROOM_URL, RoomClient, type RoomStatus } from './net/room';
 import { OtherPlayers } from './render/avatars';
 import { BuildGhost } from './render/buildGhost';
 import { CrackOverlay, DropRenderer } from './render/dropRenderer';
+import { Effects } from './render/effects';
 import type { WorldRenderer } from './render/worldRenderer';
 import type { Hud } from './ui/hud';
 import { BuilderScreen, type BuildResult } from './ui/builderScreen';
@@ -94,6 +108,19 @@ const MAX_PITCH = Math.PI / 2 - 0.01;
 const PLACE_REPEAT = 0.25;
 const DROP_THROW_SPEED = 5;
 const BREAK_DROP_SPEED = 2;
+/** A slow frame may run at most this many redstone ticks. */
+const MAX_REDSTONE_TICKS = 3;
+/** The screen shake fades out in about this many seconds. */
+const SHAKE_TIME = 0.5;
+
+function parseKey(key: string): [number, number, number] {
+  return key.split(',').map(Number) as [number, number, number];
+}
+
+/** A dice number from a block position (the same on every computer). */
+function positionSeed(x: number, y: number, z: number): number {
+  return (Math.imul(x, 73856093) ^ Math.imul(y, 19349663) ^ Math.imul(z, 83492791)) >>> 0;
+}
 
 const BUILDER_ERRORS: Record<string, string> = {
   'too-many': '😅 Nyt on taiottu tosi paljon. Odota hetki ja kokeile uudestaan!',
@@ -169,6 +196,18 @@ export class Game {
   private lastX = 0;
   private lastZ = 0;
 
+  private readonly circuit = new Circuit();
+  private readonly effects: Effects;
+  private redstoneTimer = 0;
+  /** Lit TNT and seconds until it goes off, by "x,y,z". */
+  private readonly fuses = new Map<string, number>();
+  /** Pressed buttons and seconds until they pop back up. */
+  private readonly buttons = new Map<string, number>();
+  /** True while this computer is breaking blocks for its own explosion. */
+  private exploding = false;
+  private fireworkCooldown = 0;
+  private shake = 0;
+
   constructor(
     private readonly options: GameOptions,
     private readonly renderer: WorldRenderer,
@@ -177,7 +216,11 @@ export class Game {
     private readonly callbacks: { onReady(): void; onPause(paused: boolean): void },
   ) {
     this.world = new VoxelWorld(seedFromCode(options.code));
+    this.world.onChange = (x, y, z, old, id) => this.onBlockChange(x, y, z, old, id);
     renderer.setWorld(this.world);
+    this.effects = new Effects(renderer.scene);
+    this.effects.onBurst = (x, y, z) => sounds.pop(this.distanceTo(x, y, z));
+    this.effects.viewer = () => [this.player.x, this.player.z];
     this.others = new OtherPlayers(renderer.scene);
     this.dropRenderer = new DropRenderer(renderer.scene);
     this.cracks = new CrackOverlay(renderer.scene);
@@ -218,7 +261,7 @@ export class Game {
 
     this.input = new Input(renderer.renderer.domElement, {
       onBreak: () => this.onBreakPressed(),
-      onPlace: () => this.useItem(),
+      onPlace: () => this.useItem(false),
       onPick: () => this.pickBlock(),
       onSlot: (i) => hud.select(i),
       onScroll: (d) => hud.select(hud.selected + d),
@@ -273,6 +316,8 @@ export class Game {
     this.savePlayerNow();
     this.others.clear();
     this.dropRenderer.clear();
+    this.effects.clear();
+    this.world.onChange = null;
     this.hud.show(false);
   }
 
@@ -346,7 +391,9 @@ export class Game {
 
     this.renderer.time = this.time;
     this.updateDrops(dt);
-    this.updateCamera();
+    if (this.ready) this.updateRedstone(dt);
+    this.effects.update(dt);
+    this.updateCamera(dt);
     this.updateTarget();
     this.others.update(dt);
     if (this.ready && !this.dead) this.updateMobs(dt);
@@ -390,9 +437,17 @@ export class Game {
     return this.mode === 'creative' || this.vitals.hunger > 6;
   }
 
-  private updateCamera(): void {
+  private updateCamera(dt: number): void {
     const cam = this.renderer.camera;
     cam.position.set(this.player.x, this.player.y + PLAYER.eyeHeight, this.player.z);
+    if (this.shake > 0) {
+      // A big bang nearby shakes the screen.
+      const amount = this.shake * TNT_RULES.shake;
+      cam.position.x += (Math.random() - 0.5) * amount;
+      cam.position.y += (Math.random() - 0.5) * amount;
+      cam.position.z += (Math.random() - 0.5) * amount;
+      this.shake = Math.max(0, this.shake - dt / SHAKE_TIME);
+    }
     cam.rotation.set(this.player.pitch, this.player.yaw, 0);
     this.renderer.setUnderwater(this.headInWater());
   }
@@ -469,11 +524,12 @@ export class Game {
   private updateActions(dt: number): void {
     this.breakCooldown -= dt;
     this.placeCooldown -= dt;
+    this.fireworkCooldown -= dt;
     if (this.placing) {
       this.mining = null;
       return;
     }
-    if (this.input.isMouseDown(2) && this.placeCooldown <= 0) this.useItem();
+    if (this.input.isMouseDown(2) && this.placeCooldown <= 0) this.useItem(true);
 
     const t = this.target;
     if (!this.input.isMouseDown(0) || !t || this.targetMob) {
@@ -505,8 +561,19 @@ export class Game {
     const t = this.target;
     if (!t) return;
     const block = this.world.getBlock(t.x, t.y, t.z);
-    if (!getBlockType(block).breakable) return;
-    this.change([[t.x, t.y, t.z, AIR]]);
+    // Lit TNT can't be stopped any more!
+    if (!getBlockType(block).breakable || block === TNT_LIT) return;
+    // Dust, levers and torches on top fall off too.
+    const above = this.world.getBlock(t.x, t.y + 1, t.z);
+    const loose = getBlockType(above).needsFloor;
+    this.change(
+      loose
+        ? [
+            [t.x, t.y, t.z, AIR],
+            [t.x, t.y + 1, t.z, AIR],
+          ]
+        : [[t.x, t.y, t.z, AIR]],
+    );
     sounds.break();
     // Alone, the chest's items fall out here (the room server does it in multiplayer).
     if (!this.room && isContainerBlock(block)) {
@@ -515,6 +582,11 @@ export class Game {
       }
     }
     if (this.mode !== 'survival') return;
+    if (loose) {
+      for (const drop of blockDrops(above, undefined)) {
+        this.spawnDrop({ id: drop.id, count: drop.count }, [t.x + 0.5, t.y + 1.5, t.z + 0.5], true);
+      }
+    }
 
     const stack = this.selectedStack();
     const tool = stack ? getItem(stack.id) : undefined;
@@ -545,8 +617,12 @@ export class Game {
     }
   }
 
-  /** Right click: open a table/furnace/chest, eat, use a bucket or place a block. */
-  private useItem(): void {
+  /**
+   * Right click: open a table/furnace/chest, flip a lever, press a button,
+   * light TNT, launch a rocket, eat, use a bucket or place a block.
+   * `repeat` = the button is held down.
+   */
+  private useItem(repeat: boolean): void {
     this.placeCooldown = PLACE_REPEAT;
     if (this.placing) {
       this.turnPlacing();
@@ -561,6 +637,30 @@ export class Game {
       return;
     }
     if (this.target && !sneaking && this.interact(this.target)) return;
+
+    const t0 = this.target;
+    if (t0 && !repeat && !sneaking) {
+      const id = this.world.getBlock(t0.x, t0.y, t0.z);
+      if (id === LEVER || id === LEVER_ON) {
+        this.change([[t0.x, t0.y, t0.z, id === LEVER ? LEVER_ON : LEVER]]);
+        sounds.click();
+        return;
+      }
+      if (id === BUTTON || id === BUTTON_ON) {
+        if (id === BUTTON) this.change([[t0.x, t0.y, t0.z, BUTTON_ON]]);
+        sounds.click();
+        return;
+      }
+      if (id === TNT && item?.special === 'flint_and_steel') {
+        this.change([[t0.x, t0.y, t0.z, TNT_LIT]]);
+        if (this.mode === 'survival') this.wearSelected();
+        return;
+      }
+    }
+    if (item?.special === 'firework') {
+      this.launchFromHand(item.firework ?? 0);
+      return;
+    }
 
     if (item?.food && this.mode === 'survival') {
       if (eat(this.vitals, item.food.hunger, item.food.saturation)) {
@@ -586,8 +686,11 @@ export class Game {
     const z = t.z + t.nz;
     const here = getBlockType(this.world.getBlock(x, y, z));
     if (here.id !== AIR && !here.liquid) return;
+    const placing = getBlockType(item.block);
     // Don't put a solid block inside yourself.
-    if (getBlockType(item.block).solid && overlapsBlock(this.player, x, y, z)) return;
+    if (placing.solid && overlapsBlock(this.player, x, y, z)) return;
+    // Dust, levers, buttons and torches need ground under them.
+    if (placing.needsFloor && !isOpaque(this.world.getBlock(x, y - 1, z))) return;
     if (this.change([[x, y, z, item.block]]).length === 0) return;
     if (this.mode === 'survival') this.inventory.takeOne(this.hud.selected);
     sounds.place();
@@ -928,6 +1031,145 @@ export class Game {
     sounds.place();
   }
 
+  // --- Redstone, TNT and fireworks ----------------------------------------
+
+  /** Every block change goes through here (ours, the others' and saved ones). */
+  private onBlockChange(x: number, y: number, z: number, old: number, id: number): void {
+    this.circuit.track(x, y, z, id);
+    const k = editKey(x, y, z);
+    if (id === TNT_LIT && !this.fuses.has(k)) {
+      this.fuses.set(k, TNT_RULES.fuse);
+      if (this.ready && this.distanceTo(x, y, z) < 24) sounds.fuse();
+    }
+    if (old === TNT_LIT && id !== TNT_LIT && this.fuses.delete(k) && !this.exploding) {
+      // Another player's computer set it off first: show the bang here too.
+      this.blastEffects(x, y, z);
+    }
+    if (id === BUTTON_ON) this.buttons.set(k, REDSTONE.buttonSeconds);
+    else this.buttons.delete(k);
+  }
+
+  private isLoaded(x: number, z: number): boolean {
+    return this.world.hasChunk(chunkOf(x), chunkOf(z));
+  }
+
+  private distanceTo(x: number, y: number, z: number): number {
+    const p = this.player;
+    return Math.hypot(x - p.x, y - (p.y + PLAYER.eyeHeight), z - p.z);
+  }
+
+  private updateRedstone(dt: number): void {
+    this.redstoneTimer += dt;
+    for (let n = 0; this.redstoneTimer >= REDSTONE.tickSeconds; n++) {
+      this.redstoneTimer -= REDSTONE.tickSeconds;
+      if (n >= MAX_REDSTONE_TICKS) {
+        this.redstoneTimer = 0;
+        break;
+      }
+      if (this.circuit.size === 0) continue;
+      const { looks, started } = this.circuit.tick({
+        getBlock: (x, y, z) => (this.isLoaded(x, z) ? this.world.getBlock(x, y, z) : AIR),
+        isLoaded: (x, z) => this.isLoaded(x, z),
+      });
+      for (const [x, y, z, look] of looks) this.world.setShown(x, y, z, look);
+      for (const [x, y, z, id] of started) {
+        if (id === TNT) this.change([[x, y, z, TNT_LIT]]);
+        else this.launchFromBlock(x, y, z);
+      }
+    }
+
+    for (const [k, left] of [...this.buttons]) {
+      if (left - dt > 0) {
+        this.buttons.set(k, left - dt);
+        continue;
+      }
+      this.buttons.delete(k);
+      const [x, y, z] = parseKey(k);
+      if (this.world.getBlock(x, y, z) === BUTTON_ON) this.change([[x, y, z, BUTTON]]);
+    }
+
+    for (const [k, left] of [...this.fuses]) {
+      if (!this.fuses.has(k)) continue;
+      const [x, y, z] = parseKey(k);
+      // Far away TNT waits until someone comes near.
+      if (left - dt > 0 || !this.isLoaded(x, z)) {
+        this.fuses.set(k, Math.max(0, left - dt));
+        continue;
+      }
+      this.explodeAt(x, y, z);
+    }
+    this.effects.setPrimed(this.fuses.keys(), performance.now() / 1000);
+  }
+
+  private explodeAt(x: number, y: number, z: number): void {
+    this.fuses.delete(editKey(x, y, z));
+    if (this.world.getBlock(x, y, z) !== TNT_LIT) return;
+    const blast = explode(
+      (bx, by, bz) => this.world.getBlock(bx, by, bz),
+      x,
+      y,
+      z,
+      TNT_RULES.power,
+    );
+    // TNT lit by the blast goes off soon (a little different for each one).
+    for (const [lx, ly, lz] of blast.lit) {
+      const dice = (positionSeed(lx, ly, lz) % 1000) / 1000;
+      const fuse =
+        TNT_RULES.chainFuseMin + dice * (TNT_RULES.chainFuseMax - TNT_RULES.chainFuseMin);
+      this.fuses.set(editKey(lx, ly, lz), fuse);
+    }
+    // Alone, blown-up chests drop their things (the room server does it in multiplayer).
+    if (!this.room) {
+      for (const [bx, by, bz] of blast.edits) {
+        if (!isContainerBlock(this.world.getBlock(bx, by, bz))) continue;
+        for (const item of this.containers.removeLocal([bx, by, bz])) {
+          this.spawnDrop(item, [bx + 0.5, by + 0.5, bz + 0.5], true);
+        }
+      }
+    }
+    this.exploding = true;
+    this.change(blast.edits);
+    this.exploding = false;
+    this.blastEffects(x, y, z);
+  }
+
+  /** Smoke, the bang, and what the blast does to you. */
+  private blastEffects(x: number, y: number, z: number): void {
+    this.effects.explosion(x + 0.5, y + 0.5, z + 0.5);
+    const p = this.player;
+    const distance = Math.hypot(x + 0.5 - p.x, y + 0.5 - (p.y + 0.9), z + 0.5 - p.z);
+    sounds.boom(distance);
+    const hit = blastHit(distance, TNT_RULES.power);
+    if (hit.push <= 0) return;
+    this.shake = Math.max(this.shake, hit.push);
+    if (!p.flying) p.vy = Math.max(p.vy, hit.push * TNT_RULES.knockback);
+    this.takeDamage(hit.damage, 'Dynamiitti räjähti liian läheltä! 💥');
+  }
+
+  /** A rocket from the hand: everyone in the world sees it. */
+  private launchFromHand(kind: number): void {
+    if (this.fireworkCooldown > 0) return;
+    this.fireworkCooldown = FIREWORKS.cooldown;
+    const t = this.target;
+    const [dx, , dz] = this.lookDirection();
+    const p: [number, number, number] = t
+      ? [t.x + 0.5 + t.nx * 0.6, t.y + 0.5 + t.ny * 0.6, t.z + 0.5 + t.nz * 0.6]
+      : [this.player.x + dx * 1.5, this.player.y + PLAYER.eyeHeight, this.player.z + dz * 1.5];
+    const seed = crypto.getRandomValues(new Uint32Array(1))[0]!;
+    this.effects.launch(...p, kind, seed);
+    sounds.launch(0);
+    this.room?.send({ t: 'firework', p, kind, seed });
+    if (this.mode === 'survival') this.inventory.takeOne(this.hud.selected);
+  }
+
+  /** A powered launcher shoots a rocket (worked out on every computer). */
+  private launchFromBlock(x: number, y: number, z: number): void {
+    // Same second, same rocket for everyone.
+    const seed = (positionSeed(x, y, z) ^ Math.floor(Date.now() / 1000)) >>> 0;
+    this.effects.launch(x + 0.5, y + 1.1, z + 0.5, randomKind(seed), seed);
+    sounds.launch(this.distanceTo(x, y, z));
+  }
+
   // --- Magic builder ----------------------------------------------------
 
   private async askBuild(prompt: string): Promise<BuildResult> {
@@ -1199,6 +1441,10 @@ export class Game {
         return;
       case 'full':
         this.hud.toast('⛔ Maailma on täynnä. Kokeile myöhemmin!');
+        return;
+      case 'firework':
+        this.effects.launch(...msg.p, msg.kind, msg.seed);
+        sounds.launch(this.distanceTo(...msg.p));
         return;
     }
   }
