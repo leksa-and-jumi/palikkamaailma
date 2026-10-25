@@ -31,7 +31,25 @@ Suunnittelijat: **Julius ja Leo**. Koodi: Claude.
 | `B`                       | ✨ taikarakentaja                                                                                                     |
 | `Z`                       | kumoa taikarakennus                                                                                                   |
 | `R`                       | käännä taikarakennusta                                                                                                |
+| `M`                       | 🗺️ kartta (➕ ➖ zoomaa)                                                                                              |
+| `N`                       | pikkukartta päälle / pois                                                                                             |
+| `/`                       | komennot (`/apua` näyttää kaikki)                                                                                     |
+| `Y` / `X`                 | kyllä / ei kaverin pyyntöön                                                                                           |
 | `Esc`                     | tauko                                                                                                                 |
+
+## Komennot
+
+Kirjoita chattiin `/` ja komento (näppäin `/` avaa chatin valmiiksi):
+
+- `/tpa kettu` – pyydä päästä kaverin luo. `/kutsu kettu` – kutsu kaveri luoksesi. Kaveri vastaa **Kyllä (Y)** tai **Ei (X)** (tai `/hyväksy`, `/hylkää`). Jos maailmassa on kaksi kettua: `/tpa kettu 2`.
+- `/koti` ja `/asetakoti` – oma koti. `/alku` – maailman alkuun. `/pelaajat` – ketkä ovat paikalla. `/sijainti` – koordinaatit.
+- `/aika päivä` tai `/aika yö`, `/tila luova` tai `/tila selviytyjä`.
+
+## Kartta, päivä ja yö
+
+- **🗺️ Kartta** (`M`) näyttää koko saaren: meret, rannat, metsät ja vuoret, kylät 🏘️, kaverit, sänkysi 🛏️ ja alun ⭐. Kulmassa on pikkukartta (`N`).
+- Taivas on kuin Minecraftissa: palikkapilvet, aamu- ja iltarusko, yöllä tähdet ja kuu, joka vaihtaa muotoaan joka yö. Soihdut valaisevat lämpimän keltaisesti.
+- **🛏️ Sänky**: klikkaa sänkyä, niin heräät siitä kuoltuasi. Yöllä voit mennä nukkumaan: kun kaikki maailman pelaajat nukkuvat, tulee aamu.
 
 ## Eläimet
 
@@ -77,6 +95,13 @@ Repun välilehdillä **⚡ Punakivi** ja **🎆 Ilotulitteet** (Nikkaroija-tilas
 - **Punakivilamppu** syttyy virrasta, **rakettilaukaisin** ampuu raketin ja **dynamiitti** syttyy.
 - **Dynamiitti** sytytetään myös **tuluksilla**. Se palaa 4 sekuntia ja räjähtää. Viereiset dynamiitit syttyvät ketjuna! Vesi, obsidiaani ja peruskallio kestävät räjähdyksen.
 - **Ilotulitusraketit**: tavallinen, iso, tähti, creeper ja sydän. Kaveri näkee sinun rakettisi.
+- **Toistin** vie virran eteenpäin täysillä (vähän viiveellä). **Painelaatta** antaa virtaa, kun joku seisoo sen päällä.
+- **Mäntä** työntää jopa 12 palikkaa, **tahmea mäntä** vetää palikan takaisin.
+- **Ovet, luukut ja portit** aukeavat virralla. **Rautaovi** aukeaa vain napilla, vivulla tai painelaatalla!
+
+## 🚪 Ovet ja rakentaminen
+
+Välilehdellä **🚪 Ovet ja portaat**: puuovi, rautaovi, luukku, aita, aidan portti, tikkaat, portaat, laatat, kivitiilet, lasiruutu ja sänky. **Soihdun, napin ja vivun voi laittaa seinään** (klikkaa seinän kylkeä). Portaita ja laattoja pääsee ylös ilman hyppyä, ja tikkaita kiivetään kävelemällä niitä kohti. Kaksi laattaa päällekkäin tekee kokonaisen palikan.
 
 ## Turvallisuus
 

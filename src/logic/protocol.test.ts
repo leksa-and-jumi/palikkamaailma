@@ -69,4 +69,28 @@ describe('protocol', () => {
     expect(parseClientMessage(JSON.stringify({ ...rocket, seed: -1 }))).toBeNull();
     expect(parseClientMessage(JSON.stringify({ ...rocket, p: [1, 2] }))).toBeNull();
   });
+
+  it('checks teleport requests and answers', () => {
+    const ask = { t: 'ask', to: 'abc123', kind: 'tpa' };
+    expect(parseClientMessage(JSON.stringify(ask))).toEqual(ask);
+    expect(parseClientMessage(JSON.stringify({ ...ask, kind: 'steal' }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ ...ask, to: 'NOT OK!' }))).toBeNull();
+    const yes = { t: 'answer', to: 'abc123', kind: 'invite', yes: true, p: [1, 60, 2] };
+    expect(parseClientMessage(JSON.stringify(yes))).toEqual(yes);
+    expect(parseClientMessage(JSON.stringify({ ...yes, p: [1, 2] }))).toBeNull();
+    const no = { t: 'answer', to: 'abc123', kind: 'tpa', yes: false };
+    expect(parseClientMessage(JSON.stringify(no))).toEqual(no);
+  });
+
+  it('allows clock jumps of at most a day', () => {
+    expect(parseClientMessage(JSON.stringify({ t: 'time', skip: 60_000 }))).toEqual({
+      t: 'time',
+      skip: 60_000,
+    });
+    expect(parseClientMessage(JSON.stringify({ t: 'time', skip: -5 }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ t: 'time', skip: 1e12 }))).toBeNull();
+    const sleep = { t: 'sleep', on: true, skip: 1000 };
+    expect(parseClientMessage(JSON.stringify(sleep))).toEqual(sleep);
+    expect(parseClientMessage(JSON.stringify({ ...sleep, on: 'yes' }))).toBeNull();
+  });
 });

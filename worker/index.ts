@@ -7,7 +7,7 @@
 // Only the game's own web pages may connect (ALLOWED_ORIGINS).
 
 import { DurableObject } from 'cloudflare:workers';
-import { DROPS, FIREWORKS, NET } from '../src/config';
+import { COMMANDS, DROPS, FIREWORKS, NET } from '../src/config';
 import { isValidWorldCode } from '../src/logic/codes';
 import {
   advanceFurnace,
@@ -85,6 +85,11 @@ interface Attachment {
   chatTimes?: number[];
   /** When this player's recent rockets were launched (ms). */
   fireworkTimes?: number[];
+  /** When this player's recent /tpa, /kutsu and /aika were sent (ms). */
+  requestTimes?: number[];
+  /** Lying in a bed, and how far the clock must jump to reach the morning. */
+  sleeping?: boolean;
+  skip?: number;
 }
 
 /** Storage layout version; 2 = edits packed per chunk, items in one row. */
@@ -328,7 +333,13 @@ export class WorldRoom extends DurableObject<Env> {
         }
         me.player = { id: me.id, avatar: msg.avatar, p: [0, 0, 0], yaw: 0, pitch: 0 };
         ws.serializeAttachment(me);
-        this.send(ws, { t: 'welcome', you: me.id, players: others, items: this.items() });
+        this.send(ws, {
+          t: 'welcome',
+          you: me.id,
+          players: others,
+          items: this.items(),
+          timeOffset: this.timeOffset(),
+        });
         this.sendAllEdits(ws);
         this.broadcast({ t: 'join', player: me.player }, ws);
         return;
@@ -419,6 +430,40 @@ export class WorldRoom extends DurableObject<Env> {
         this.broadcast({ t: 'chat', id: me.id, avatar: me.player.avatar, text: msg.text }, ws);
         return;
       }
+      case 'ask':
+      case 'answer': {
+        // Teleport requests go only to the player asked.
+        if (!me.player || !this.allowRequest(ws, me)) return;
+        const out: ServerMessage =
+          msg.t === 'ask'
+            ? { t: 'ask', from: me.id, avatar: me.player.avatar, kind: msg.kind }
+            : {
+                t: 'answer',
+                from: me.id,
+                avatar: me.player.avatar,
+                kind: msg.kind,
+                yes: msg.yes,
+                ...(msg.p ? { p: msg.p } : {}),
+              };
+        for (const other of this.ctx.getWebSockets()) {
+          const a = other.deserializeAttachment() as Attachment | null;
+          if (a?.id === msg.to && a.player) this.send(other, out);
+        }
+        return;
+      }
+      case 'sleep': {
+        if (!me.player) return;
+        me.sleeping = msg.on;
+        me.skip = msg.skip;
+        ws.serializeAttachment(me);
+        this.checkSleepers(me);
+        return;
+      }
+      case 'time': {
+        if (!me.player || !this.allowRequest(ws, me)) return;
+        this.moveClock(msg.skip, { avatar: me.player.avatar });
+        return;
+      }
       case 'firework': {
         // Not stored: the others just see it fly. Rate limited like chat.
         if (!me.player) return;
@@ -433,6 +478,45 @@ export class WorldRoom extends DurableObject<Env> {
     }
   }
 
+  /** Requests and clock changes are rate limited like chat. */
+  private allowRequest(ws: WebSocket, me: Attachment): boolean {
+    const now = Date.now();
+    const recent = (me.requestTimes ?? []).filter((t) => now - t < NET.chatWindowMs);
+    if (recent.length >= COMMANDS.rateLimit) return false;
+    me.requestTimes = [...recent, now];
+    ws.serializeAttachment(me);
+    return true;
+  }
+
+  private timeOffset(): number {
+    return Number(this.meta('timeOffset') ?? 0);
+  }
+
+  /** Moves the world's clock forward for everyone (one meta row). */
+  private moveClock(skip: number, extra: { avatar?: string; slept?: boolean }): void {
+    const offset = this.timeOffset() + skip;
+    this.setMeta('timeOffset', String(offset));
+    this.broadcast({ t: 'time', offset, ...extra });
+  }
+
+  /** When everyone is in bed, the night is skipped (like Minecraft). */
+  private checkSleepers(me: Attachment): void {
+    const sockets = this.ctx
+      .getWebSockets()
+      .map((ws) => ({ ws, a: ws.deserializeAttachment() as Attachment | null }))
+      .filter((s) => !!s.a?.player);
+    const sleeping = sockets.filter((s) => s.a!.sleeping).length;
+    if (sleeping < sockets.length || sleeping === 0) {
+      this.broadcast({ t: 'sleepers', sleeping, total: sockets.length });
+      return;
+    }
+    for (const { ws, a } of sockets) {
+      a!.sleeping = false;
+      ws.serializeAttachment(a);
+    }
+    this.moveClock(me.skip ?? 0, { slept: true });
+  }
+
   async webSocketClose(ws: WebSocket): Promise<void> {
     this.leave(ws);
   }
@@ -443,7 +527,22 @@ export class WorldRoom extends DurableObject<Env> {
 
   private leave(ws: WebSocket): void {
     const me = ws.deserializeAttachment() as Attachment | null;
-    if (me?.player) this.broadcast({ t: 'leave', id: me.id }, ws);
+    if (me?.player) {
+      // Nobody waits for a sleeper who left.
+      me.player = null;
+      me.sleeping = false;
+      try {
+        ws.serializeAttachment(me);
+      } catch {
+        // Already gone.
+      }
+      this.broadcast({ t: 'leave', id: me.id }, ws);
+      const sleeper = this.ctx
+        .getWebSockets()
+        .map((other) => other.deserializeAttachment() as Attachment | null)
+        .find((a) => a?.player && a.sleeping);
+      if (sleeper) this.checkSleepers(sleeper);
+    }
     try {
       ws.close();
     } catch {

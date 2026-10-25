@@ -859,3 +859,34 @@ kbd {
   image-rendering: pixelated;
   background: #464646;
 }
+
+.request {
+  /* Above the pause menu, so the buttons can be clicked any time. */
+  position: fixed;
+  z-index: 20;
+  left: 50%;
+  top: 70px;
+  transform: translateX(-50%);
+  text-align: center;
+  pointer-events: auto;
+  padding: 10px 16px;
+  max-width: calc(100% - 32px);
+}
+
+.request p {
+  margin: 0 0 8px;
+  font-size: 1.15rem;
+}
+
+.chat-hint {
+  position: absolute;
+  left: 12px;
+  bottom: 96px;
+  width: min(420px, calc(100% - 24px));
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.screen.sleep {
+  background: rgba(6, 8, 24, 0.82);
+}

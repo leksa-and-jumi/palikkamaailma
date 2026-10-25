@@ -86,7 +86,15 @@
         <kbd>Oikea hiiri</kbd> käännä · <kbd>X</kbd> peru
       </div>
       <div id="biome" class="biome"></div>
+      <div id="request" class="request card" hidden>
+        <p id="request-text"></p>
+        <div class="menu-buttons">
+          <button id="request-yes">✅ Kyllä (Y)</button>
+          <button id="request-no" class="secondary">❌ Ei (X)</button>
+        </div>
+      </div>
       <div id="chat-log" class="chat-log"></div>
+      <div id="chat-hint" class="chat-hint card" hidden></div>
       <form id="chat-form" class="chat-form" hidden>
         <input
           id="chat-input"
@@ -123,6 +131,15 @@
         <p id="village-hint" class="code-hint"></p>
         <button id="switch-mode" class="secondary"></button>
         <button id="to-menu" class="secondary">🏠 Valikkoon</button>
+      </div>
+    </section>
+
+    <!-- Sleeping in a bed -->
+    <section id="sleep" class="screen sleep" hidden>
+      <div class="panel small">
+        <h2>💤 Zzz…</h2>
+        <p id="sleep-text"></p>
+        <button id="wake" class="secondary">🛏️ Nouse sängystä</button>
       </div>
     </section>
 

@@ -324,6 +324,18 @@ export const SKY = {
   cloudSpeed: 0.8,
 } as const;
 
+/** Chat commands (/tpa, /kutsu, /koti…) and sleeping in a bed. */
+export const COMMANDS = {
+  /** A teleport request waits this long for an answer (seconds). */
+  requestSeconds: 60,
+  /** Requests and time changes from one player in NET.chatWindowMs (the room server checks). */
+  rateLimit: 4,
+  /** How far up a teleport looks for a free spot. */
+  freeSpotSearch: 12,
+  /** The night skip fades the screen this long (ms). */
+  sleepFadeMs: 1500,
+} as const;
+
 /** The map (M) and the small map in the corner. */
 export const MAP = {
   /** Blocks from you to the edge of the small map. */
@@ -480,16 +492,16 @@ export const CODE_NUMBER_MAX = 100;
 // --- Avatars --------------------------------------------------------------
 // Players are animals. Never names or other personal data.
 export const AVATARS = [
-  { emoji: '🦊', color: 0xf08a24 },
-  { emoji: '🐻', color: 0x8b5a2b },
-  { emoji: '🐼', color: 0xeeeeee },
-  { emoji: '🐸', color: 0x4caf50 },
-  { emoji: '🐷', color: 0xf4a7b9 },
-  { emoji: '🐰', color: 0xd8d0c8 },
-  { emoji: '🦁', color: 0xe8b43a },
-  { emoji: '🐧', color: 0x333a44 },
-  { emoji: '🦖', color: 0x5aa04a },
-  { emoji: '🐙', color: 0xb05cc8 },
+  { emoji: '🦊', color: 0xf08a24, name: 'kettu' },
+  { emoji: '🐻', color: 0x8b5a2b, name: 'karhu' },
+  { emoji: '🐼', color: 0xeeeeee, name: 'panda' },
+  { emoji: '🐸', color: 0x4caf50, name: 'sammakko' },
+  { emoji: '🐷', color: 0xf4a7b9, name: 'possu' },
+  { emoji: '🐰', color: 0xd8d0c8, name: 'pupu' },
+  { emoji: '🦁', color: 0xe8b43a, name: 'leijona' },
+  { emoji: '🐧', color: 0x333a44, name: 'pingviini' },
+  { emoji: '🦖', color: 0x5aa04a, name: 'dino' },
+  { emoji: '🐙', color: 0xb05cc8, name: 'mustekala' },
 ] as const;
 export const AVATAR_EMOJIS: readonly string[] = AVATARS.map((a) => a.emoji);
 
