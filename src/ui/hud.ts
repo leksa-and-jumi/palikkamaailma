@@ -1,8 +1,7 @@
 // Everything drawn on top of the 3D world: hotbar, hearts and hunger, world
-// code, players, chat and the magic builder window.
+// code, players and chat.
 
 import { SURVIVAL } from '../config';
-import { BLUEPRINTS } from '../logic/blueprints';
 import { HOTBAR_SIZE, type Inventory } from '../logic/inventory';
 import { getItem } from '../logic/items';
 import type { Vitals } from '../logic/survival';
@@ -234,55 +233,8 @@ export class Hud {
 
   // --- Magic builder ------------------------------------------------------
 
-  openBuilder(onBuild: (prompt: string) => Promise<string | null>, onClose: () => void): void {
-    const screen = $('builder');
-    const input = $('builder-prompt') as HTMLInputElement;
-    const message = $('builder-message');
-    const form = $('builder-form') as HTMLFormElement;
-    message.textContent = '';
-    message.classList.remove('error');
-
-    const close = () => {
-      screen.hidden = true;
-      onClose();
-    };
-
-    const run = async (prompt: string) => {
-      if (!prompt.trim()) return;
-      const buttons = screen.querySelectorAll('button');
-      buttons.forEach((b) => (b.disabled = true));
-      message.classList.remove('error');
-      message.textContent = '✨ Taikaa tehdään…';
-      const error = await onBuild(prompt);
-      buttons.forEach((b) => (b.disabled = false));
-      if (error) {
-        message.textContent = error;
-        message.classList.add('error');
-      } else {
-        input.value = '';
-        close();
-      }
-    };
-
-    $('blueprints').replaceChildren(
-      ...BLUEPRINTS.map((b) => {
-        const button = document.createElement('button');
-        button.type = 'button';
-        button.textContent = `${b.emoji} ${b.name}`;
-        button.addEventListener('click', () => void run(b.name));
-        return button;
-      }),
-    );
-    form.onsubmit = (e) => {
-      e.preventDefault();
-      void run(input.value);
-    };
-    $('builder-close').onclick = close;
-    screen.hidden = false;
-    input.focus();
-  }
-
-  get builderOpen(): boolean {
-    return !$('builder').hidden;
+  /** Shows how to place a magic build while one follows your aim. */
+  setPlaceHint(visible: boolean): void {
+    $('place-hint').hidden = !visible;
   }
 }

@@ -405,17 +405,21 @@ export const AVATAR_EMOJIS: readonly string[] = AVATARS.map((a) => a.emoji);
 // --- Magic builder (AI) ---------------------------------------------------
 export const BUILDER = {
   maxPromptLength: 60,
-  maxShapes: 60,
+  maxShapes: 300,
   /** No shape may be bigger than this along any axis. */
-  maxShapeSize: 24,
-  /** The whole build must fit in a box this size. */
+  maxShapeSize: 40,
+  /** Build coordinates stay within ±this. */
   maxBuildSize: 32,
-  maxBlocks: 12_000,
+  maxBlocks: 40_000,
   /** Builds per world in RATE_WINDOW_MS. */
   rateLimit: 12,
   rateWindowMs: 10 * 60 * 1000,
-  /** Distance in front of the player where the build starts. */
-  distanceAhead: 4,
+  /** How far you can point when choosing where a build goes. */
+  placeReach: 80,
+  /** Without a target the build floats this far in front of you. */
+  placeDistance: 24,
+  /** Supports reach at most this far down under a build on a slope. */
+  foundationDepth: 12,
 } as const;
 
 // --- Local storage keys -------------------------------------------------

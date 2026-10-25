@@ -6,65 +6,55 @@ import { v } from 'convex/values';
 import { internal } from './_generated/api';
 import { action, internalMutation, internalQuery } from './_generated/server';
 import { BUILDER } from '../src/config';
-import { BLOCKS } from '../src/logic/blocks';
 import { findBlueprint } from '../src/logic/blueprints';
+import { SYSTEM_PROMPT } from '../src/logic/builderPrompt';
 import { SOLO_CODE, normalizeWorldCode } from '../src/logic/codes';
-import { SHAPE_KINDS, parseShapes, type Shape } from '../src/logic/shapes';
+import { parseShapes, type Shape } from '../src/logic/shapes';
 
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
-const DEFAULT_MODEL = 'anthropic/claude-haiku-5.5';
-const MAX_TOKENS = 3000;
-const TIMEOUT_MS = 25_000;
-
-const BLOCK_KEYS = [...BLOCKS.filter((b) => b.placeable).map((b) => b.key), 'air'];
-
-const SYSTEM_PROMPT = `You design builds for a friendly block-building game played by children (7 and 10 years old).
-The child describes a build, often in Finnish. Answer ONLY with JSON: {"shapes": [...]}.
-
-Coordinates: x = right, y = up, z = away from the player. y = 0 is the ground level.
-Keep the whole build inside x -16…16, y 0…30, z 0…30. Each shape at most ${BUILDER.maxShapeSize} blocks along any axis.
-Use at most ${BUILDER.maxShapes} shapes. Later shapes overwrite earlier ones; use block "air" to cut doors and windows.
-
-Shapes:
-- {"shape":"box","block":B,"from":[x,y,z],"to":[x,y,z]}  filled box (corners inclusive)
-- {"shape":"walls","block":B,"from":[x,y,z],"to":[x,y,z]}  only the four side walls (no floor, no roof)
-- {"shape":"sphere","block":B,"center":[x,y,z],"radius":R,"hollow":true|false}
-- {"shape":"cylinder","block":B,"center":[x,y,z],"radius":R,"height":H}  upright, starts at center y
-- {"shape":"pyramid","block":B,"center":[x,y,z],"radius":R}  stepped, base at center y
-
-Blocks B: ${BLOCK_KEYS.join(', ')}.
-
-Make builds that look good: floors, walls, roofs, doors, windows, details and nice colours.
-Everything must be kind and child-friendly. If the request is violent, scary, rude or not suitable for children,
-build a cheerful flower garden instead.`;
-
-const RESPONSE_SCHEMA = {
-  type: 'object',
-  properties: {
-    shapes: {
-      type: 'array',
-      items: {
-        type: 'object',
-        properties: {
-          shape: { type: 'string', enum: [...SHAPE_KINDS] },
-          block: { type: 'string', enum: BLOCK_KEYS },
-          from: { type: 'array', items: { type: 'integer' } },
-          to: { type: 'array', items: { type: 'integer' } },
-          center: { type: 'array', items: { type: 'integer' } },
-          radius: { type: 'integer' },
-          height: { type: 'integer' },
-          hollow: { type: 'boolean' },
-        },
-        required: ['shape', 'block'],
-      },
-    },
-  },
-  required: ['shapes'],
-};
+// Opus thinks the build through before answering: much nicer builds than Haiku.
+// Both can be changed without a deploy with the Convex env variables
+// OPENROUTER_MODEL and OPENROUTER_EFFORT (low, medium, high).
+const DEFAULT_MODEL = 'anthropic/claude-opus-5.5';
+const DEFAULT_EFFORT = 'medium';
+/** Thinking + the answer. A big detailed build is about 5 000–15 000 tokens. */
+const MAX_TOKENS = 32_000;
+/** Detailed builds take a minute or two; the answer is streamed so nothing times out. */
+const TIMEOUT_MS = 300_000;
 
 type BuildResult =
   | { ok: true; shapes: Shape[]; source: 'ai' | 'blueprint' }
   | { ok: false; reason: 'bad-request' | 'no-world' | 'too-many' | 'failed' };
+
+/** Reads OpenRouter's server-sent events and joins the answer text. */
+async function readStream(body: ReadableStream<Uint8Array>): Promise<string> {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let content = '';
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() ?? '';
+    for (const line of lines) {
+      // ": OPENROUTER PROCESSING" comments keep the connection alive.
+      if (!line.startsWith('data: ')) continue;
+      const data = line.slice(6).trim();
+      if (data === '[DONE]') return content;
+      const event = JSON.parse(data) as {
+        choices?: { delta?: { content?: string } }[];
+        error?: unknown;
+        usage?: { prompt_tokens?: number; completion_tokens?: number; cost?: number };
+      };
+      if (event.error) throw new Error(`OpenRouter stream error: ${JSON.stringify(event.error)}`);
+      content += event.choices?.[0]?.delta?.content ?? '';
+      if (event.usage) console.warn('Builder usage', JSON.stringify(event.usage));
+    }
+  }
+  return content;
+}
 
 async function askAi(prompt: string, apiKey: string): Promise<Shape[]> {
   const controller = new AbortController();
@@ -82,23 +72,20 @@ async function askAi(prompt: string, apiKey: string): Promise<Shape[]> {
       body: JSON.stringify({
         model: process.env.OPENROUTER_MODEL || DEFAULT_MODEL,
         max_tokens: MAX_TOKENS,
-        temperature: 0.7,
+        reasoning: { effort: process.env.OPENROUTER_EFFORT || DEFAULT_EFFORT, exclude: true },
+        stream: true,
+        usage: { include: true },
         messages: [
           { role: 'system', content: SYSTEM_PROMPT },
           { role: 'user', content: prompt },
         ],
-        response_format: {
-          type: 'json_schema',
-          json_schema: { name: 'build', strict: false, schema: RESPONSE_SCHEMA },
-        },
       }),
     });
-    if (!response.ok) {
+    if (!response.ok || !response.body) {
       console.error('OpenRouter error', response.status, await response.text());
       return [];
     }
-    const data = (await response.json()) as { choices?: { message?: { content?: string } }[] };
-    const content = data.choices?.[0]?.message?.content ?? '';
+    const content = await readStream(response.body);
     // Some models wrap JSON in ```; take the outermost object.
     const json = content.slice(content.indexOf('{'), content.lastIndexOf('}') + 1);
     return parseShapes(JSON.parse(json));

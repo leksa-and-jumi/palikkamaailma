@@ -13,7 +13,7 @@ import {
   STONE,
   WATER,
 } from './blocks';
-import { buildChunkMesh, isFaceVisible } from './mesher';
+import { buildBlocksMesh, buildChunkMesh, isFaceVisible } from './mesher';
 import { VoxelWorld } from './world';
 
 const QUAD_INDICES = 6;
@@ -84,6 +84,18 @@ describe('mesher', () => {
     const mesh = buildChunkMesh(world, 6, 6);
     expect(mesh.solid.indices.length).toBeGreaterThan(0);
     expect(mesh.solid.positions.every((v) => v >= 0 && v <= WORLD_HEIGHT)).toBe(true);
+  });
+
+  it('meshes a loose build without hidden faces', () => {
+    const mesh = buildBlocksMesh([
+      [0, 0, 0, STONE],
+      [1, 0, 0, STONE],
+      [-4, -2, 3, WATER],
+      [5, 5, 5, AIR],
+    ]);
+    // Two touching cubes: 10 outer faces. The water block goes to its own mesh.
+    expect(mesh.solid.indices.length).toBe(10 * QUAD_INDICES);
+    expect(mesh.water.indices.length).toBe(6 * QUAD_INDICES);
   });
 
   it('draws dust flat and longer when it joins its neighbours', () => {

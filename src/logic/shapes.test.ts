@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { BUILDER } from '../config';
-import { AIR, PLANKS, STONE } from './blocks';
+import { AIR, BRICK, GLASS, LOG, PLANKS, STONE } from './blocks';
 import { BLUEPRINTS, findBlueprint } from './blueprints';
 import {
-  centerBuild,
+  buildBounds,
+  centerFootprint,
   expandShapes,
   facingFromYaw,
   parseShapes,
@@ -48,7 +49,7 @@ describe('shapes', () => {
         { shape: 'box', block: 'stone', from: [0, 0, 0], to: [1, 1, 1] },
         { shape: 'rocket', block: 'stone' },
         { shape: 'box', block: 'rainbow', from: [0, 0, 0], to: [1, 1, 1] },
-        { shape: 'box', block: 'stone', from: [0, 0, 0], to: [100, 1, 1] },
+        { shape: 'box', block: 'stone', from: [-30, 0, 0], to: [100, 1, 1] },
         { shape: 'sphere', block: 'gold', center: [0, 5, 0], radius: 500 },
       ],
     });
@@ -80,15 +81,55 @@ describe('shapes', () => {
     expect(facingFromYaw(Math.PI / 2)).toBe(3);
   });
 
-  it('centres a build in front of the player', () => {
-    const centred = centerBuild([
+  it('centres the footprint so the build turns around its middle', () => {
+    const centred = centerFootprint([
       [4, 0, 3, STONE],
       [8, 2, 5, STONE],
     ]);
     expect(centred).toEqual([
-      [-2, 0, 0, STONE],
-      [2, 2, 2, STONE],
+      [-2, 0, -1, STONE],
+      [2, 2, 1, STONE],
     ]);
+    expect(buildBounds(centred)).toEqual({ min: [-2, 0, -1], max: [2, 2, 1] });
+  });
+
+  it('draws straight and slanted lines', () => {
+    const line = expandShapes([{ shape: 'line', block: 'log', from: [0, 0, 0], to: [4, 2, 0] }]);
+    expect(line.length).toBe(5);
+    expect(line[0]).toEqual([0, 0, 0, LOG]);
+    expect(line[4]).toEqual([4, 2, 0, LOG]);
+  });
+
+  it('makes a stepped gable roof with filled ends', () => {
+    // 5 wide across z, ridge along x: rows at z 0+4, 1+3, 2 (3 levels).
+    const roof = expandShapes([
+      { shape: 'roof', block: 'brick', from: [0, 5, 0], to: [4, 5, 4], axis: 'x', ends: 'planks' },
+    ]);
+    const bricks = roof.filter((b) => b[3] === BRICK);
+    expect(bricks.length).toBe(5 * 5);
+    expect(Math.max(...bricks.map((b) => b[1]))).toBe(7);
+    expect(roof.find((b) => b[0] === 2 && b[1] === 7 && b[2] === 2)?.[3]).toBe(BRICK);
+    // Gable ends sit one block in from each end (x = 1 and x = 3).
+    const ends = roof.filter((b) => b[3] === PLANKS);
+    expect(ends.length).toBe(2 * (3 + 1));
+    expect(new Set(ends.map((b) => b[0]))).toEqual(new Set([1, 3]));
+  });
+
+  it('draws layer pictures and mirrors shapes', () => {
+    const blocks = expandShapes(
+      parseShapes([
+        {
+          shape: 'layers',
+          origin: [1, 0, 0],
+          palette: { g: 'glass', p: 'planks', '.': 'stone' },
+          layers: [['p.p', 'ppp'], ['g']],
+        },
+        { shape: 'blocks', block: 'stone', points: [[5, 0, 0]], mirror: 'x' },
+      ]),
+    );
+    expect(blocks.filter((b) => b[3] === PLANKS).length).toBe(5);
+    expect(blocks.find((b) => b[1] === 1)).toEqual([1, 1, 0, GLASS]);
+    expect(blocks.filter((b) => b[3] === STONE).map((b) => b[0])).toEqual([5, -5]);
   });
 
   it('has working ready-made builds', () => {
