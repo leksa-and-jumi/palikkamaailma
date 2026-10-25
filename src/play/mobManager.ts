@@ -86,8 +86,8 @@ export interface MobEvents {
   toast(text: string): void;
   /** A monster hurts a player (you or someone else). `kind` says which monster. */
   hurtPlayer(playerId: string, damage: number, kind: MobKind): void;
-  /** A creeper explosion breaks blocks around this point (only on hard). */
-  blast(x: number, y: number, z: number, radius: number): void;
+  /** A creeper exploded here: smoke and a bang, and on hard broken blocks. */
+  blast(x: number, y: number, z: number, breakBlocks: boolean): void;
 }
 
 export interface MobContext {
@@ -397,9 +397,7 @@ export class MobManager {
         this.events.hurtPlayer(p.id, damage, m.kind);
       }
       // Only on hard do explosions break blocks, so the kids' builds stay safe.
-      if (ctx.difficulty === 'hard') {
-        this.events.blast(m.body.x, m.body.y + 0.5, m.body.z, MONSTERS.blastBlockRadius);
-      }
+      this.events.blast(m.body.x, m.body.y + 0.5, m.body.z, ctx.difficulty === 'hard');
       this.events.toast('💥 Creeper räjähti!');
     }
   }

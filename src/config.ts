@@ -138,8 +138,8 @@ export const MONSTERS = {
   /** Creeper explosion: radius and damage at the middle (normal difficulty). */
   blastRadius: 5,
   blastDamage: 22,
-  /** Blocks broken by a creeper (only on hard, so builds are safe on easier levels). */
-  blastBlockRadius: 2.5,
+  /** Creeper blast power for breaking blocks (Minecraft: 3, TNT: 4); only on hard. */
+  blastPower: 3,
   /** Zombies and skeletons burn in sunlight (damage per second). */
   burnDamage: 1,
   /** Monsters only spawn this far from a torch or lamp (blocks). */

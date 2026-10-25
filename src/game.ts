@@ -5,6 +5,7 @@ import {
   BUILDER,
   FIREWORKS,
   MOBS,
+  MONSTERS,
   NET,
   PLAYER,
   REDSTONE,
@@ -230,7 +231,7 @@ export class Game {
         if (id === this.myId) this.takeDamage(damage, HURT_REASONS[kind] ?? 'Hirviö osui.');
         else this.room?.send({ t: 'hurtPlayer', id, damage, kind });
       },
-      blast: (x, y, z, radius) => this.blast(x, y, z, radius),
+      blast: (x, y, z, breakBlocks) => this.blast(x, y, z, breakBlocks),
     });
     if (saved.inventory) this.inventory.load(saved.inventory);
     else if (this.mode === 'creative') this.giveCreativeKit();
@@ -685,23 +686,29 @@ export class Game {
     this.mobRenderer.sync(this.mobs.views(), dt);
   }
 
-  /** A creeper explosion on hard: blocks in a ball become air (bedrock stays). */
-  private blast(x: number, y: number, z: number, radius: number): void {
-    const edits: Edit[] = [];
-    const r = Math.ceil(radius);
-    for (let dy = -r; dy <= r; dy++) {
-      for (let dz = -r; dz <= r; dz++) {
-        for (let dx = -r; dx <= r; dx++) {
-          if (dx * dx + dy * dy + dz * dz > radius * radius) continue;
-          const bx = Math.floor(x + dx);
-          const by = Math.floor(y + dy);
-          const bz = Math.floor(z + dz);
-          const b = getBlockType(this.world.getBlock(bx, by, bz));
-          if (b.id !== AIR && b.breakable && !b.liquid) edits.push([bx, by, bz, AIR]);
-        }
-      }
-    }
-    this.change(edits);
+  /**
+   * A creeper exploded: smoke and a bang for everyone near. On hard it breaks
+   * blocks like TNT does (and sets off TNT nearby).
+   */
+  private blast(x: number, y: number, z: number, breakBlocks: boolean): void {
+    const bx = Math.floor(x);
+    const by = Math.floor(y);
+    const bz = Math.floor(z);
+    this.effects.explosion(x, y, z);
+    sounds.boom(Math.hypot(x - this.player.x, y - this.player.y - 0.9, z - this.player.z));
+    if (!breakBlocks) return;
+    const blast = explode(
+      (ex, ey, ez) => this.world.getBlock(ex, ey, ez),
+      bx,
+      by,
+      bz,
+      MONSTERS.blastPower,
+    );
+    for (const [lx, ly, lz] of blast.lit)
+      this.fuses.set(editKey(lx, ly, lz), TNT_RULES.chainFuseMin);
+    this.exploding = true;
+    this.change(blast.edits);
+    this.exploding = false;
   }
 
   /** Hits the creature with what you hold (swords hit hardest). */
