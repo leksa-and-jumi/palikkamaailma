@@ -10,8 +10,19 @@ import {
   REDSTONE_TORCH_OFF,
   REDSTONE_WIRE,
   REDSTONE_WIRE_ON,
+  OAK_DOOR,
+  PISTON,
+  PISTON_BASE_ON,
+  PISTON_HEAD,
+  REPEATER,
+  REPEATER_ON,
+  STICKY_PISTON,
   STONE,
+  STONE_PLATE,
+  STONE_PLATE_ON,
   TNT,
+  WALL_LEVER_ON,
+  WOOL_RED,
 } from './blocks';
 import { Circuit, type CircuitWorld, type TickResult } from './redstone';
 
@@ -28,14 +39,26 @@ class TestWorld implements CircuitWorld {
     return true;
   }
 
+  pressedAt: string | null = null;
+
+  isPressed(x: number, y: number, z: number): boolean {
+    return this.pressedAt === `${x},${y},${z}`;
+  }
+
+  /** Applies piston moves like the game does. */
+  apply(result: TickResult): TickResult {
+    for (const [x, y, z, id] of result.moves) this.set(x, y, z, id);
+    return result;
+  }
+
   set(x: number, y: number, z: number, id: number): void {
     this.blocks.set(`${x},${y},${z}`, id);
     this.circuit.track(x, y, z, id);
   }
 
   tick(times = 1): TickResult {
-    let result: TickResult = { looks: [], started: [] };
-    for (let i = 0; i < times; i++) result = this.circuit.tick(this);
+    let result: TickResult = { looks: [], started: [], moves: [], pistons: [] };
+    for (let i = 0; i < times; i++) result = this.apply(this.circuit.tick(this));
     return result;
   }
 }
@@ -161,5 +184,105 @@ describe('redstone', () => {
     const { looks } = w.tick();
     expect(looks).toContainEqual([1, 1, 0, null]);
     expect(w.circuit.size).toBe(2);
+  });
+
+  it('a repeater passes the signal on a tick later at full strength', () => {
+    const w = new TestWorld();
+    w.set(0, 1, 0, LEVER);
+    // The repeater faces east (+x): power goes in at the back and out the front.
+    w.set(1, 1, 0, REPEATER + 1);
+    w.set(2, 1, 0, REDSTONE_WIRE);
+    w.tick();
+    w.set(0, 1, 0, LEVER_ON);
+    const first = w.tick();
+    expect(w.circuit.wirePower(2, 1, 0)).toBe(0);
+    w.tick();
+    expect(w.circuit.wirePower(2, 1, 0)).toBe(15);
+    expect(first.looks).toContainEqual([1, 1, 0, REPEATER_ON + 1]);
+  });
+
+  it('a repeater only gives power forward', () => {
+    const w = new TestWorld();
+    w.set(0, 1, 0, LEVER_ON);
+    w.set(1, 1, 0, REPEATER + 3);
+    w.set(2, 1, 0, REDSTONE_WIRE);
+    w.tick(3);
+    expect(w.circuit.wirePower(2, 1, 0)).toBe(0);
+  });
+
+  it('a lever on a wall opens an iron door through the wall block', () => {
+    const w = new TestWorld();
+    const iron = OAK_DOOR + 16;
+    w.set(1, 1, 0, iron);
+    w.set(1, 2, 0, iron + 8);
+    w.set(0, 2, 0, STONE);
+    w.set(-1, 2, 0, WALL_LEVER_ON + 3);
+    const { looks } = w.tick();
+    expect(looks).toContainEqual([1, 1, 0, iron + 4]);
+    expect(looks).toContainEqual([1, 2, 0, iron + 8 + 4]);
+  });
+
+  it('a pressure plate powers what is next to it while someone stands on it', () => {
+    const w = new TestWorld();
+    w.set(0, 1, 0, STONE_PLATE);
+    w.set(1, 1, 0, REDSTONE_LAMP);
+    w.tick();
+    expect(w.circuit.isPowered(1, 1, 0)).toBe(false);
+    w.pressedAt = '0,1,0';
+    const { looks } = w.tick();
+    expect(w.circuit.isPowered(1, 1, 0)).toBe(true);
+    expect(looks).toContainEqual([0, 1, 0, STONE_PLATE_ON]);
+  });
+
+  it('a piston pushes blocks and a sticky piston pulls one back', () => {
+    const w = new TestWorld();
+    // Facing east, with wool and stone in front.
+    w.set(0, 1, 0, STICKY_PISTON + 1);
+    w.set(1, 1, 0, WOOL_RED);
+    w.set(2, 1, 0, STONE);
+    w.set(0, 1, 1, LEVER);
+    w.tick(4);
+    w.set(0, 1, 1, LEVER_ON);
+    const out = w.tick();
+    expect(out.pistons).toEqual([[0, 1, 0]]);
+    expect(w.getBlock(1, 1, 0)).toBe(AIR);
+    expect(w.getBlock(2, 1, 0)).toBe(WOOL_RED);
+    expect(w.getBlock(3, 1, 0)).toBe(STONE);
+    expect(out.looks).toContainEqual([0, 1, 0, PISTON_BASE_ON + 1]);
+    expect(out.looks).toContainEqual([1, 1, 0, PISTON_HEAD + 6 + 1]);
+    w.tick(4);
+    w.set(0, 1, 1, LEVER);
+    const back = w.tick();
+    expect(w.getBlock(1, 1, 0)).toBe(WOOL_RED);
+    expect(w.getBlock(2, 1, 0)).toBe(AIR);
+    expect(back.looks).toContainEqual([1, 1, 0, null]);
+  });
+
+  it('a piston can not push more than 12 blocks', () => {
+    const w = new TestWorld();
+    w.set(0, 1, 0, PISTON + 1);
+    for (let x = 1; x <= 13; x++) w.set(x, 1, 0, WOOL_RED);
+    w.set(0, 1, 1, LEVER);
+    w.tick(4);
+    w.set(0, 1, 1, LEVER_ON);
+    const { moves } = w.tick();
+    expect(moves).toEqual([]);
+    expect(w.circuit.isExtended(0, 1, 0)).toBe(false);
+  });
+
+  it('only pushes when this computer may move blocks', () => {
+    const w = new TestWorld();
+    w.set(0, 1, 0, PISTON + 1);
+    w.set(1, 1, 0, WOOL_RED);
+    w.set(0, 1, 1, LEVER);
+    w.tick(4);
+    w.set(0, 1, 1, LEVER_ON);
+    const blocked = {
+      getBlock: (x: number, y: number, z: number) => w.getBlock(x, y, z),
+      isLoaded: () => true,
+      mayPush: () => false,
+    };
+    expect(w.circuit.tick(blocked).moves).toEqual([]);
+    expect(w.circuit.isExtended(0, 1, 0)).toBe(false);
   });
 });

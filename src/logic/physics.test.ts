@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { PLAYER } from '../config';
+import { AIR, FENCE, LADDER, OAK_DOOR, OAK_SLAB, STONE } from './blocks';
+import { blockQuery } from './blockShapes';
 import { createPlayer, stepPlayer, type BlockQuery, type MoveInput } from './physics';
 
 const NO_INPUT: MoveInput = { forward: 0, right: 0, jump: false, down: false, sprint: false };
@@ -70,5 +72,54 @@ describe('standing still', () => {
       stepPlayer(flat, p, NO_INPUT, 1 / 60);
       expect(p.onGround).toBe(true);
     }
+  });
+});
+
+describe('boxes, steps and ladders', () => {
+  /** A floor at y = 10 and one more block at (16, 11, 5) given by `id`. */
+  function withBlock(id: number): BlockQuery {
+    return blockQuery((x, y, z) => (y <= 10 ? STONE : x === 16 && y === 11 && z === 5 ? id : AIR));
+  }
+  const east = () => {
+    const p = createPlayer(15.5, 11, 5.5);
+    p.yaw = -Math.PI / 2;
+    return p;
+  };
+
+  it('walks up a slab without jumping', () => {
+    const p = simulate(withBlock(OAK_SLAB), { ...NO_INPUT, forward: 1 }, 0.25, east());
+    expect(p.x).toBeGreaterThan(16.3);
+    expect(p.y).toBeGreaterThan(11.4);
+  });
+
+  it('does not walk up a whole block', () => {
+    const p = simulate(withBlock(STONE), { ...NO_INPUT, forward: 1 }, 1, east());
+    expect(p.x).toBeLessThan(16);
+    expect(p.y).toBeCloseTo(11, 2);
+  });
+
+  it('bumps into a closed door but walks through an open one', () => {
+    // A door facing east has its panel on the west side of the block.
+    const closed = simulate(withBlock(OAK_DOOR + 1), { ...NO_INPUT, forward: 1 }, 1, east());
+    expect(closed.x).toBeLessThan(16);
+    const open = simulate(withBlock(OAK_DOOR + 4 + 1), { ...NO_INPUT, forward: 1 }, 1, east());
+    expect(open.x).toBeGreaterThan(17);
+  });
+
+  it('can not jump over a fence', () => {
+    const p = east();
+    for (let i = 0; i < 120; i++) {
+      stepPlayer(withBlock(FENCE), p, { ...NO_INPUT, forward: 1, jump: true }, 1 / 60);
+    }
+    expect(p.x).toBeLessThan(16.4);
+  });
+
+  it('climbs up a ladder', () => {
+    const ladders = blockQuery((x, y, z) =>
+      y <= 10 ? STONE : x === 16 && z === 5 ? STONE : x === 15 && z === 5 ? LADDER + 3 : AIR,
+    );
+    const p = simulate(ladders, { ...NO_INPUT, forward: 1 }, 1, east());
+    expect(p.y).toBeGreaterThan(12.5);
+    expect(p.onLadder).toBe(true);
   });
 });

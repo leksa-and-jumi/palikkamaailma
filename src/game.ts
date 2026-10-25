@@ -7,6 +7,7 @@ import {
   MOBS,
   MONSTERS,
   NET,
+  PISTONS,
   PLAYER,
   REDSTONE,
   SEA_LEVEL,
@@ -20,21 +21,17 @@ import { sounds } from './audio/sounds';
 import { loadLocalEdits, loadPlayer, saveLocalEdits, savePlayer } from './data/storage';
 import {
   AIR,
-  BUTTON,
-  BUTTON_ON,
+  BED,
   CHEST,
   CRAFTING_TABLE,
   DEFAULT_HOTBAR,
   FURNACE,
   LAVA,
-  LEVER,
-  LEVER_ON,
   OBSIDIAN,
   TNT,
   TNT_LIT,
   WATER,
   getBlockType,
-  isOpaque,
   isSolid,
 } from './logic/blocks';
 import { seedFromCode } from './logic/codes';
@@ -49,6 +46,7 @@ import { createPlayer, overlapsBlock, stepPlayer, type PlayerState } from './log
 import { cleanChatText, type DroppedItem, type ServerMessage } from './logic/protocol';
 import { raycast, type RayHit } from './logic/raycast';
 import { nearSideOffset, planPlacement } from './logic/placement';
+import { planPlace } from './logic/placing';
 import {
   centerFootprint,
   expandShapes,
@@ -57,7 +55,8 @@ import {
   type BuildBlock,
   type Vec3,
 } from './logic/shapes';
-import { Circuit } from './logic/redstone';
+import { Circuit, flipLever, isButton, pressButton, releaseButton } from './logic/redstone';
+import { blockQuery, boxBounds, fallingWith, renderBoxes } from './logic/blockShapes';
 import { findSpawn } from './logic/spawn';
 import {
   addExhaustion,
@@ -119,6 +118,10 @@ const BREAK_DROP_SPEED = 2;
 const MAX_REDSTONE_TICKS = 3;
 /** The screen shake fades out in about this many seconds. */
 const SHAKE_TIME = 0.5;
+
+function isPosition(v: unknown): v is [number, number, number] {
+  return Array.isArray(v) && v.length === 3 && v.every((n) => Number.isFinite(n));
+}
 
 function parseKey(key: string): [number, number, number] {
   return key.split(',').map(Number) as [number, number, number];
@@ -194,6 +197,8 @@ export class Game {
   /** Moves the clock (ms), for testing day and night. */
   timeShift = 0;
   private readonly spawn: [number, number, number];
+  /** Where you wake up after dying (your bed), or null for the world's start. */
+  private bedSpawn: [number, number, number] | null = null;
   private readonly drops = new Map<string, LiveDrop>();
   private readonly pickupsAsked = new Set<string>();
   private mining: { x: number; y: number; z: number; progress: number } | null = null;
@@ -213,6 +218,8 @@ export class Game {
   /** True while this computer is breaking blocks for its own explosion. */
   private exploding = false;
   private fireworkCooldown = 0;
+  /** When piston moves were sent (ms), to stay under PISTONS.maxSendsPerSecond. */
+  private pistonSends: number[] = [];
   private shake = 0;
 
   constructor(
@@ -252,6 +259,7 @@ export class Game {
     this.mode = saved.mode === 'creative' || saved.mode === 'survival' ? saved.mode : options.mode;
     this.vitals = loadVitals(saved.vitals);
     this.xp = typeof saved.xp === 'number' && saved.xp >= 0 ? Math.floor(saved.xp) : 0;
+    this.bedSpawn = isPosition(saved.bed) ? saved.bed : null;
     this.mobRenderer = new MobRenderer(renderer.scene);
     this.mobs = new MobManager({
       drop: (stack, p) => this.spawnDrop(stack, p, true),
@@ -419,10 +427,7 @@ export class Game {
     const shift = this.input.isDown('ShiftLeft') || this.input.isDown('ShiftRight');
     const wasOnGround = this.player.onGround;
     stepPlayer(
-      {
-        isSolid: (x, y, z) => isSolid(this.world.getBlock(x, y, z)),
-        isLiquid: (x, y, z) => getBlockType(this.world.getBlock(x, y, z)).liquid,
-      },
+      blockQuery((x, y, z) => this.world.solidLook(x, y, z)),
       this.player,
       {
         forward: this.input.axis(['KeyS', 'ArrowDown'], ['KeyW', 'ArrowUp']),
@@ -430,6 +435,7 @@ export class Game {
         jump: this.input.isDown('Space'),
         down: shift && this.player.flying,
         sprint: shift && !this.player.flying && this.canSprint(),
+        sneak: shift,
       },
       dt,
     );
@@ -504,8 +510,12 @@ export class Game {
       return;
     }
     this.target = this.cast(false);
-    if (this.target) this.renderer.showHighlight(this.target.x, this.target.y, this.target.z);
-    else this.renderer.hideHighlight();
+    const t = this.target;
+    if (t) {
+      const look = (x: number, y: number, z: number) => this.world.solidLook(x, y, z);
+      const boxes = renderBoxes(look(t.x, t.y, t.z), (dx, dz) => look(t.x + dx, t.y, t.z + dz));
+      this.renderer.showHighlight(t.x, t.y, t.z, boxes ? boxBounds(boxes) : null);
+    } else this.renderer.hideHighlight();
     const m = this.mining;
     this.cracks.show(m?.x ?? 0, m?.y ?? 0, m?.z ?? 0, m ? m.progress : null);
   }
@@ -575,17 +585,11 @@ export class Game {
     const block = this.world.getBlock(t.x, t.y, t.z);
     // Lit TNT can't be stopped any more!
     if (!getBlockType(block).breakable || block === TNT_LIT) return;
-    // Dust, levers and torches on top fall off too.
-    const above = this.world.getBlock(t.x, t.y + 1, t.z);
-    const loose = getBlockType(above).needsFloor;
-    this.change(
-      loose
-        ? [
-            [t.x, t.y, t.z, AIR],
-            [t.x, t.y + 1, t.z, AIR],
-          ]
-        : [[t.x, t.y, t.z, AIR]],
+    // Torches, doors and things standing on it fall off too.
+    const fallen = fallingWith((x, y, z) => this.world.getBlock(x, y, z), [[t.x, t.y, t.z]]).map(
+      ([x, y, z]): Edit => [x, y, z, this.world.getBlock(x, y, z)],
     );
+    this.change([[t.x, t.y, t.z, AIR], ...fallen.map(([x, y, z]): Edit => [x, y, z, AIR])]);
     sounds.break();
     // Alone, the chest's items fall out here (the room server does it in multiplayer).
     if (!this.room && isContainerBlock(block)) {
@@ -594,9 +598,10 @@ export class Game {
       }
     }
     if (this.mode !== 'survival') return;
-    if (loose) {
-      for (const drop of blockDrops(above, undefined)) {
-        this.spawnDrop({ id: drop.id, count: drop.count }, [t.x + 0.5, t.y + 1.5, t.z + 0.5], true);
+    const held = this.selectedStack();
+    for (const [x, y, z, id] of fallen) {
+      for (const drop of blockDrops(id, held ? getItem(held.id) : undefined)) {
+        this.spawnDrop({ id: drop.id, count: drop.count }, [x + 0.5, y + 0.5, z + 0.5], true);
       }
     }
 
@@ -657,14 +662,25 @@ export class Game {
     const t0 = this.target;
     if (t0 && !repeat && !sneaking) {
       const id = this.world.getBlock(t0.x, t0.y, t0.z);
-      if (id === LEVER || id === LEVER_ON) {
-        this.change([[t0.x, t0.y, t0.z, id === LEVER ? LEVER_ON : LEVER]]);
+      const flipped = flipLever(id);
+      if (flipped !== null) {
+        this.change([[t0.x, t0.y, t0.z, flipped]]);
         sounds.click();
         return;
       }
-      if (id === BUTTON || id === BUTTON_ON) {
-        if (id === BUTTON) this.change([[t0.x, t0.y, t0.z, BUTTON_ON]]);
+      if (isButton(id)) {
+        const pushed = pressButton(id);
+        if (pushed !== null) this.change([[t0.x, t0.y, t0.z, pushed]]);
         sounds.click();
+        return;
+      }
+      const type = getBlockType(id);
+      if (type.toggle !== null) {
+        this.toggleBlock(t0.x, t0.y, t0.z);
+        return;
+      }
+      if (type.item === BED) {
+        this.useBed(t0.x, t0.y, t0.z);
         return;
       }
       if (id === TNT && item?.special === 'flint_and_steel') {
@@ -697,19 +713,43 @@ export class Game {
 
     const t = this.target;
     if (!t) return;
-    const x = t.x + t.nx;
-    const y = t.y + t.ny;
-    const z = t.z + t.nz;
-    const here = getBlockType(this.world.getBlock(x, y, z));
-    if (here.id !== AIR && !here.liquid) return;
-    const placing = getBlockType(item.block);
+    const edits = planPlace(item.block, {
+      hit: t,
+      look: facingFromYaw(this.player.yaw),
+      pitch: this.player.pitch,
+      getBlock: (x, y, z) => this.world.solidLook(x, y, z),
+    });
+    if (!edits) return;
     // Don't put a solid block inside yourself.
-    if (placing.solid && overlapsBlock(this.player, x, y, z)) return;
-    // Dust, levers, buttons and torches need ground under them.
-    if (placing.needsFloor && !isOpaque(this.world.getBlock(x, y - 1, z))) return;
-    if (this.change([[x, y, z, item.block]]).length === 0) return;
+    if (edits.some(([x, y, z, id]) => isSolid(id) && overlapsBlock(this.player, x, y, z))) return;
+    if (this.change(edits).length === 0) return;
     if (this.mode === 'survival') this.inventory.takeOne(this.hud.selected);
     sounds.place();
+  }
+
+  /** Opens or closes a door, trapdoor or gate (both halves of a door). */
+  private toggleBlock(x: number, y: number, z: number): void {
+    const type = getBlockType(this.world.getBlock(x, y, z));
+    if (type.toggle === null) return;
+    const edits: Edit[] = [[x, y, z, type.toggle]];
+    if (type.partner) {
+      const [px, py, pz] = [x + type.partner[0], y + type.partner[1], z + type.partner[2]];
+      const other = getBlockType(this.world.getBlock(px, py, pz)).toggle;
+      if (other !== null) edits.push([px, py, pz, other]);
+    }
+    this.change(edits);
+    sounds.door(getBlockType(type.toggle).powered === null);
+  }
+
+  /** A bed: you wake up here next time. */
+  private useBed(x: number, y: number, z: number): void {
+    const type = getBlockType(this.world.getBlock(x, y, z));
+    // The foot is where you lie down.
+    const foot =
+      type.partner && type.noDrop ? [x + type.partner[0], y, z + type.partner[2]] : [x, y, z];
+    this.bedSpawn = [foot[0]! + 0.5, foot[1]! + 0.6, foot[2]! + 0.5];
+    this.savePlayerNow();
+    this.hud.toast('🛏️ Herätyspaikka tallennettu! Heräät tästä sängystä.');
   }
 
   // --- Creatures --------------------------------------------------------
@@ -934,7 +974,7 @@ export class Game {
   private pickBlock(): void {
     const t = this.target;
     if (!t) return;
-    const id = this.world.getBlock(t.x, t.y, t.z);
+    const id = getBlockType(this.world.getBlock(t.x, t.y, t.z)).item;
     const hotbar = this.inventory.slots.slice(0, HOTBAR_SIZE);
     const found = hotbar.findIndex((s) => s?.id === id);
     if (found >= 0) {
@@ -984,6 +1024,7 @@ export class Game {
       yaw: this.player.yaw,
       mode: this.mode,
       xp: this.xp,
+      bed: this.bedSpawn ?? undefined,
     });
   }
 
@@ -996,7 +1037,7 @@ export class Game {
     const inLava = feet === LAVA || body === LAVA;
 
     // Falling: remember the highest point; landing hurts after 3 blocks.
-    if (p.inWater || p.flying) {
+    if (p.inWater || p.flying || p.onLadder) {
       this.fallStart = null;
     } else if (!p.onGround) {
       this.fallStart = Math.max(this.fallStart ?? p.y, p.y);
@@ -1050,11 +1091,23 @@ export class Game {
   private respawn(): void {
     this.dead = false;
     this.vitals = freshVitals();
-    [this.player.x, this.player.y, this.player.z] = this.spawn;
+    [this.player.x, this.player.y, this.player.z] = this.respawnPoint();
     this.player.vx = this.player.vy = this.player.vz = 0;
     this.fallStart = null;
     this.savePlayerNow();
     this.resume();
+  }
+
+  /** Your bed if it is still there, otherwise the world's start. */
+  private respawnPoint(): [number, number, number] {
+    const bed = this.bedSpawn;
+    if (bed) {
+      const id = this.world.getBlock(Math.floor(bed[0]), Math.floor(bed[1]), Math.floor(bed[2]));
+      if (getBlockType(id).item === BED) return bed;
+      this.bedSpawn = null;
+      this.hud.toast('🛏️ Sänkysi oli kadonnut.');
+    }
+    return this.spawn;
   }
 
   // --- Items on the ground ------------------------------------------------
@@ -1139,7 +1192,7 @@ export class Game {
       // Another player's computer set it off first: show the bang here too.
       this.blastEffects(x, y, z);
     }
-    if (id === BUTTON_ON) this.buttons.set(k, REDSTONE.buttonSeconds);
+    if (releaseButton(id) !== null) this.buttons.set(k, REDSTONE.buttonSeconds);
     else this.buttons.delete(k);
   }
 
@@ -1161,15 +1214,23 @@ export class Game {
         break;
       }
       if (this.circuit.size === 0) continue;
-      const { looks, started } = this.circuit.tick({
+      // Piston moves are sent to the others, so not too many per second.
+      const now = performance.now();
+      this.pistonSends = this.pistonSends.filter((t) => now - t < 1000);
+      const canSend = !this.room || this.pistonSends.length < PISTONS.maxSendsPerSecond;
+      const { looks, started, moves, pistons } = this.circuit.tick({
         getBlock: (x, y, z) => (this.isLoaded(x, z) ? this.world.getBlock(x, y, z) : AIR),
         isLoaded: (x, z) => this.isLoaded(x, z),
+        isPressed: (x, y, z) => this.someoneOn(x, y, z),
+        mayPush: (x, _y, z) => canSend && this.movesBlocksAt(x, z),
       });
       for (const [x, y, z, look] of looks) this.world.setShown(x, y, z, look);
       for (const [x, y, z, id] of started) {
         if (id === TNT) this.change([[x, y, z, TNT_LIT]]);
         else this.launchFromBlock(x, y, z);
       }
+      if (moves.length > 0 && this.change(moves).length > 0) this.pistonSends.push(now);
+      for (const [x, y, z] of pistons) sounds.piston(this.distanceTo(x, y, z));
     }
 
     for (const [k, left] of [...this.buttons]) {
@@ -1179,7 +1240,8 @@ export class Game {
       }
       this.buttons.delete(k);
       const [x, y, z] = parseKey(k);
-      if (this.world.getBlock(x, y, z) === BUTTON_ON) this.change([[x, y, z, BUTTON]]);
+      const up = releaseButton(this.world.getBlock(x, y, z));
+      if (up !== null) this.change([[x, y, z, up]]);
     }
 
     for (const [k, left] of [...this.fuses]) {
@@ -1193,6 +1255,26 @@ export class Game {
       this.explodeAt(x, y, z);
     }
     this.effects.setPrimed(this.fuses.keys(), performance.now() / 1000);
+  }
+
+  /** Is a player or a creature standing on this pressure plate? */
+  private someoneOn(x: number, y: number, z: number): boolean {
+    const on = (p: { x: number; y: number; z: number }) =>
+      Math.floor(p.x) === x && Math.floor(p.z) === z && p.y >= y - 0.01 && p.y < y + 0.5;
+    if (!this.dead && on(this.player)) return true;
+    if (this.others.positions().some(on)) return true;
+    for (const m of this.mobs.views()) if (on(m)) return true;
+    return false;
+  }
+
+  /**
+   * Pistons move real blocks, so only one computer does it: of the players
+   * near the piston, the one with the smallest id.
+   */
+  private movesBlocksAt(x: number, z: number): boolean {
+    if (!this.room) return true;
+    const near = (p: { x: number; z: number }) => Math.hypot(p.x - x, p.z - z) < PISTONS.ownerRange;
+    return !this.others.positions().some((p) => near(p) && p.id < this.myId);
   }
 
   private explodeAt(x: number, y: number, z: number): void {

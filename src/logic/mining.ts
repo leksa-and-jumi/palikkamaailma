@@ -107,6 +107,26 @@ const RULES: Record<string, BlockRules> = {
   redstone_torch: { hardness: 0 },
   redstone_lamp: { hardness: 0.3 },
   firework_launcher: { hardness: 3.5, tool: 'pickaxe', needsLevel: 0 },
+  oak_door: { hardness: 3, tool: 'axe' },
+  iron_door: { hardness: 5, tool: 'pickaxe', needsLevel: 0 },
+  trapdoor: { hardness: 3, tool: 'axe' },
+  fence_gate: { hardness: 2, tool: 'axe' },
+  fence: { hardness: 2, tool: 'axe' },
+  ladder: { hardness: 0.4, tool: 'axe' },
+  stone_bricks: { hardness: 1.5, tool: 'pickaxe', needsLevel: 0 },
+  oak_stairs: { hardness: 2, tool: 'axe' },
+  cobblestone_stairs: { hardness: 2, tool: 'pickaxe', needsLevel: 0 },
+  stone_brick_stairs: { hardness: 1.5, tool: 'pickaxe', needsLevel: 0 },
+  oak_slab: { hardness: 2, tool: 'axe' },
+  cobblestone_slab: { hardness: 2, tool: 'pickaxe', needsLevel: 0 },
+  stone_brick_slab: { hardness: 1.5, tool: 'pickaxe', needsLevel: 0 },
+  glass_pane: { hardness: 0.3, drops: [] },
+  bed: { hardness: 0.2 },
+  stone_pressure_plate: { hardness: 0.5, tool: 'pickaxe', needsLevel: 0 },
+  oak_pressure_plate: { hardness: 0.5, tool: 'axe' },
+  repeater: { hardness: 0 },
+  piston: { hardness: 1.5 },
+  sticky_piston: { hardness: 1.5 },
   tnt_lit: { hardness: Infinity },
 };
 
@@ -115,8 +135,10 @@ const GRAVEL_FLINT_CHANCE = 0.1;
 /** Wool and anything not in the table. */
 const DEFAULT_RULES: BlockRules = { hardness: 0.8 };
 
+/** Rules come from the item: every way a door or stairs can face breaks the same. */
 export function blockRules(blockId: number): BlockRules {
-  return RULES[getBlockType(blockId).key] ?? DEFAULT_RULES;
+  const type = getBlockType(blockId);
+  return RULES[type.key] ?? RULES[getBlockType(type.item).key] ?? DEFAULT_RULES;
 }
 
 /** Will this item break the block so that it drops something? */
@@ -160,15 +182,15 @@ export function blockDrops(
   fortune = 0,
   silkTouch = false,
 ): Drop[] {
-  if (!canHarvest(blockId, tool)) return [];
-  const rules = blockRules(blockId);
   const block = getBlockType(blockId);
-  if (silkTouch && block.placeable) return [{ id: blockId, count: 1 }];
+  if (block.noDrop || !canHarvest(blockId, tool)) return [];
+  const rules = blockRules(blockId);
+  if (silkTouch && getBlockType(block.item).placeable) return [{ id: block.item, count: 1 }];
   // Gravel gives flint one time in ten, otherwise itself.
   if (block.key === 'gravel') {
     return [{ id: random() < GRAVEL_FLINT_CHANCE ? itemId('flint') : blockId, count: 1 }];
   }
-  if (!rules.drops) return [{ id: blockId, count: 1 }];
+  if (!rules.drops) return [{ id: block.item, count: 1 }];
 
   const drops: Drop[] = [];
   for (const drop of rules.drops) {

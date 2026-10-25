@@ -45,7 +45,14 @@ const ANIMAL_PERSONALITIES: readonly Personality[] = [
 ];
 
 function body(width: number, height: number, walkSpeed: number): Body {
-  return { width, height, walkSpeed, sprintSpeed: walkSpeed * 1.8, jumpSpeed: 7.6 };
+  return {
+    width,
+    height,
+    walkSpeed,
+    sprintSpeed: walkSpeed * 1.8,
+    jumpSpeed: 7.6,
+    stepHeight: 0.6,
+  };
 }
 
 export const MOB_TYPES: Record<MobKind, MobType> = {

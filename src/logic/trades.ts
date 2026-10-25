@@ -38,6 +38,7 @@ const BASE_TRADES: Record<Profession, readonly Trade[]> = {
     { give: [{ key: 'emerald', count: 3 }], get: { key: 'iron_pickaxe', count: 1 } },
     { give: [{ key: 'emerald', count: 4 }], get: { key: 'iron_sword', count: 1 } },
     { give: [{ key: 'emerald', count: 9 }], get: { key: 'iron_chestplate', count: 1 } },
+    { give: [{ key: 'emerald', count: 1 }], get: { key: 'slime_ball', count: 4 } },
     {
       give: [
         { key: 'emerald', count: 2 },
@@ -48,6 +49,7 @@ const BASE_TRADES: Record<Profession, readonly Trade[]> = {
   ],
   shepherd: [
     { give: [{ key: 'white', count: 18 }], get: { key: 'emerald', count: 1 } },
+    { give: [{ key: 'emerald', count: 2 }], get: { key: 'bed', count: 1 } },
     { give: [{ key: 'emerald', count: 1 }], get: { key: 'red', count: 4 } },
     { give: [{ key: 'emerald', count: 1 }], get: { key: 'blue', count: 4 } },
     { give: [{ key: 'emerald', count: 1 }], get: { key: 'yellow', count: 4 } },

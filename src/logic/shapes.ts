@@ -5,7 +5,7 @@
 // (0, 0, 0) is the ground block in front of the player.
 
 import { BUILDER } from '../config';
-import { AIR, blockIdFromKey } from './blocks';
+import { AIR, blockIdFromKey, turnBlock } from './blocks';
 
 export type Vec3 = [number, number, number];
 
@@ -78,7 +78,6 @@ const BLOCK_ALIASES: Record<string, string> = {
   wood: 'planks',
   oak_planks: 'planks',
   oak_log: 'log',
-  stone_bricks: 'brick',
   glowstone: 'lamp',
 };
 
@@ -393,7 +392,9 @@ export function placeBuild(
   facing: 0 | 1 | 2 | 3,
 ): BuildBlock[] {
   const [ox, oy, oz] = origin;
-  return blocks.map(([x, y, z, id]) => {
+  return blocks.map(([x, y, z, block]) => {
+    // Doors, stairs and torches turn with the build (facing 0 = away from you).
+    const id = turnBlock(block, facing);
     // Build z is "away from the player", build x is "to the right".
     switch (facing) {
       case 0:

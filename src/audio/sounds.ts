@@ -77,6 +77,12 @@ export const sounds = {
     for (let i = 0; i < 6; i++) noise(0.05, 0.06 * v, 6000, 3000, 0.25 + i * 0.09, 'highpass');
   },
   place: () => blip(420, 0.08, 'square', 0.05),
+  door: (open: boolean) => {
+    noise(0.12, 0.08, open ? 900 : 600, open ? 300 : 200, 0, 'bandpass');
+    blip(open ? 220 : 160, 0.08, 'triangle', 0.06);
+  },
+  /** A piston pushing out or pulling back. */
+  piston: (distance: number) => noise(0.18, 0.1 * near(distance), 700, 250, 0, 'bandpass'),
   break: () => blip(180, 0.12, 'sawtooth', 0.05),
   join: () => {
     blip(520, 0.12, 'sine', 0.08);

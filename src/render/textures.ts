@@ -3,7 +3,14 @@
 
 import * as THREE from 'three';
 import { RENDER } from '../config';
-import { TILE_NAMES, getBlockType, type TileName } from '../logic/blocks';
+import {
+  TILE_NAMES,
+  getBlockType,
+  type BlockBox,
+  type BoxFace,
+  type TileName,
+} from '../logic/blocks';
+import { renderBoxes } from '../logic/blockShapes';
 import { ATLAS_COLUMNS, ATLAS_ROWS, tileIndex } from '../logic/atlas';
 import { mulberry32 } from '../logic/noise';
 
@@ -200,6 +207,49 @@ function redstoneTorch(head: RGB): Painter {
     ],
     { h: head, H: whiter(head, 0.35), w: [130, 92, 50] },
   );
+}
+
+/** A door: wooden boards (or iron plates) in a frame; the upper half has windows. */
+function door(upper: boolean, iron: boolean): Painter {
+  const base: RGB = iron ? [196, 196, 200] : [168, 124, 72];
+  const frame: RGB = iron ? [150, 150, 156] : [116, 82, 44];
+  return (px, rnd) => {
+    for (let y = 0; y < S; y++) {
+      for (let x = 0; x < S; x++) {
+        const edge = x <= 1 || x >= S - 2 || (upper ? y <= 1 : y >= S - 2);
+        const window = upper && y >= 3 && y <= 7 && ((x >= 3 && x <= 6) || (x >= 9 && x <= 12));
+        if (window) {
+          if (iron && (x === 4 || x === 11)) px(x, y, frame);
+          else px(x, y, [0, 0, 0], 0);
+          continue;
+        }
+        const board = iron ? y % 8 === 0 : x % 4 === 0;
+        const panel = !upper && !iron && y >= 4 && y <= 11 && (x === 3 || x === 12);
+        px(x, y, vary(edge || board || panel ? frame : base, rnd, 12));
+      }
+    }
+    if (!upper) px(12, 1, iron ? [90, 90, 96] : [60, 60, 64]);
+  };
+}
+
+/** The door as a small picture for the inventory. */
+function doorItem(iron: boolean): Painter {
+  const base: RGB = iron ? [196, 196, 200] : [168, 124, 72];
+  const frame: RGB = iron ? [130, 130, 136] : [106, 72, 38];
+  return (px, rnd) => {
+    for (let y = 0; y < S; y++) {
+      for (let x = 0; x < S; x++) {
+        if (x < 4 || x > 11) {
+          px(x, y, [0, 0, 0], 0);
+          continue;
+        }
+        const edge = x === 4 || x === 11 || y === 0 || y === S - 1;
+        const window = y >= 2 && y <= 5 && (x === 6 || x === 9);
+        px(x, y, window ? [40, 40, 50] : vary(edge ? frame : base, rnd, 10));
+      }
+    }
+    px(10, 9, [50, 50, 54]);
+  };
 }
 
 const GRASS: RGB = [96, 170, 58];
@@ -636,6 +686,98 @@ const PAINTERS: Record<TileName, Painter> = {
   }),
   tnt_lit_side: tntSide(0.55),
   tnt_lit_top: tntTop(0.55),
+  door_lower: door(false, false),
+  door_upper: door(true, false),
+  door_item: doorItem(false),
+  iron_door_lower: door(false, true),
+  iron_door_upper: door(true, true),
+  iron_door_item: doorItem(true),
+  trapdoor: (px, rnd) => {
+    for (let y = 0; y < S; y++) {
+      for (let x = 0; x < S; x++) {
+        const hole = (x === 4 || x === 5 || x === 10 || x === 11) && y % 5 !== 0 && y > 1 && y < 14;
+        if (hole) px(x, y, [0, 0, 0], 0);
+        else {
+          const edge = x === 0 || y === 0 || x === S - 1 || y === S - 1;
+          px(x, y, vary(edge ? [110, 78, 42] : [164, 120, 70], rnd, 12));
+        }
+      }
+    }
+  },
+  ladder: (px, rnd) => {
+    for (let y = 0; y < S; y++) {
+      for (let x = 0; x < S; x++) {
+        const rail = x === 2 || x === 3 || x === 12 || x === 13;
+        const rung = y % 4 === 1 && x > 3 && x < 12;
+        if (rail || rung) px(x, y, vary(rail ? [126, 90, 50] : [150, 108, 62], rnd, 14));
+        else px(x, y, [0, 0, 0], 0);
+      }
+    }
+  },
+  stone_bricks: (px, rnd) => {
+    for (let y = 0; y < S; y++) {
+      for (let x = 0; x < S; x++) {
+        const row = Math.floor(y / 8);
+        const mortar = y % 8 === 7 || (x + row * 8) % 16 === 15;
+        const light = y % 8 === 0 || (x + row * 8) % 16 === 0;
+        const c: RGB = mortar ? [84, 84, 84] : light ? [150, 150, 150] : [124, 124, 124];
+        px(x, y, vary(c, rnd, 14));
+      }
+    }
+  },
+  bed_pillow: (px, rnd) => {
+    for (let y = 0; y < S; y++) {
+      for (let x = 0; x < S; x++) {
+        const edge = x <= 1 || x >= S - 2 || y <= 1 || y >= S - 2;
+        px(x, y, vary(edge ? [200, 40, 40] : [236, 236, 232], rnd, 8));
+      }
+    }
+  },
+  bed_blanket: (px, rnd) => {
+    for (let y = 0; y < S; y++) {
+      for (let x = 0; x < S; x++) {
+        const fold = y === 3 || y === 4;
+        px(x, y, vary(fold ? [232, 232, 228] : [196, 38, 38], rnd, 12));
+      }
+    }
+  },
+  bed_side: (px, rnd) => {
+    for (let y = 0; y < S; y++) {
+      for (let x = 0; x < S; x++) {
+        const wood = y >= 11;
+        px(x, y, vary(wood ? [150, 108, 62] : y === 0 ? [236, 236, 232] : [196, 38, 38], rnd, 12));
+      }
+    }
+  },
+  smooth_stone: framed([166, 166, 166], [130, 130, 130], () => undefined),
+  repeater_torch: noisy([120, 22, 18], 16),
+  piston_top: framed([178, 140, 86], [120, 88, 52], (px) => {
+    for (let x = 1; x < S - 1; x++) px(x, 8, [120, 88, 52]);
+  }),
+  piston_sticky_top: framed([178, 140, 86], [120, 88, 52], (px, rnd) => {
+    for (let y = 3; y < 13; y++) {
+      for (let x = 3; x < 13; x++) {
+        if (Math.hypot(x - 7.5, y - 7.5) < 5) px(x, y, vary([110, 196, 90], rnd, 20));
+      }
+    }
+  }),
+  piston_side: (px, rnd) => {
+    for (let y = 0; y < S; y++) {
+      for (let x = 0; x < S; x++) {
+        const wood = y < 4;
+        const crack = !wood && ((x + Math.floor(y / 4) * 3) % 5 === 0 || y % 4 === 0);
+        const c: RGB = wood ? [178, 140, 86] : crack ? [90, 90, 90] : [134, 134, 134];
+        px(x, y, vary(c, rnd, 16));
+      }
+    }
+  },
+  piston_back: framed([118, 118, 118], [86, 86, 86], (px) => {
+    for (let y = 6; y < 10; y++) for (let x = 6; x < 10; x++) px(x, y, [70, 70, 74]);
+  }),
+  piston_inner: framed([128, 128, 128], [96, 96, 96], (px) => {
+    for (let y = 5; y < 11; y++) for (let x = 5; x < 11; x++) px(x, y, [40, 40, 44]);
+    for (let y = 6; y < 10; y++) for (let x = 6; x < 10; x++) px(x, y, [178, 140, 86]);
+  }),
 };
 
 function paintTile(name: TileName, image: ImageData, ox: number, oy: number): void {
@@ -687,9 +829,8 @@ export function drawBlockIcon(canvas: HTMLCanvasElement, blockId: number): void 
   const atlas = getAtlasCanvas();
   const type = getBlockType(blockId);
   const tiles = type.tiles;
-  if (type.shape !== 'cube') {
-    // Flowers and torches look best as a flat picture.
-    const i = tileIndex(tiles.side);
+  const flat = (name: TileName) => {
+    const i = tileIndex(name);
     ctx.drawImage(
       atlas,
       (i % ATLAS_COLUMNS) * S,
@@ -701,6 +842,20 @@ export function drawBlockIcon(canvas: HTMLCanvasElement, blockId: number): void 
       size,
       size,
     );
+  };
+  if (type.icon) {
+    flat(type.icon);
+    return;
+  }
+  const boxes = renderBoxes(blockId, (dx) => (dx !== 0 ? blockId : 0));
+  if (boxes) {
+    // Stairs, slabs, fences, beds and levers: little boxes seen from above.
+    drawIsoBoxes(ctx, size, boxes, type.tiles.side);
+    return;
+  }
+  if (type.shape !== 'cube') {
+    // Flowers and torches look best as a flat picture.
+    flat(tiles.side);
     return;
   }
   const src = (name: TileName) => {
@@ -728,4 +883,77 @@ export function drawBlockIcon(canvas: HTMLCanvasElement, blockId: number): void 
   face(tiles.top, [k, k / 2, -k, k / 2, h, 0], 1);
   face(tiles.side, [k, k / 2, 0, k, 0, q], 0.8);
   face(tiles.side, [k, -k / 2, 0, k, h, h], 0.65);
+}
+
+/**
+ * Draws boxes like a cube icon: x goes down-right, z down-left, y up. Each
+ * box shows its top, its south side and its east side.
+ */
+function drawIsoBoxes(
+  ctx: CanvasRenderingContext2D,
+  size: number,
+  boxes: readonly BlockBox[],
+  fallback: TileName,
+): void {
+  const atlas = getAtlasCanvas();
+  const h = size / 2;
+  const q = size / 4;
+  const k = h / S;
+  const at = (x: number, y: number, z: number): [number, number] => [
+    h + h * x - h * z,
+    q * x + q * z + h * (1 - y),
+  ];
+  const tileOf = (box: BlockBox, face: BoxFace) => box.faces?.[face] ?? box.tile ?? fallback;
+  const draw = (
+    name: TileName,
+    origin: [number, number],
+    axes: [number, number, number, number],
+    rect: [number, number, number, number],
+    shade: number,
+  ) => {
+    const i = tileIndex(name);
+    const sx = (i % ATLAS_COLUMNS) * S;
+    const sy = Math.floor(i / ATLAS_COLUMNS) * S;
+    const [rx, ry, rw, rh] = rect;
+    if (rw <= 0 || rh <= 0) return;
+    ctx.save();
+    ctx.setTransform(axes[0], axes[1], axes[2], axes[3], origin[0], origin[1]);
+    ctx.drawImage(atlas, sx + rx, sy + ry, rw, rh, rx, ry, rw, rh);
+    ctx.fillStyle = `rgba(0,0,0,${1 - shade})`;
+    ctx.fillRect(rx, ry, rw, rh);
+    ctx.restore();
+  };
+  // Far boxes first, so near ones cover them.
+  const sorted = [...boxes].sort(
+    (a, b) => a.from[0] + a.from[2] - a.from[1] - (b.from[0] + b.from[2] - b.from[1]),
+  );
+  for (const box of sorted) {
+    const [x0, y0, z0] = box.from;
+    const [x1, y1raw, z1] = box.to;
+    const y1 = Math.min(1, y1raw);
+    // Top: tile x = world x, tile y = world z.
+    draw(
+      tileOf(box, 'py'),
+      at(0, y1, 0),
+      [k, k / 2, -k, k / 2],
+      [x0 * S, z0 * S, (x1 - x0) * S, (z1 - z0) * S],
+      1,
+    );
+    // South side: tile x = world x, tile y = down.
+    draw(
+      tileOf(box, 'pz'),
+      at(0, 1, z1),
+      [k, k / 2, 0, k],
+      [x0 * S, (1 - y1) * S, (x1 - x0) * S, (y1 - y0) * S],
+      0.8,
+    );
+    // East side: tile x = towards north, tile y = down.
+    draw(
+      tileOf(box, 'px'),
+      at(x1, 1, 1),
+      [k, -k / 2, 0, k],
+      [(1 - z1) * S, (1 - y1) * S, (z1 - z0) * S, (y1 - y0) * S],
+      0.65,
+    );
+  }
 }
