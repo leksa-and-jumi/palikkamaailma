@@ -794,3 +794,47 @@ kbd {
   width: 48px;
   height: 48px;
 }
+
+/* --- Villager shop --- */
+
+.villager-title {
+  font-weight: 800;
+  font-size: 1.1rem;
+}
+
+.speech {
+  position: relative;
+  background: #fff;
+  border: 3px solid #d8d2c4;
+  border-radius: 14px;
+  padding: 8px 14px;
+  margin: 8px 0 12px;
+  font-weight: 600;
+  max-width: 420px;
+}
+
+.trades {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.trade-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.trade-row .slot {
+  width: 44px;
+  height: 44px;
+  background: #8b8b8b;
+  border: 3px solid;
+  border-color: #555 #fff #fff #555;
+  border-radius: 4px;
+}
+
+.trade-row button {
+  margin-left: auto;
+  padding: 6px 12px;
+}

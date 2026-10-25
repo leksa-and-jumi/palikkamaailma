@@ -47,6 +47,28 @@ export const ORES = [
   { key: 'diamond_ore', maxY: 15, chance: 0.0025 },
 ] as const;
 
+/** Villages: at most one per region, on flat land in fitting biomes. */
+export const VILLAGES = {
+  regionSize: 320,
+  chance: 0.75,
+  /** Places tried in a region before giving up. */
+  tries: 8,
+  /** Half the width of the village area (blocks). */
+  radius: 18,
+  /** Highest minus lowest ground in the area must be at most this. */
+  maxBumpiness: 9,
+  minHouses: 4,
+  maxHouses: 6,
+  /** No trees this many blocks beyond the village area. */
+  yard: 8,
+  /** Houses stand about this far from the well. */
+  houseDistance: 11,
+  /** Villagers stay within this distance of their well. */
+  homeRange: 16,
+  /** Villagers appear when a player comes this close. */
+  spawnDistance: 64,
+} as const;
+
 // --- Light ----------------------------------------------------------------
 export const LIGHT = {
   max: 15,

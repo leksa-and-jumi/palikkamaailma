@@ -12,6 +12,7 @@ import {
   SEA_LEVEL,
   SURVIVAL,
   TNT_RULES,
+  VILLAGES,
   type Difficulty,
   type GameMode,
 } from './config';
@@ -84,8 +85,11 @@ import type { Hud } from './ui/hud';
 import { BuilderScreen, type BuildResult } from './ui/builderScreen';
 import { Input } from './ui/input';
 import type { ExtraPanel, InventoryScreen } from './ui/inventoryScreen';
-import { ChestPanel, CraftingPanel, FurnacePanel } from './ui/panels';
-import { HURT_REASONS, MobManager } from './play/mobManager';
+import { ChestPanel, CraftingPanel, FurnacePanel, TradePanel } from './ui/panels';
+import { greeting, thanks, tradesFor } from './logic/trades';
+import { PROFESSION_NAMES } from './logic/villages';
+import { MOB_TYPES, PERSONALITY_NAMES } from './logic/mobs';
+import { HURT_REASONS, MobManager, villagerProfession } from './play/mobManager';
 import { MobRenderer } from './render/mobRenderer';
 
 export interface GameOptions {
@@ -108,6 +112,8 @@ const MAX_PITCH = Math.PI / 2 - 0.01;
 /** Holding the right mouse button places again this often (seconds). */
 const PLACE_REPEAT = 0.25;
 const DROP_THROW_SPEED = 5;
+/** How far to look for villages for the pause menu hint (blocks). */
+const VILLAGE_SEARCH = 1600;
 const BREAK_DROP_SPEED = 2;
 /** A slow frame may run at most this many redstone ticks. */
 const MAX_REDSTONE_TICKS = 3;
@@ -642,6 +648,10 @@ export class Game {
       if (this.mode === 'survival') this.inventory.takeOne(this.hud.selected);
       return;
     }
+    if (this.targetMob && this.mobs.kindOf(this.targetMob.id) === 'villager') {
+      this.talkTo(this.targetMob.id);
+      return;
+    }
     if (this.target && !sneaking && this.interact(this.target)) return;
 
     const t0 = this.target;
@@ -760,6 +770,55 @@ export class Game {
     this.exploding = true;
     this.change(blast.edits);
     this.exploding = false;
+  }
+
+  /** "Lähin kylä: 290 palikkaa koilliseen" for the pause menu, or ''. */
+  villageHint(): string {
+    const { x, z } = this.player;
+    let best: { d: number; dx: number; dz: number } | null = null;
+    for (let gx = -VILLAGE_SEARCH; gx <= VILLAGE_SEARCH; gx += VILLAGES.regionSize / 2) {
+      for (let gz = -VILLAGE_SEARCH; gz <= VILLAGE_SEARCH; gz += VILLAGES.regionSize / 2) {
+        for (const v of this.world.terrain.villagesAround(x + gx, z + gz)) {
+          const d = Math.hypot(v.x - x, v.z - z);
+          if (!best || d < best.d) best = { d, dx: v.x - x, dz: v.z - z };
+        }
+      }
+    }
+    if (!best) return '';
+    if (best.d < VILLAGES.radius) return '🏘️ Olet kylässä!';
+    // North is -z. Eight directions, starting from north going clockwise.
+    const names = [
+      'pohjoiseen',
+      'koilliseen',
+      'itään',
+      'kaakkoon',
+      'etelään',
+      'lounaaseen',
+      'länteen',
+      'luoteeseen',
+    ];
+    const angle = Math.atan2(best.dx, -best.dz);
+    const index = (Math.round(angle / (Math.PI / 4)) + 8) % 8;
+    return `🏘️ Lähin kylä: ${Math.round(best.d)} palikkaa ${names[index]}`;
+  }
+
+  /** Opens a villager's shop: they say hello and show their trades. */
+  private talkTo(id: string): void {
+    const v = [...this.mobs.views()].find((m) => m.id === id);
+    if (!v) return;
+    const profession = villagerProfession(id);
+    const title = `${MOB_TYPES.villager.emoji} ${v.name} · ${PERSONALITY_NAMES[v.personality]} ${PROFESSION_NAMES[profession]}`;
+    const night = daylight(this.time) < 0.5;
+    const panel = new TradePanel(
+      title,
+      greeting(v.personality, profession, night),
+      tradesFor(profession, v.personality),
+      () => {
+        sounds.place();
+        return thanks(v.personality);
+      },
+    );
+    this.openScreen(panel, '🏘️ Kauppa');
   }
 
   /** Hits the creature with what you hold (swords hit hardest). */

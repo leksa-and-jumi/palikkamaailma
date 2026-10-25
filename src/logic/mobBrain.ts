@@ -1,7 +1,7 @@
 // What a computer character wants to do right now. Pure rules: given where
 // the players are, the brain picks a goal and turns it into movement.
 
-import { MOBS, MONSTERS } from '../config';
+import { MOBS, MONSTERS, VILLAGES } from '../config';
 import { mobType, PERSONALITY_TRAITS, type MobKind, type Personality } from './mobs';
 import { createPlayer, type MoveInput, type PlayerState } from './physics';
 
@@ -34,6 +34,8 @@ export interface Mob {
   fuse: number;
   /** Set by the mover when walking is blocked, so the brain jumps. */
   blocked: boolean;
+  /** Villagers stay near their village well (x, z). */
+  home: [number, number] | null;
 }
 
 export interface Seen {
@@ -51,6 +53,19 @@ export interface Seen {
 export interface Surroundings {
   /** Bright daytime (spiders are calm in the day). */
   day: boolean;
+}
+
+/** Villagers go back towards their well when they wander too far, and stay close at night. */
+function thinkHome(m: Mob, around: Surroundings): Thought | null {
+  if (!m.home) return null;
+  const [hx, hz] = m.home;
+  const d = Math.hypot(hx - m.body.x, hz - m.body.z);
+  const range = around.day ? VILLAGES.homeRange : VILLAGES.homeRange / 3;
+  if (d <= range) return null;
+  m.mode = 'wander';
+  m.goal = [hx, hz];
+  m.timer = 3;
+  return walkTo(m, hx, hz, false);
 }
 
 export interface Thought {
@@ -93,6 +108,7 @@ export function createMob(
     cooldown: MOBS.eggSeconds,
     fuse: 0,
     blocked: false,
+    home: null,
   };
 }
 
@@ -207,6 +223,10 @@ export function think(
   if (type.hostile) {
     const fight = thinkHostile(m, players, dt, around);
     if (fight) return fight;
+  }
+  if (m.hurt >= MOBS.fleeSeconds) {
+    const home = thinkHome(m, around);
+    if (home) return home;
   }
 
   // Hurt animals run away from whoever hit them.
