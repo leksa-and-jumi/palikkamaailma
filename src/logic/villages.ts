@@ -6,7 +6,14 @@
 import { CHUNK_SIZE, SEA_LEVEL, VILLAGES } from '../config';
 import { AIR, COBBLE, GRAVEL, SANDSTONE } from './blocks';
 import { hash2 } from './noise';
-import { centerBuild, expandShapes, placeBuild, type BuildBlock, type Shape } from './shapes';
+import {
+  buildBounds,
+  centerFootprint,
+  expandShapes,
+  placeBuild,
+  type BuildBlock,
+  type Shape,
+} from './shapes';
 import type { Biome } from './terrain';
 import type { Edit } from './world';
 
@@ -203,6 +210,13 @@ function wellShapes(m: Materials): Shape[] {
   ];
 }
 
+/** Centred left–right, with the front (the door side, smallest z) at z = 0. */
+function frontAtOrigin(blocks: readonly BuildBlock[]): BuildBlock[] {
+  const centred = centerFootprint(blocks);
+  const minZ = buildBounds(centred).min[2];
+  return centred.map(([x, y, z, id]) => [x, y, z - minZ, id]);
+}
+
 function offset(blocks: readonly BuildBlock[], x: number, y: number, z: number): Edit[] {
   return blocks.map(([bx, by, bz, id]) => [bx + x, by + y, bz + z, id]);
 }
@@ -215,7 +229,11 @@ export function villageBlocks(ground: Ground, v: Village): Edit[] {
 
   for (const h of v.houses) {
     // Door at the front: the house is centred and extends away from the well.
-    const house = placeBuild(centerBuild(expandShapes(houseShapes(m))), [h.x, h.y, h.z], h.facing);
+    const house = placeBuild(
+      frontAtOrigin(expandShapes(houseShapes(m))),
+      [h.x, h.y, h.z],
+      h.facing,
+    );
     // Fill under the floor down to the ground, so no house floats.
     for (const [x, y, z] of house) {
       if (y !== h.y) continue;
