@@ -65,6 +65,7 @@
         <div id="status" class="card status"></div>
       </div>
       <div id="players" class="top-right card"></div>
+      <canvas id="minimap" class="minimap" width="128" height="128"></canvas>
       <div id="flying" class="flying" hidden>🪽 Lennät</div>
       <div id="vitals" class="vitals" hidden>
         <div class="vitals-row">
@@ -115,11 +116,27 @@
           <div><kbd>B</kbd> ✨ taikarakentaja</div>
           <div><kbd>Z</kbd> kumoa taikarakennus</div>
           <div><kbd>R</kbd> käännä taikarakennusta</div>
+          <div><kbd>M</kbd> kartta · <kbd>N</kbd> pikkukartta</div>
+          <div><kbd>/</kbd> komennot (<kbd>/apua</kbd>)</div>
         </div>
         <p id="pause-code" class="code-hint"></p>
         <p id="village-hint" class="code-hint"></p>
         <button id="switch-mode" class="secondary"></button>
         <button id="to-menu" class="secondary">🏠 Valikkoon</button>
+      </div>
+    </section>
+
+    <!-- Map (M) -->
+    <section id="map-screen" class="screen" hidden>
+      <div class="panel wide map-panel">
+        <h2>🗺️ Kartta</h2>
+        <canvas id="big-map" width="560" height="560" data-big="1"></canvas>
+        <p id="map-info" class="code-hint"></p>
+        <div class="menu-buttons">
+          <button id="map-out" class="secondary">➖</button>
+          <button id="map-in" class="secondary">➕</button>
+          <button id="map-close">✖️ Sulje</button>
+        </div>
       </div>
     </section>
 

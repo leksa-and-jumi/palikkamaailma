@@ -324,6 +324,22 @@ export const SKY = {
   cloudSpeed: 0.8,
 } as const;
 
+/** The map (M) and the small map in the corner. */
+export const MAP = {
+  /** Blocks from you to the edge of the small map. */
+  miniRadius: 64,
+  /** Pictures kept in memory (one per chunk). */
+  maxTiles: 8000,
+  /** Milliseconds per frame for drawing new map pictures. */
+  budgetMs: 2,
+  bigBudgetMs: 10,
+  /** How often the maps are drawn again (seconds). */
+  redraw: 0.25,
+  /** Zoom steps of the big map (blocks per pixel). */
+  zooms: [0.5, 1, 2],
+  iconSize: 14,
+} as const;
+
 export const PISTONS = {
   /** A piston pushes at most this many blocks (Minecraft: 12). */
   maxPush: 12,

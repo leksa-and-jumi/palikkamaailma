@@ -4,6 +4,7 @@
 import {
   BUILDER,
   FIREWORKS,
+  MAP,
   MOBS,
   MONSTERS,
   NET,
@@ -90,6 +91,8 @@ import { PROFESSION_NAMES } from './logic/villages';
 import { MOB_TYPES, PERSONALITY_NAMES } from './logic/mobs';
 import { HURT_REASONS, MobManager, villagerProfession } from './play/mobManager';
 import { MobRenderer } from './render/mobRenderer';
+import { MapScreen } from './ui/mapScreen';
+import { MapTiles, drawMap, villagesIn, type MapMarker } from './ui/worldMap';
 
 export interface GameOptions {
   code: string;
@@ -209,6 +212,10 @@ export class Game {
   private lastZ = 0;
 
   private readonly circuit = new Circuit();
+  private readonly mapTiles: MapTiles;
+  private readonly mapScreen = new MapScreen();
+  private mapTimer = 0;
+  private minimapOn = true;
   private readonly effects: Effects;
   private redstoneTimer = 0;
   /** Lit TNT and seconds until it goes off, by "x,y,z". */
@@ -231,6 +238,7 @@ export class Game {
   ) {
     this.world = new VoxelWorld(seedFromCode(options.code));
     this.world.onChange = (x, y, z, old, id) => this.onBlockChange(x, y, z, old, id);
+    this.mapTiles = new MapTiles(this.world);
     renderer.setWorld(this.world);
     this.effects = new Effects(renderer.scene);
     this.effects.onBurst = (x, y, z) => sounds.pop(this.distanceTo(x, y, z));
@@ -419,6 +427,7 @@ export class Game {
     this.updateTarget();
     this.others.update(dt);
     if (this.ready && !this.dead) this.updateMobs(dt);
+    if (this.ready) this.updateMaps(dt);
     this.renderer.render();
   }
 
@@ -520,6 +529,39 @@ export class Game {
     } else this.renderer.hideHighlight();
     const m = this.mining;
     this.cracks.show(m?.x ?? 0, m?.y ?? 0, m?.z ?? 0, m ? m.progress : null);
+  }
+
+  // --- Maps ---------------------------------------------------------------
+
+  private updateMaps(dt: number): void {
+    const { x, z } = this.player;
+    const big = this.mapScreen.isOpen;
+    const radius = big ? this.mapScreen.radius : MAP.miniRadius;
+    this.mapTiles.update(x, z, radius, big ? MAP.bigBudgetMs : MAP.budgetMs);
+    this.mapTimer -= dt;
+    if (this.mapTimer > 0) return;
+    this.mapTimer = MAP.redraw;
+    const mini = document.getElementById('minimap') as HTMLCanvasElement | null;
+    if (mini) {
+      mini.hidden = !this.minimapOn;
+      if (this.minimapOn) drawMap(mini, this.mapTiles, x, z, 1, this.mapMarkers(MAP.miniRadius));
+    }
+    if (big) this.mapScreen.draw(this.mapTiles, x, z, this.mapMarkers(radius));
+  }
+
+  /** You, your friends, villages, your bed and the start, for the maps. */
+  private mapMarkers(radius: number): MapMarker[] {
+    const markers: MapMarker[] = [];
+    for (const v of villagesIn(this.world, this.player.x, this.player.z, radius)) {
+      markers.push({ x: v.x, z: v.z, icon: '🏘️', label: 'Kylä' });
+    }
+    markers.push({ x: this.spawn[0], z: this.spawn[2], icon: '⭐', label: 'Alku' });
+    if (this.bedSpawn) markers.push({ x: this.bedSpawn[0], z: this.bedSpawn[2], icon: '🛏️' });
+    for (const p of this.others.positions()) {
+      markers.push({ x: p.x, z: p.z, icon: this.avatars.get(p.id) ?? '🙂' });
+    }
+    markers.push({ x: this.player.x, z: this.player.z, icon: 'me', yaw: this.player.yaw });
+    return markers;
   }
 
   // --- Mining and building ----------------------------------------------
@@ -1185,6 +1227,7 @@ export class Game {
   /** Every block change goes through here (ours, the others' and saved ones). */
   private onBlockChange(x: number, y: number, z: number, old: number, id: number): void {
     this.circuit.track(x, y, z, id);
+    this.mapTiles.markDirty(x, z);
     const k = editKey(x, y, z);
     if (id === TNT_LIT && !this.fuses.has(k)) {
       this.fuses.set(k, TNT_RULES.fuse);
@@ -1461,6 +1504,7 @@ export class Game {
   private onKey(code: string, e: KeyboardEvent): boolean {
     if (!this.ready || this.dead) return false;
     if (this.inventoryScreen.isOpen || this.builder.isOpen || this.hud.chatOpen) return false;
+    if (this.mapScreen.isOpen) return false;
     if (code === 'KeyE') {
       // The survival backpack has the small 2 × 2 crafting grid, like Minecraft.
       this.openScreen(this.mode === 'survival' ? new CraftingPanel(2) : null);
@@ -1476,6 +1520,11 @@ export class Game {
     } else if (code === 'KeyX' && this.placing) {
       this.cancelPlacing();
       this.hud.toast('✖️ Taikarakennus jäi asettamatta');
+    } else if (code === 'KeyM') {
+      this.openOverlay((done) => this.mapScreen.open(done));
+    } else if (code === 'KeyN') {
+      this.minimapOn = !this.minimapOn;
+      this.mapTimer = 0;
     } else if (code === 'KeyT' || code === 'Enter') {
       this.openOverlay((done) => this.hud.openChat((text) => this.sendChat(text), done));
     } else if (code === 'KeyZ' && this.input.locked) {
