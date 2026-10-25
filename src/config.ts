@@ -76,6 +76,17 @@ export const LIGHT = {
   falloff: 2,
   /** Darkest a block can look (0 = black). */
   minBrightness: 0.07,
+  /**
+   * How fast torch light fades per light level (Minecraft-like: a torch lights
+   * a room). Sunlight uses `skyCurve`.
+   */
+  torchCurve: 0.9,
+  skyCurve: 0.82,
+  /** Torch light colour (warm) and moonlight colour (blue). */
+  torchColor: [1.0, 0.84, 0.62],
+  moonColor: [0.62, 0.7, 1.0],
+  /** Torches flicker this much (0 = not at all). */
+  flicker: 0.05,
 } as const;
 
 // --- Player ---------------------------------------------------------------
@@ -108,7 +119,7 @@ export const DAY = {
   /** Seconds in one whole day (Minecraft: 20 minutes). */
   length: 1200,
   /** How much sunlight is left at night (moonlight). */
-  nightSky: 0.27,
+  nightSky: 0.32,
   dayColor: 0x8ecbff,
   nightColor: 0x0b1026,
   sunsetColor: 0xf6a35e,
@@ -289,6 +300,30 @@ export const FIREWORKS = {
 } as const;
 
 // --- Rendering ------------------------------------------------------------
+/** The sky: gradient, stars, moon and clouds. */
+export const SKY = {
+  /** The sky dome must be closer than the camera's far end. */
+  radius: 100,
+  sunSize: 14,
+  moonSize: 10,
+  /** How much the sun's path leans to the south. */
+  tilt: 0.25,
+  stars: 700,
+  horizonDay: 0xc4e4ff,
+  horizonNight: 0x141c38,
+  /** Clouds float above the highest mountains. */
+  cloudHeight: 112,
+  /** One cloud pixel is this many blocks; the picture is this many pixels wide. */
+  cloudBlock: 8,
+  cloudPixels: 64,
+  /** How many cloud blobs are in the picture. */
+  cloudBlobs: 70,
+  /** The cloud layer drawn around you (blocks). */
+  cloudSpan: 480,
+  /** Blocks per second the clouds drift east. */
+  cloudSpeed: 0.8,
+} as const;
+
 export const PISTONS = {
   /** A piston pushes at most this many blocks (Minecraft: 12). */
   maxPush: 12,

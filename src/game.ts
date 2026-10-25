@@ -69,7 +69,7 @@ import {
   tickVitals,
   type Vitals,
 } from './logic/survival';
-import { dayLabel, daylight, timeOfDay } from './logic/daytime';
+import { dayLabel, dayNumber, daylight, timeOfDay } from './logic/daytime';
 import { BIOME_NAMES } from './logic/terrain';
 import { VoxelWorld, chunkOf, editKey, isInsideWorld, type Edit } from './logic/world';
 import { askBuilder } from './net/convex';
@@ -410,6 +410,8 @@ export class Game {
     );
 
     this.renderer.time = this.time;
+    this.renderer.clock = Date.now() + this.timeShift;
+    this.renderer.day = dayNumber(this.renderer.clock, this.world.seed);
     this.updateDrops(dt);
     if (this.ready) this.updateRedstone(dt);
     this.effects.update(dt);

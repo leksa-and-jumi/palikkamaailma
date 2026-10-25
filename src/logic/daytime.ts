@@ -9,6 +9,17 @@ export function timeOfDay(nowMs: number, seed: number): number {
   return (nowMs / 1000 / DAY.length + offset) % 1;
 }
 
+/** Which day it is (counts up by one every sunrise), the same for everyone. */
+export function dayNumber(nowMs: number, seed: number): number {
+  const offset = (seed % DAY.length) / DAY.length;
+  return Math.floor(nowMs / 1000 / DAY.length + offset);
+}
+
+/** The moon's shape: 0 = full moon … 4 = new moon … 7, like Minecraft's 8 phases. */
+export function moonPhase(day: number): number {
+  return ((day % 8) + 8) % 8;
+}
+
 /** Height of the sun: 1 at noon, -1 at midnight. */
 export function sunHeight(t: number): number {
   return Math.sin(t * Math.PI * 2);
