@@ -3,7 +3,7 @@
 // The same seed always gives the same world, so only the changed blocks
 // (edits) need to be saved and sent over the network.
 
-import { CHUNK_SIZE, ORES, SEA_LEVEL, TERRAIN, WORLD_HEIGHT } from '../config';
+import { CHUNK_SIZE, ORES, SEA_LEVEL, TERRAIN, VILLAGES, WORLD_HEIGHT } from '../config';
 import {
   AIR,
   BEDROCK,
@@ -35,6 +35,8 @@ import {
   blockIdFromKey,
 } from './blocks';
 import { createNoise2D, createNoise3D, fbm, hash2, hash3 } from './noise';
+import { villageChunks, villagesNear, type Village } from './villages';
+import type { Edit } from './world';
 
 /** Index of a block inside a chunk array. y is the slowest axis. */
 export function chunkIndex(x: number, y: number, z: number): number {
@@ -114,6 +116,9 @@ export class TerrainGenerator {
   private readonly caveB: (x: number, y: number, z: number) => number;
   private readonly caverns: (x: number, y: number, z: number) => number;
   private readonly columns = new Map<number, Column>();
+  /** Village blocks by chunk, per village (made once). */
+  private readonly villageCache = new Map<string, Map<string, Edit[]>>();
+  private readonly villageList = new Map<string, Village[]>();
 
   constructor(readonly seed: number) {
     this.continent = createNoise2D(seed);
@@ -260,6 +265,8 @@ export class TerrainGenerator {
     const col = this.column(x, z);
     const chance = TREE_CHANCE[col.biome];
     if (chance === 0 || hash2(this.seed + 1, x, z) >= chance) return null;
+    // Villages keep their yards clear.
+    if (this.inVillage(x, z)) return null;
     if (col.biome === 'mountains' && col.height >= TERRAIN.snowLine - 2) return null;
     if (this.isCave(x, col.height, z, col)) return null;
     const r = hash2(this.seed + 2, x, z);
@@ -355,7 +362,37 @@ export class TerrainGenerator {
         if (tree) this.placeTree(blocks, x0, z0, x, z, tree);
       }
     }
+
+    // Village houses, wells and paths go over everything else.
+    for (const v of this.villagesAround(x0 + CHUNK_SIZE / 2, z0 + CHUNK_SIZE / 2)) {
+      const key = `${v.x},${v.z}`;
+      let chunks = this.villageCache.get(key);
+      if (!chunks) {
+        chunks = villageChunks(this, v);
+        this.villageCache.set(key, chunks);
+      }
+      for (const [x, y, z, id] of chunks.get(`${cx},${cz}`) ?? []) {
+        if (y >= 0 && y < WORLD_HEIGHT) blocks[chunkIndex(x - x0, y, z - z0)] = id;
+      }
+    }
     return blocks;
+  }
+
+  /** Is this column inside a village (houses, well and yards)? */
+  inVillage(x: number, z: number): boolean {
+    const clear = VILLAGES.radius + VILLAGES.yard;
+    return this.villagesAround(x, z).some((v) => Math.hypot(v.x - x, v.z - z) < clear);
+  }
+
+  /** Villages near this point (cached per region). */
+  villagesAround(x: number, z: number): Village[] {
+    const key = `${Math.floor(x / VILLAGES.regionSize)},${Math.floor(z / VILLAGES.regionSize)}`;
+    let list = this.villageList.get(key);
+    if (!list) {
+      list = villagesNear(this, x, z);
+      this.villageList.set(key, list);
+    }
+    return list;
   }
 
   private placeTree(

@@ -3,7 +3,7 @@
 // others only see it through the owner's position messages. Animals spawn
 // near players, wander, run away, follow food, make babies and drop food.
 
-import { DIFFICULTIES, MOBS, MONSTERS, SEA_LEVEL, type Difficulty } from '../config';
+import { DIFFICULTIES, MOBS, MONSTERS, SEA_LEVEL, VILLAGES, type Difficulty } from '../config';
 import { BEDROCK, GRASS, LAVA, SNOW, WATER, getBlockType, isSolid } from '../logic/blocks';
 import { itemId } from '../logic/items';
 import { createMob, think, type Mob, type Seen } from '../logic/mobBrain';
@@ -15,15 +15,30 @@ import {
   mobType,
   rollDrops,
   type MobKind,
+  type Personality,
 } from '../logic/mobs';
 import { stepPlayer, type Body } from '../logic/physics';
 import { MOB_FLAG, type MobNet } from '../logic/protocol';
+import { hash2 } from '../logic/noise';
+import { PROFESSIONS, type Profession } from '../logic/villages';
 import type { Biome } from '../logic/terrain';
 import type { VoxelWorld } from '../logic/world';
 import type { MobView } from '../render/mobRenderer';
 import type { ItemStack } from '../logic/inventory';
 
 const SPAWN_TRIES = 6;
+
+/** Villager ids tell which village and house they belong to: v-<x>-<z>-<house> (m = minus). */
+export function villagerId(villageX: number, villageZ: number, house: number): string {
+  const n = (v: number) => (v < 0 ? `m${-v}` : `${v}`);
+  return `v-${n(villageX)}-${n(villageZ)}-${house}`;
+}
+
+/** The profession of a villager from its id (the same on every computer). */
+export function villagerProfession(id: string): Profession {
+  const house = Number(id.split('-').pop());
+  return PROFESSIONS[(Number.isInteger(house) ? house : 0) % PROFESSIONS.length]!;
+}
 const GROUP_MIN = 2;
 const GROUP_MAX = 4;
 const MAX_DROP = 3;
@@ -128,12 +143,21 @@ export class MobManager {
     return `${this.myId}-${this.counter}-${Math.floor(this.random() * 1e6).toString(36)}`;
   }
 
-  /** Makes a creature here (spawning, babies, villagers). */
-  spawn(kind: MobKind, x: number, y: number, z: number, baby = false): Mob {
+  /** Makes a creature here (spawning, babies, villagers). `fixed` gives a known id, name and personality. */
+  spawn(
+    kind: MobKind,
+    x: number,
+    y: number,
+    z: number,
+    baby = false,
+    fixed?: { id: string; personality: Personality; name: string },
+  ): Mob {
     const type = mobType(kind);
-    const personality = type.personalities[Math.floor(this.random() * type.personalities.length)]!;
-    const name = MOB_NAMES[Math.floor(this.random() * MOB_NAMES.length)]!;
-    const mob = createMob(this.newId(), kind, x, y, z, personality, name, baby);
+    const personality =
+      fixed?.personality ??
+      type.personalities[Math.floor(this.random() * type.personalities.length)]!;
+    const name = fixed?.name ?? MOB_NAMES[Math.floor(this.random() * MOB_NAMES.length)]!;
+    const mob = createMob(fixed?.id ?? this.newId(), kind, x, y, z, personality, name, baby);
     mob.body.yaw = this.random() * Math.PI * 2;
     // Chickens use the cooldown as their egg timer; monsters can attack at once.
     mob.cooldown = kind === 'chicken' ? EGG_MIN + this.random() * (EGG_MAX - EGG_MIN) : 0;
@@ -150,6 +174,7 @@ export class MobManager {
       if (this.isSpawner(ctx)) {
         this.trySpawnAnimals(ctx);
         this.trySpawnMonsters(ctx);
+        this.spawnVillagers(ctx);
       }
     }
 
@@ -190,7 +215,9 @@ export class MobManager {
     let n = 0;
     for (const m of this.owned.values())
       if (!MOB_TYPES[m.kind].hostile && m.kind !== 'villager') n++;
-    for (const r of this.remote.values()) if (!MOB_TYPES[r.net[1]].hostile) n++;
+    for (const r of this.remote.values()) {
+      if (!MOB_TYPES[r.net[1]].hostile && r.net[1] !== 'villager') n++;
+    }
     return n;
   }
 
@@ -266,6 +293,33 @@ export class MobManager {
     m.blocked = input.forward > 0 && moved < body.walkSpeed * dt * 0.3;
     // Spiders climb straight up walls.
     if (m.kind === 'spider' && m.blocked && m.mode === 'chase') m.body.vy = SPIDER_CLIMB;
+  }
+
+  // --- Villagers -----------------------------------------------------------
+
+  /** Every house in a nearby village has its own villager, always the same one. */
+  private spawnVillagers(ctx: MobContext): void {
+    for (const v of ctx.world.terrain.villagesAround(ctx.me.x, ctx.me.z)) {
+      if (Math.hypot(v.x - ctx.me.x, v.z - ctx.me.z) > VILLAGES.spawnDistance) continue;
+      v.houses.forEach((house, i) => {
+        const id = villagerId(v.x, v.z, i);
+        if (this.owned.has(id) || this.remote.has(id)) return;
+        const seed = ctx.world.seed;
+        const type = MOB_TYPES.villager;
+        const personality =
+          type.personalities[
+            Math.floor(hash2(seed + 31, v.x + i, v.z) * type.personalities.length)
+          ]!;
+        const name = MOB_NAMES[Math.floor(hash2(seed + 32, v.x, v.z + i) * MOB_NAMES.length)]!;
+        // Start just outside the front door.
+        const mob = this.spawn('villager', house.x + 0.5, house.y + 1, house.z + 0.5, false, {
+          id,
+          personality,
+          name,
+        });
+        mob.home = [v.x + 0.5, v.z + 0.5];
+      });
+    }
   }
 
   // --- Monsters -----------------------------------------------------------

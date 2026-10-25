@@ -41,6 +41,12 @@ Niityillä ja metsissä asuu possuja, lehmiä, kanoja ja lampaita. Jokaisella on
 - Ruoki kahta samanlaista eläintä (oikea hiiri), niin ne saavat vauvan 💕
 - Kana munii välillä munan.
 
+## Kylät ja kyläläiset
+
+Niityillä, aavikoilla ja havumetsissä on kyliä: kaivo keskellä, taloja ympärillä ja polkuja. Taukovalikko kertoo, missä lähin kylä on.
+
+Jokaisessa talossa asuu kyläläinen, jolla on nimi, luonne ja ammatti (maanviljelijä, kirjastonhoitaja, seppä, lammaspaimen). Klikkaa kyläläistä hiiren oikealla, niin se juttelee ja näyttää kauppansa: kyläläiset ostavat tavaroita **smaragdeilla** ja myyvät hyviä juttuja. Äkäinen kyläläinen pyytää vähän enemmän, ystävällinen vähemmän!
+
 ## Hirviöt
 
 Yöllä ja pimeissä luolissa liikkuu hirviöitä – soihtujen lähelle ne eivät tule!

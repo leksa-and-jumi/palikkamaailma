@@ -3,8 +3,10 @@
 
 import { CONTAINERS } from '../config';
 import { advanceFurnace, type ChestState, type FurnaceState } from '../logic/containers';
-import { canStack, clickSlot, stackLimit, type Slot } from '../logic/inventory';
-import { getItem } from '../logic/items';
+import { canStack, clickSlot, stackLimit, type ItemStack, type Slot } from '../logic/inventory';
+import { getItem, itemId } from '../logic/items';
+import { canAfford, makeTrade, type Trade } from '../logic/trades';
+import { fillSlot } from './slots';
 import { consumeIngredients, findRecipe, recipeResult } from '../logic/recipes';
 import type { ExtraPanel, InventoryScreen } from './inventoryScreen';
 
@@ -194,4 +196,60 @@ export class ChestPanel implements ExtraPanel {
   close(): void {
     // Chest contents stay in the chest.
   }
+}
+
+/** A villager's shop: what they say and what they trade. */
+export class TradePanel implements ExtraPanel {
+  readonly hideArmor = true;
+  readonly hideCatalog = true;
+
+  constructor(
+    private readonly title: string,
+    private speech: string,
+    private readonly trades: readonly Trade[],
+    private readonly onTraded: (got: ItemStack) => string,
+  ) {}
+
+  render(el: HTMLElement, screen: InventoryScreen): void {
+    const head = document.createElement('div');
+    head.className = 'villager-title';
+    head.textContent = this.title;
+    const bubble = document.createElement('div');
+    bubble.className = 'speech';
+    bubble.textContent = this.speech;
+    const list = document.createElement('div');
+    list.className = 'trades';
+    for (const trade of this.trades) {
+      const rowEl = document.createElement('div');
+      rowEl.className = 'trade-row';
+      for (const g of trade.give) rowEl.append(tradeSlot({ id: itemId(g.key), count: g.count }));
+      rowEl.append(label('➡️'));
+      rowEl.append(tradeSlot({ id: itemId(trade.get.key), count: trade.get.count }));
+      const button = document.createElement('button');
+      button.textContent = 'Vaihda';
+      button.disabled = !canAfford(screen.inventory, trade);
+      button.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        const got = makeTrade(screen.inventory, trade);
+        if (!got) return;
+        this.speech = this.onTraded(got);
+        screen.giveBack(got);
+        screen.refresh();
+      });
+      rowEl.append(button);
+      list.append(rowEl);
+    }
+    el.append(head, bubble, list);
+  }
+
+  close(): void {
+    // Nothing is left in a shop.
+  }
+}
+
+function tradeSlot(stack: ItemStack): HTMLElement {
+  const el = document.createElement('div');
+  el.className = 'slot';
+  fillSlot(el, stack);
+  return el;
 }

@@ -121,6 +121,7 @@ function start(world: WorldInfo, solo: boolean): void {
     onPause: (paused: boolean) => {
       $('pause').hidden = !paused;
       updateModeButton();
+      if (paused && game) $('village-hint').textContent = game.villageHint();
     },
   });
 }

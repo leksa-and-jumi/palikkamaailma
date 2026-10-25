@@ -102,6 +102,8 @@ export interface ExtraPanel {
   close(screen: InventoryScreen): void;
   /** Crafting tables, furnaces and chests don't show the armor slots. */
   hideArmor?: boolean;
+  /** Shops don't show the creative catalog. */
+  hideCatalog?: boolean;
 }
 
 /** Made once (it listens to the keyboard); each game gives it its inventory. */
@@ -174,7 +176,7 @@ export class InventoryScreen {
 
   /** Redraws all slots. */
   refresh(): void {
-    const creative = this.mode === 'creative';
+    const creative = this.mode === 'creative' && !this.extra?.hideCatalog;
     $('creative-tabs').hidden = !creative;
     $('creative-grid').hidden = !creative;
     $('armor-slots').hidden = creative || !!this.extra?.hideArmor;
