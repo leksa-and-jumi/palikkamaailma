@@ -1,6 +1,7 @@
 // Moves the player: walking, jumping, flying, swimming and bumping into blocks.
 
 import { PLAYER, WORLD_HEIGHT, WORLD_LIMIT } from '../config';
+import type { BlockBox } from './blocks';
 
 export interface PlayerState {
   /** Feet position (centre of the bottom of the player box). */
@@ -16,6 +17,8 @@ export interface PlayerState {
   onGround: boolean;
   flying: boolean;
   inWater: boolean;
+  /** Holding on to a ladder (no fall damage). */
+  onLadder: boolean;
 }
 
 export interface MoveInput {
@@ -27,11 +30,16 @@ export interface MoveInput {
   /** Fly down (shift). */
   down: boolean;
   sprint: boolean;
+  /** Sneaking: hold still on a ladder. */
+  sneak?: boolean;
 }
 
 export interface BlockQuery {
   isSolid(x: number, y: number, z: number): boolean;
   isLiquid(x: number, y: number, z: number): boolean;
+  /** Boxes of a solid block that is not a whole cube (doors, fences, stairs). */
+  boxes?(x: number, y: number, z: number): readonly BlockBox[] | null;
+  climbable?(x: number, y: number, z: number): boolean;
 }
 
 /** Small gap so the player never sticks inside a wall. */
@@ -43,6 +51,8 @@ export interface Body {
   walkSpeed: number;
   sprintSpeed: number;
   jumpSpeed: number;
+  /** Steps this high are walked up without jumping (stairs, slabs). */
+  stepHeight?: number;
 }
 
 export const PLAYER_BODY: Body = {
@@ -51,6 +61,7 @@ export const PLAYER_BODY: Body = {
   walkSpeed: PLAYER.walkSpeed,
   sprintSpeed: PLAYER.sprintSpeed,
   jumpSpeed: PLAYER.jumpSpeed,
+  stepHeight: PLAYER.stepHeight,
 };
 /** Longest physics step; bigger frames are split so nothing tunnels through walls. */
 const MAX_STEP = 1 / 60;
@@ -72,25 +83,70 @@ export function createPlayer(x: number, y: number, z: number): PlayerState {
     onGround: false,
     flying: false,
     inWater: false,
+    onLadder: false,
   };
 }
 
-function collides(world: BlockQuery, b: Body, x: number, y: number, z: number): boolean {
-  const HALF = b.width / 2;
-  const x0 = Math.floor(x - HALF + SKIN);
-  const x1 = Math.floor(x + HALF - SKIN);
-  const y0 = Math.floor(y + SKIN);
-  const y1 = Math.floor(y + b.height - SKIN);
-  const z0 = Math.floor(z - HALF + SKIN);
-  const z1 = Math.floor(z + HALF - SKIN);
-  for (let by = y0; by <= y1; by++) {
-    for (let bz = z0; bz <= z1; bz++) {
-      for (let bx = x0; bx <= x1; bx++) {
-        if (world.isSolid(bx, by, bz)) return true;
+type AABB = [number, number, number, number, number, number];
+
+/** Every box (in world space) that can touch the given area. */
+function gather(
+  world: BlockQuery,
+  x0: number,
+  y0: number,
+  z0: number,
+  x1: number,
+  y1: number,
+  z1: number,
+): AABB[] {
+  const out: AABB[] = [];
+  // One block lower too: fences stick up 1.5 blocks.
+  for (let by = Math.floor(y0) - 1; by <= Math.floor(y1); by++) {
+    for (let bz = Math.floor(z0); bz <= Math.floor(z1); bz++) {
+      for (let bx = Math.floor(x0); bx <= Math.floor(x1); bx++) {
+        if (!world.isSolid(bx, by, bz)) continue;
+        const local = world.boxes?.(bx, by, bz) ?? null;
+        if (!local) {
+          if (by >= Math.floor(y0)) out.push([bx, by, bz, bx + 1, by + 1, bz + 1]);
+          continue;
+        }
+        for (const b of local) {
+          out.push([
+            bx + b.from[0],
+            by + b.from[1],
+            bz + b.from[2],
+            bx + b.to[0],
+            by + b.to[1],
+            bz + b.to[2],
+          ]);
+        }
       }
     }
   }
-  return false;
+  return out;
+}
+
+function bodyBox(b: Body, x: number, y: number, z: number): AABB {
+  const HALF = b.width / 2;
+  return [x - HALF, y, z - HALF, x + HALF, y + b.height, z + HALF];
+}
+
+function overlaps(a: AABB, c: AABB): boolean {
+  return (
+    a[0] < c[3] - SKIN &&
+    a[3] > c[0] + SKIN &&
+    a[1] < c[4] - SKIN &&
+    a[4] > c[1] + SKIN &&
+    a[2] < c[5] - SKIN &&
+    a[5] > c[2] + SKIN
+  );
+}
+
+function collides(world: BlockQuery, b: Body, x: number, y: number, z: number): boolean {
+  const box = bodyBox(b, x, y, z);
+  return gather(world, box[0], box[1], box[2], box[3], box[4], box[5]).some((c) =>
+    overlaps(box, c),
+  );
 }
 
 /** Is any part of the player box in one of these blocks? */
@@ -112,7 +168,9 @@ export function overlapsBlock(
   );
 }
 
-/** Moves along one axis, stopping at the first block in the way. */
+const AXIS = { x: 0, y: 1, z: 2 } as const;
+
+/** Moves along one axis, stopping at the first box in the way. */
 function moveAxis(
   world: BlockQuery,
   b: Body,
@@ -121,23 +179,30 @@ function moveAxis(
   delta: number,
 ): boolean {
   if (delta === 0) return false;
-  const start = s[axis];
-  s[axis] = start + delta;
-  if (!collides(world, b, s.x, s.y, s.z)) return false;
-  const HALF = b.width / 2;
-
-  // Slide back to touch the block exactly.
-  if (axis === 'y') {
-    s.y = delta > 0 ? Math.floor(s.y + b.height) - b.height - SKIN : Math.floor(s.y) + 1;
-  } else {
-    const edge =
-      delta > 0
-        ? Math.floor(s[axis] + HALF) - HALF - SKIN
-        : Math.floor(s[axis] - HALF) + 1 + HALF + SKIN;
-    s[axis] = edge;
+  const a = AXIS[axis];
+  const box = bodyBox(b, s.x, s.y, s.z);
+  const area = [...box] as AABB;
+  if (delta > 0) area[a + 3] = box[a + 3]! + delta;
+  else area[a] = box[a]! + delta;
+  let move = delta;
+  for (const c of gather(world, ...area)) {
+    // Only boxes beside us on the other two axes can be in the way.
+    let beside = true;
+    for (let o = 0; o < 3; o++) {
+      if (o === a) continue;
+      if (!(box[o]! < c[o + 3]! - SKIN && box[o + 3]! > c[o]! + SKIN)) beside = false;
+    }
+    if (!beside) continue;
+    if (move > 0 && box[a + 3]! <= c[a]! + SKIN) {
+      move = Math.min(move, c[a]! - box[a + 3]! - SKIN);
+    } else if (move < 0 && box[a]! >= c[a + 3]! - SKIN) {
+      move = Math.max(move, c[a + 3]! - box[a]! + SKIN);
+    }
   }
-  if (collides(world, b, s.x, s.y, s.z)) s[axis] = start;
-  return true;
+  if (delta > 0) move = Math.max(0, move);
+  else move = Math.min(0, move);
+  s[axis] += move;
+  return move !== delta;
 }
 
 function step(world: BlockQuery, b: Body, s: PlayerState, input: MoveInput, dt: number): void {
@@ -176,8 +241,39 @@ function step(world: BlockQuery, b: Body, s: PlayerState, input: MoveInput, dt: 
     }
   }
 
-  moveAxis(world, b, s, 'x', s.vx * dt);
-  moveAxis(world, b, s, 'z', s.vz * dt);
+  // Ladders: walk forward or jump to climb, sneak to hold on.
+  const fx = Math.floor(s.x);
+  const fz = Math.floor(s.z);
+  s.onLadder =
+    !s.flying &&
+    !!world.climbable &&
+    (world.climbable(fx, Math.floor(s.y + 0.1), fz) ||
+      world.climbable(fx, Math.floor(s.y + 1), fz));
+  if (s.onLadder && !s.inWater) {
+    if (input.jump || input.forward > 0) s.vy = PLAYER.climbSpeed;
+    else if (input.sneak) s.vy = 0;
+    else s.vy = Math.max(s.vy, -PLAYER.climbSpeed);
+  }
+
+  const sx = s.x;
+  const sy = s.y;
+  const sz = s.z;
+  const hitX = moveAxis(world, b, s, 'x', s.vx * dt);
+  const hitZ = moveAxis(world, b, s, 'z', s.vz * dt);
+  const stepUp = b.stepHeight ?? 0;
+  if ((hitX || hitZ) && stepUp > 0 && s.onGround && !s.flying) {
+    // Walk up stairs and slabs without jumping (like Minecraft).
+    const [ax, ay, az] = [s.x, s.y, s.z];
+    [s.x, s.y, s.z] = [sx, sy, sz];
+    moveAxis(world, b, s, 'y', stepUp);
+    const raised = s.y - sy;
+    moveAxis(world, b, s, 'x', s.vx * dt);
+    moveAxis(world, b, s, 'z', s.vz * dt);
+    moveAxis(world, b, s, 'y', -raised);
+    const far = (s.x - sx) ** 2 + (s.z - sz) ** 2;
+    const near = (ax - sx) ** 2 + (az - sz) ** 2;
+    if (far <= near + 1e-9) [s.x, s.y, s.z] = [ax, ay, az];
+  }
   const hitY = moveAxis(world, b, s, 'y', s.vy * dt);
   if (hitY) s.vy = 0;
   s.onGround = s.vy <= 0 && collides(world, b, s.x, s.y - GROUND_PROBE, s.z);

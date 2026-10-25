@@ -25,6 +25,17 @@ export type Recipe = ShapedRecipe | ShapelessRecipe;
 
 const LOGS = ['log', 'birch_log', 'spruce_log'] as const;
 const COAL = ['coal', 'charcoal'] as const;
+const WOOLS = [
+  'white',
+  'red',
+  'blue',
+  'yellow',
+  'green',
+  'black',
+  'pink',
+  'orange',
+  'purple',
+] as const;
 
 function shaped(
   pattern: string[],
@@ -94,6 +105,31 @@ export const RECIPES: readonly Recipe[] = [
   shapeless(['iron_ingot', 'flint'], 'flint_and_steel'),
   // Minecraft's dispenser, but it shoots rockets.
   shaped(['CCC', 'CBC', 'CRC'], { C: 'cobblestone', B: 'bow', R: 'redstone' }, 'firework_launcher'),
+  shaped(['TRT', 'SSS'], { T: 'redstone_torch', R: 'redstone', S: 'stone' }, 'repeater'),
+  shaped(['SS'], { S: 'stone' }, 'stone_pressure_plate'),
+  shaped(['PP'], { P: 'planks' }, 'oak_pressure_plate'),
+  shaped(
+    ['PPP', 'CIC', 'CRC'],
+    { P: 'planks', C: 'cobblestone', I: 'iron_ingot', R: 'redstone' },
+    'piston',
+  ),
+  shaped(['S', 'P'], { S: 'slime_ball', P: 'piston' }, 'sticky_piston'),
+  // Doors, fences and building blocks.
+  shaped(['PP', 'PP', 'PP'], { P: 'planks' }, 'oak_door', 3),
+  shaped(['II', 'II', 'II'], { I: 'iron_ingot' }, 'iron_door', 3),
+  shaped(['PPP', 'PPP'], { P: 'planks' }, 'trapdoor', 2),
+  shaped(['PSP', 'PSP'], { P: 'planks', S: 'stick' }, 'fence', 3),
+  shaped(['SPS', 'SPS'], { P: 'planks', S: 'stick' }, 'fence_gate'),
+  shaped(['S S', 'SSS', 'S S'], { S: 'stick' }, 'ladder', 3),
+  shaped(['SS', 'SS'], { S: 'stone' }, 'stone_bricks', 4),
+  shaped(['P  ', 'PP ', 'PPP'], { P: 'planks' }, 'oak_stairs', 4),
+  shaped(['C  ', 'CC ', 'CCC'], { C: 'cobblestone' }, 'cobblestone_stairs', 4),
+  shaped(['B  ', 'BB ', 'BBB'], { B: 'stone_bricks' }, 'stone_brick_stairs', 4),
+  shaped(['PPP'], { P: 'planks' }, 'oak_slab', 6),
+  shaped(['CCC'], { C: 'cobblestone' }, 'cobblestone_slab', 6),
+  shaped(['BBB'], { B: 'stone_bricks' }, 'stone_brick_slab', 6),
+  shaped(['GGG', 'GGG'], { G: 'glass' }, 'glass_pane', 16),
+  shaped(['WWW', 'PPP'], { W: WOOLS, P: 'planks' }, 'bed'),
   shapeless(['paper', 'gunpowder'], 'firework_rocket', 3),
   shapeless(['paper', 'gunpowder', 'gunpowder'], 'firework_big', 3),
   shapeless(['paper', 'gunpowder', 'gold_ingot'], 'firework_star', 3),

@@ -4,6 +4,7 @@
 import * as THREE from 'three';
 import { CHUNK_SIZE, DAY, LIGHT, RENDER } from '../config';
 import { daylight, sunHeight, sunsetGlow } from '../logic/daytime';
+import type { BlockBox } from '../logic/blocks';
 import { buildChunkMesh, type MeshData } from '../logic/mesher';
 import { chunkKey, type VoxelWorld } from '../logic/world';
 import { createAtlasTexture } from './textures';
@@ -184,8 +185,16 @@ export class WorldRenderer {
     this.sunLight.position.copy(dir);
   }
 
-  showHighlight(x: number, y: number, z: number): void {
-    this.highlight.position.set(x + 0.5, y + 0.5, z + 0.5);
+  /** Frames the block you look at; `box` fits it around a door, slab or torch. */
+  showHighlight(x: number, y: number, z: number, box: BlockBox | null = null): void {
+    const from = box?.from ?? [0, 0, 0];
+    const to = box?.to ?? [1, 1, 1];
+    this.highlight.position.set(
+      x + (from[0] + to[0]) / 2,
+      y + (from[1] + to[1]) / 2,
+      z + (from[2] + to[2]) / 2,
+    );
+    this.highlight.scale.set(to[0] - from[0], to[1] - from[1], to[2] - from[2]);
     this.highlight.visible = true;
   }
 

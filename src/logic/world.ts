@@ -154,6 +154,11 @@ export class VoxelWorld {
     return look ? look[3] : this.getBlock(x, y, z);
   }
 
+  /** The block for bumping into: redstone can open doors and push out pistons. */
+  solidLook(x: number, y: number, z: number): number {
+    return this.shown.size === 0 ? this.getBlock(x, y, z) : this.shownBlock(x, y, z);
+  }
+
   /** Applies many edits (from the network or a save). Returns how many changed. */
   applyEdits(edits: Iterable<Edit>): number {
     let changed = 0;

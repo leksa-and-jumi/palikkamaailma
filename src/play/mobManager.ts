@@ -18,6 +18,7 @@ import {
   type Personality,
 } from '../logic/mobs';
 import { stepPlayer, type Body } from '../logic/physics';
+import { blockQuery } from '../logic/blockShapes';
 import { MOB_FLAG, type MobNet } from '../logic/protocol';
 import { hash2 } from '../logic/noise';
 import { PROFESSIONS, type Profession } from '../logic/villages';
@@ -280,10 +281,7 @@ export class MobManager {
       sprintSpeed: base.sprintSpeed * traits.speed,
     };
     stepPlayer(
-      {
-        isSolid: (x, y, z) => isSolid(world.getBlock(x, y, z)),
-        isLiquid: (x, y, z) => getBlockType(world.getBlock(x, y, z)).liquid,
-      },
+      blockQuery((x, y, z) => world.getBlock(x, y, z)),
       m.body,
       input,
       dt,

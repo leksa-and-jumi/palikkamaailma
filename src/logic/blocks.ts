@@ -89,6 +89,25 @@ export const TILE_NAMES = [
   'launcher_side',
   'tnt_lit_side',
   'tnt_lit_top',
+  'door_lower',
+  'door_upper',
+  'door_item',
+  'iron_door_lower',
+  'iron_door_upper',
+  'iron_door_item',
+  'trapdoor',
+  'ladder',
+  'stone_bricks',
+  'bed_pillow',
+  'bed_blanket',
+  'bed_side',
+  'smooth_stone',
+  'repeater_torch',
+  'piston_top',
+  'piston_sticky_top',
+  'piston_side',
+  'piston_back',
+  'piston_inner',
 ] as const;
 export type TileName = (typeof TILE_NAMES)[number];
 
@@ -100,12 +119,101 @@ export interface BlockTiles {
   front?: TileName;
 }
 
-/** A small box inside the block (0–1), for levers and buttons. */
+/** Sides of a box: +x, -x, +y, -y, +z, -z. */
+export type BoxFace = 'px' | 'nx' | 'py' | 'ny' | 'pz' | 'nz';
+
+/** A small box inside the block (0–1), for levers, doors, stairs and more. */
 export interface BlockBox {
   from: readonly [number, number, number];
   to: readonly [number, number, number];
   /** Picture for this box; default is the block's side picture. */
   tile?: TileName;
+  /** Pictures for single sides (a piston's face, a bed's blanket). */
+  faces?: Partial<Record<BoxFace, TileName>>;
+}
+
+/**
+ * Which way a block faces: 0 = north (-z), 1 = east (+x), 2 = south (+z),
+ * 3 = west (-x), and for pistons also 4 = up and 5 = down.
+ */
+export type Facing = 0 | 1 | 2 | 3;
+export type Facing6 = Facing | 4 | 5;
+
+/** Steps (x, y, z) for each facing. */
+export const FACING_STEPS: readonly (readonly [number, number, number])[] = [
+  [0, 0, -1],
+  [1, 0, 0],
+  [0, 0, 1],
+  [-1, 0, 0],
+  [0, 1, 0],
+  [0, -1, 0],
+];
+
+/** The facing whose step is (x, 0, z), or null for up and down. */
+export function facingOfStep(x: number, z: number): Facing | null {
+  const i = FACING_STEPS.findIndex(([sx, sy, sz]) => sx === x && sy === 0 && sz === z);
+  return i >= 0 && i < 4 ? (i as Facing) : null;
+}
+
+const TURN_FACES: Record<BoxFace, BoxFace> = {
+  nz: 'px',
+  px: 'pz',
+  pz: 'nx',
+  nx: 'nz',
+  py: 'py',
+  ny: 'ny',
+};
+const UP_FACES: Record<BoxFace, BoxFace> = {
+  nz: 'py',
+  py: 'pz',
+  pz: 'ny',
+  ny: 'nz',
+  px: 'px',
+  nx: 'nx',
+};
+const DOWN_FACES: Record<BoxFace, BoxFace> = {
+  nz: 'ny',
+  ny: 'pz',
+  pz: 'py',
+  py: 'nz',
+  px: 'px',
+  nx: 'nx',
+};
+
+function remapFaces(box: BlockBox, map: Record<BoxFace, BoxFace>): BlockBox['faces'] {
+  if (!box.faces) return undefined;
+  const out: Partial<Record<BoxFace, TileName>> = {};
+  for (const [face, tile] of Object.entries(box.faces) as [BoxFace, TileName][]) {
+    out[map[face]] = tile;
+  }
+  return out;
+}
+
+/** Turns a box made for facing north to face another way (around the middle). */
+export function rotateBox(box: BlockBox, facing: Facing6): BlockBox {
+  let [x0, y0, z0] = box.from;
+  let [x1, y1, z1] = box.to;
+  let b: BlockBox = box;
+  if (facing === 4) {
+    // North turns to up: (y, z) → (1 - z, y).
+    [y0, z0, y1, z1] = [1 - z1, y0, 1 - z0, y1];
+    return { ...b, from: [x0, y0, z0], to: [x1, y1, z1], faces: remapFaces(b, UP_FACES) };
+  }
+  if (facing === 5) {
+    // North turns to down: (y, z) → (z, 1 - y).
+    [y0, z0, y1, z1] = [z0, 1 - y1, z1, 1 - y0];
+    return { ...b, from: [x0, y0, z0], to: [x1, y1, z1], faces: remapFaces(b, DOWN_FACES) };
+  }
+  for (let i = 0; i < facing; i++) {
+    // A quarter turn clockwise seen from above: (x, z) → (1 - z, x).
+    [x0, z0, x1, z1] = [1 - z1, x0, 1 - z0, x1];
+    b = { ...b, faces: remapFaces(b, TURN_FACES) };
+  }
+  return { ...b, from: [x0, y0, z0], to: [x1, y1, z1] };
+}
+
+function turned(boxes: readonly BlockBox[], facing: Facing6): BlockBox[] {
+  return boxes.map((b) => rotateBox(b, facing));
 }
 
 export interface BlockType {
@@ -126,10 +234,36 @@ export interface BlockType {
   /**
    * 'cross' = drawn as two crossing pictures (flowers, grass, torches),
    * 'dust' = flat on the ground and joins its neighbours (redstone dust),
-   * 'boxes' = small boxes (levers and buttons).
+   * 'boxes' = small boxes (levers, doors, stairs),
+   * 'fence' and 'pane' = a post that joins its neighbours.
    */
-  shape: 'cube' | 'cross' | 'dust' | 'boxes';
+  shape: 'cube' | 'cross' | 'dust' | 'boxes' | 'fence' | 'pane';
   boxes?: readonly BlockBox[];
+  /** Bumping boxes when they differ from the drawn ones (fences are taller). */
+  collision?: readonly BlockBox[];
+  /** A cross picture that leans on a wall (wall torches). */
+  lean?: Facing;
+  /** Which way it faces (wall torches, doors, stairs, repeaters, pistons). */
+  facing?: Facing6;
+  /**
+   * The block it hangs on, as a step from itself: a torch on the floor has
+   * [0, -1, 0]. When that block breaks, this one falls off.
+   */
+  support: readonly [number, number, number] | null;
+  /** The other half of a door or bed (both break together). */
+  partner: readonly [number, number, number] | null;
+  /** The block it turns into when you right-click it (doors, trapdoors, gates). */
+  toggle: number | null;
+  /** How it looks with redstone power (an open door). */
+  powered: number | null;
+  /** You can climb it (ladders). */
+  climbable: boolean;
+  /** The item you get back and pick with the middle button (a door's lower half). */
+  item: number;
+  /** Breaking this one gives nothing (the other half of a door or bed gives the item). */
+  noDrop: boolean;
+  /** Flat picture for the inventory (doors and ladders). */
+  icon?: TileName;
   /** Must stand on a solid block (dust, levers, buttons, torches). */
   needsFloor: boolean;
   /**
@@ -155,6 +289,17 @@ type BlockOptions = Partial<
     | 'boxes'
     | 'needsFloor'
     | 'shownOnly'
+    | 'collision'
+    | 'lean'
+    | 'facing'
+    | 'support'
+    | 'partner'
+    | 'toggle'
+    | 'powered'
+    | 'climbable'
+    | 'item'
+    | 'noDrop'
+    | 'icon'
   >
 >;
 
@@ -180,9 +325,22 @@ function block(
     boxes: options.boxes,
     needsFloor: options.needsFloor ?? false,
     shownOnly: options.shownOnly ?? false,
+    collision: options.collision,
+    lean: options.lean,
+    facing: options.facing,
+    support: options.support ?? (options.needsFloor ? FLOOR : null),
+    partner: options.partner ?? null,
+    toggle: options.toggle ?? null,
+    powered: options.powered ?? null,
+    climbable: options.climbable ?? false,
+    item: options.item ?? id,
+    noDrop: options.noDrop ?? false,
+    icon: options.icon,
     tiles: faces,
   };
 }
+
+const FLOOR = [0, -1, 0] as const;
 
 /** Flowers, grass and torches: no collision, see-through, drawn as a cross. */
 const PLANT: BlockOptions = { solid: false, transparent: true, shape: 'cross' };
@@ -284,6 +442,470 @@ export const REDSTONE_LAMP = 70;
 export const REDSTONE_LAMP_ON = 71;
 export const FIREWORK_LAUNCHER = 72;
 export const TNT_LIT = 73;
+/** Torch on a wall: WALL_TORCH + facing (away from the wall). */
+export const WALL_TORCH = 74;
+export const WALL_LEVER = 78;
+export const WALL_LEVER_ON = 82;
+export const WALL_BUTTON = 86;
+export const WALL_BUTTON_ON = 90;
+/** Doors: base + 8 for the upper half + 4 when open + facing. */
+export const OAK_DOOR = 94;
+export const IRON_DOOR = 110;
+/** Trapdoor: base + 4 when open + facing. */
+export const TRAPDOOR = 126;
+/** Fence gate: base + 2 when open + 0 (runs along x) or 1 (along z). */
+export const FENCE_GATE = 134;
+export const FENCE = 138;
+export const LADDER = 139;
+export const STONE_BRICKS = 143;
+export const OAK_STAIRS = 144;
+export const COBBLE_STAIRS = 148;
+export const STONE_BRICK_STAIRS = 152;
+export const OAK_SLAB = 156;
+export const COBBLE_SLAB = 157;
+export const STONE_BRICK_SLAB = 158;
+export const GLASS_PANE = 159;
+/** Bed: base + 4 for the head + facing (from the foot to the head). */
+export const BED = 160;
+export const STONE_PLATE = 168;
+export const STONE_PLATE_ON = 169;
+export const OAK_PLATE = 170;
+export const OAK_PLATE_ON = 171;
+/** Repeater: base + facing (the way the signal goes). */
+export const REPEATER = 172;
+export const REPEATER_ON = 176;
+/** Pistons: base + facing (0–3, 4 = up, 5 = down). */
+export const PISTON = 180;
+export const STICKY_PISTON = 186;
+/** Looks of a pushed-out piston (never stored). */
+export const PISTON_BASE_ON = 192;
+export const PISTON_HEAD = 198;
+export const STICKY_HEAD = 204;
+
+const SIDE_NAMES = ['north', 'east', 'south', 'west', 'up', 'down'] as const;
+const FACINGS: readonly Facing[] = [0, 1, 2, 3];
+const FACINGS6: readonly Facing6[] = [0, 1, 2, 3, 4, 5];
+const step = (f: Facing6) => FACING_STEPS[f]!;
+const back = (f: Facing6) => step(f).map((v) => (v === 0 ? 0 : -v)) as [number, number, number];
+
+// --- Doors, building blocks and redstone machines ---------------------------
+// Boxes are made for facing north and turned for the other ways.
+
+const wallLever = (on: boolean): BlockBox[] => [
+  { from: [0.31, 0.25, 0.81], to: [0.69, 0.75, 1], tile: 'cobble' },
+  on
+    ? { from: [0.44, 0.3, 0.62], to: [0.56, 0.56, 0.81], tile: 'lever_stick' }
+    : { from: [0.44, 0.44, 0.62], to: [0.56, 0.7, 0.81], tile: 'lever_stick' },
+  on
+    ? { from: [0.42, 0.22, 0.58], to: [0.58, 0.34, 0.7], tile: 'lever_tip_on' }
+    : { from: [0.42, 0.66, 0.58], to: [0.58, 0.78, 0.7], tile: 'lever_stick' },
+];
+const wallButton = (pressed: boolean): BlockBox[] => [
+  { from: [0.31, 0.37, pressed ? 0.94 : 0.875], to: [0.69, 0.63, 1], tile: 'stone' },
+];
+const THIN = 3 / 16;
+/** A closed door is on the side nearest to you; it opens along the left wall. */
+const doorPanel = (open: boolean, tile: TileName): BlockBox =>
+  open
+    ? { from: [0, 0, 0], to: [THIN, 1, 1], tile }
+    : { from: [0, 0, 1 - THIN], to: [1, 1, 1], tile };
+const trapdoorPanel = (open: boolean): BlockBox =>
+  open
+    ? { from: [0, 0, 1 - THIN], to: [1, 1, 1], tile: 'trapdoor' }
+    : { from: [0, 0, 0], to: [1, THIN, 1], tile: 'trapdoor' };
+const GATE_POSTS: BlockBox[] = [
+  { from: [0, 0.3125, 0.4375], to: [0.125, 1, 0.5625] },
+  { from: [0.875, 0.3125, 0.4375], to: [1, 1, 0.5625] },
+];
+const gateBoxes = (open: boolean): BlockBox[] =>
+  open
+    ? [
+        ...GATE_POSTS,
+        { from: [0, 0.375, 0.5625], to: [0.125, 0.9375, 0.9375] },
+        { from: [0.875, 0.375, 0.5625], to: [1, 0.9375, 0.9375] },
+      ]
+    : [
+        ...GATE_POSTS,
+        { from: [0.125, 0.375, 0.4375], to: [0.875, 0.5625, 0.5625] },
+        { from: [0.125, 0.75, 0.4375], to: [0.875, 0.9375, 0.5625] },
+        { from: [0.4375, 0.5625, 0.4375], to: [0.5625, 0.75, 0.5625] },
+      ];
+/** Fences and gates are 1.5 blocks tall for bumping, so nobody jumps over. */
+const GATE_COLLISION: BlockBox[] = [{ from: [0, 0, 0.375], to: [1, 1.5, 0.625] }];
+const stairBoxes = (tile: TileName): BlockBox[] => [
+  { from: [0, 0, 0], to: [1, 0.5, 1], tile },
+  { from: [0, 0.5, 0], to: [1, 1, 0.5], tile },
+];
+const SLAB = (tile: TileName): BlockBox[] => [{ from: [0, 0, 0], to: [1, 0.5, 1], tile }];
+const bedBoxes = (head: boolean): BlockBox[] => {
+  const z = head ? [0, 0.1875] : [0.8125, 1];
+  return [
+    {
+      from: [0, 0.1875, 0],
+      to: [1, 0.5625, 1],
+      tile: 'bed_side',
+      faces: { py: head ? 'bed_pillow' : 'bed_blanket', ny: 'planks' },
+    },
+    { from: [0, 0, z[0]!], to: [0.1875, 0.1875, z[1]!], tile: 'planks' },
+    { from: [0.8125, 0, z[0]!], to: [1, 0.1875, z[1]!], tile: 'planks' },
+  ];
+};
+const plate = (pressed: boolean, tile: TileName): BlockBox[] => [
+  { from: [0.0625, 0, 0.0625], to: [0.9375, pressed ? 0.03 : 0.0625, 0.9375], tile },
+];
+const repeaterBoxes = (on: boolean): BlockBox[] => {
+  const torch: TileName = on ? 'lever_tip_on' : 'repeater_torch';
+  return [
+    { from: [0, 0, 0], to: [1, 0.125, 1], tile: 'smooth_stone' },
+    { from: [0.4375, 0.125, 0.1875], to: [0.5625, 0.4375, 0.3125], tile: torch },
+    { from: [0.4375, 0.125, 0.5625], to: [0.5625, 0.375, 0.6875], tile: torch },
+    { from: [0.47, 0.125, 0.3125], to: [0.53, 0.14, 0.5625], tile: torch },
+  ];
+};
+const pistonBoxes = (sticky: boolean): BlockBox[] => [
+  {
+    from: [0, 0, 0],
+    to: [1, 1, 1],
+    tile: 'piston_side',
+    faces: { nz: sticky ? 'piston_sticky_top' : 'piston_top', pz: 'piston_back' },
+  },
+];
+const PISTON_BASE_BOXES: BlockBox[] = [
+  {
+    from: [0, 0, 0.25],
+    to: [1, 1, 1],
+    tile: 'piston_side',
+    faces: { nz: 'piston_inner', pz: 'piston_back' },
+  },
+];
+const pistonHeadBoxes = (sticky: boolean): BlockBox[] => [
+  {
+    from: [0, 0, 0],
+    to: [1, 1, 0.25],
+    tile: 'planks',
+    faces: { nz: sticky ? 'piston_sticky_top' : 'piston_top' },
+  },
+  { from: [0.375, 0.375, 0.25], to: [0.625, 0.625, 1], tile: 'planks' },
+];
+
+/** Solid, see-through little boxes (doors, stairs, beds). */
+const PARTS: BlockOptions = { transparent: true, shape: 'boxes' };
+
+function moreBlocks(): BlockType[] {
+  const out: BlockType[] = [];
+  const name = (base: string, f: Facing6, isBase: boolean) =>
+    isBase ? base : `${base}_${SIDE_NAMES[f]}`;
+
+  for (const f of FACINGS) {
+    out.push(
+      block(WALL_TORCH + f, `wall_torch_${SIDE_NAMES[f]}`, 'Soihtu', 'torch', {
+        ...PLANT,
+        light: 14,
+        lean: f,
+        facing: f,
+        support: back(f),
+        placeable: false,
+        item: TORCH,
+      }),
+    );
+  }
+  for (const on of [false, true]) {
+    for (const f of FACINGS) {
+      out.push(
+        block(
+          (on ? WALL_LEVER_ON : WALL_LEVER) + f,
+          `wall_lever_${on ? 'on_' : ''}${SIDE_NAMES[f]}`,
+          'Vipu',
+          'lever_stick',
+          {
+            solid: false,
+            transparent: true,
+            shape: 'boxes',
+            boxes: turned(wallLever(on), f),
+            facing: f,
+            support: back(f),
+            placeable: false,
+            item: LEVER,
+          },
+        ),
+      );
+    }
+  }
+  for (const on of [false, true]) {
+    for (const f of FACINGS) {
+      out.push(
+        block(
+          (on ? WALL_BUTTON_ON : WALL_BUTTON) + f,
+          `wall_button_${on ? 'on_' : ''}${SIDE_NAMES[f]}`,
+          'Nappi',
+          'stone',
+          {
+            solid: false,
+            transparent: true,
+            shape: 'boxes',
+            boxes: turned(wallButton(on), f),
+            facing: f,
+            support: back(f),
+            placeable: false,
+            item: BUTTON,
+          },
+        ),
+      );
+    }
+  }
+  const doors = [
+    { base: OAK_DOOR, key: 'oak_door', name: 'Puuovi', tile: 'door', byHand: true },
+    { base: IRON_DOOR, key: 'iron_door', name: 'Rautaovi', tile: 'iron_door', byHand: false },
+  ] as const;
+  for (const d of doors) {
+    for (const upper of [false, true]) {
+      for (const open of [false, true]) {
+        for (const f of FACINGS) {
+          const id = d.base + (upper ? 8 : 0) + (open ? 4 : 0) + f;
+          const isBase = !upper && !open && f === 0;
+          const tile: TileName = `${d.tile}_${upper ? 'upper' : 'lower'}`;
+          const other = open ? id - 4 : id + 4;
+          out.push(
+            block(
+              id,
+              isBase
+                ? d.key
+                : `${d.key}_${upper ? 'upper' : 'lower'}_${open ? 'open' : 'closed'}_${SIDE_NAMES[f]}`,
+              d.name,
+              tile,
+              {
+                ...PARTS,
+                boxes: turned([doorPanel(open, tile)], f),
+                facing: f,
+                support: FLOOR,
+                partner: upper ? [0, -1, 0] : [0, 1, 0],
+                toggle: d.byHand ? other : null,
+                powered: open ? null : other,
+                placeable: isBase,
+                item: d.base,
+                noDrop: upper,
+                icon: `${d.tile}_item`,
+              },
+            ),
+          );
+        }
+      }
+    }
+  }
+  for (const open of [false, true]) {
+    for (const f of FACINGS) {
+      const id = TRAPDOOR + (open ? 4 : 0) + f;
+      const isBase = !open && f === 0;
+      out.push(
+        block(
+          id,
+          isBase ? 'trapdoor' : `trapdoor_${open ? 'open' : 'closed'}_${SIDE_NAMES[f]}`,
+          'Luukku',
+          'trapdoor',
+          {
+            ...PARTS,
+            boxes: turned([trapdoorPanel(open)], f),
+            facing: f,
+            toggle: open ? id - 4 : id + 4,
+            powered: open ? null : id + 4,
+            placeable: isBase,
+            item: TRAPDOOR,
+          },
+        ),
+      );
+    }
+  }
+  for (const open of [false, true]) {
+    for (const axis of [0, 1] as const) {
+      const id = FENCE_GATE + (open ? 2 : 0) + axis;
+      const isBase = !open && axis === 0;
+      out.push(
+        block(
+          id,
+          isBase ? 'fence_gate' : `fence_gate_${open ? 'open' : 'closed'}_${axis ? 'z' : 'x'}`,
+          'Aidan portti',
+          'planks',
+          {
+            ...PARTS,
+            solid: !open,
+            boxes: turned(gateBoxes(open), axis),
+            collision: open ? [] : turned(GATE_COLLISION, axis),
+            facing: axis,
+            toggle: open ? id - 2 : id + 2,
+            powered: open ? null : id + 2,
+            placeable: isBase,
+            item: FENCE_GATE,
+          },
+        ),
+      );
+    }
+  }
+  out.push(block(FENCE, 'fence', 'Aita', 'planks', { transparent: true, shape: 'fence' }));
+  for (const f of FACINGS) {
+    out.push(
+      block(LADDER + f, name('ladder', f, f === 0), 'Tikkaat', 'ladder', {
+        ...PARTS,
+        boxes: turned([{ from: [0, 0, 0.875], to: [1, 1, 1] }], f),
+        facing: f,
+        support: back(f),
+        climbable: true,
+        placeable: f === 0,
+        item: LADDER,
+        icon: 'ladder',
+      }),
+    );
+  }
+  out.push(block(STONE_BRICKS, 'stone_bricks', 'Kivitiilet', 'stone_bricks'));
+  const stairs = [
+    { base: OAK_STAIRS, key: 'oak_stairs', name: 'Puuportaat', tile: 'planks' },
+    { base: COBBLE_STAIRS, key: 'cobblestone_stairs', name: 'Mukulakiviportaat', tile: 'cobble' },
+    {
+      base: STONE_BRICK_STAIRS,
+      key: 'stone_brick_stairs',
+      name: 'Kivitiiliportaat',
+      tile: 'stone_bricks',
+    },
+  ] as const;
+  for (const st of stairs) {
+    for (const f of FACINGS) {
+      out.push(
+        block(st.base + f, name(st.key, f, f === 0), st.name, st.tile, {
+          ...PARTS,
+          boxes: turned(stairBoxes(st.tile), f),
+          facing: f,
+          placeable: f === 0,
+          item: st.base,
+        }),
+      );
+    }
+  }
+  out.push(
+    block(OAK_SLAB, 'oak_slab', 'Puulaatta', 'planks', { ...PARTS, boxes: SLAB('planks') }),
+    block(COBBLE_SLAB, 'cobblestone_slab', 'Mukulakivilaatta', 'cobble', {
+      ...PARTS,
+      boxes: SLAB('cobble'),
+    }),
+    block(STONE_BRICK_SLAB, 'stone_brick_slab', 'Kivitiililaatta', 'stone_bricks', {
+      ...PARTS,
+      boxes: SLAB('stone_bricks'),
+    }),
+    block(GLASS_PANE, 'glass_pane', 'Lasiruutu', 'glass', { transparent: true, shape: 'pane' }),
+  );
+  for (const head of [false, true]) {
+    for (const f of FACINGS) {
+      const isBase = !head && f === 0;
+      out.push(
+        block(
+          BED + (head ? 4 : 0) + f,
+          isBase ? 'bed' : `bed_${head ? 'head' : 'foot'}_${SIDE_NAMES[f]}`,
+          'Sänky',
+          'bed_side',
+          {
+            ...PARTS,
+            boxes: turned(bedBoxes(head), f),
+            facing: f,
+            support: FLOOR,
+            partner: head ? back(f) : step(f),
+            placeable: isBase,
+            item: BED,
+            noDrop: head,
+          },
+        ),
+      );
+    }
+  }
+  const plates = [
+    { base: STONE_PLATE, key: 'stone_pressure_plate', name: 'Kivinen painelaatta', tile: 'stone' },
+    { base: OAK_PLATE, key: 'oak_pressure_plate', name: 'Puinen painelaatta', tile: 'planks' },
+  ] as const;
+  for (const pl of plates) {
+    out.push(
+      block(pl.base, pl.key, pl.name, pl.tile, {
+        ...GADGET,
+        shape: 'boxes',
+        boxes: plate(false, pl.tile),
+      }),
+      block(pl.base + 1, `${pl.key}_on`, pl.name, pl.tile, {
+        ...GADGET,
+        ...SHOWN,
+        shape: 'boxes',
+        boxes: plate(true, pl.tile),
+        item: pl.base,
+      }),
+    );
+  }
+  for (const on of [false, true]) {
+    for (const f of FACINGS) {
+      out.push(
+        block(
+          (on ? REPEATER_ON : REPEATER) + f,
+          on ? `repeater_on_${SIDE_NAMES[f]}` : name('repeater', f, f === 0),
+          'Toistin',
+          'smooth_stone',
+          {
+            ...GADGET,
+            ...(on ? SHOWN : { placeable: f === 0 }),
+            shape: 'boxes',
+            boxes: turned(repeaterBoxes(on), f),
+            facing: f,
+            item: REPEATER,
+          },
+        ),
+      );
+    }
+  }
+  for (const sticky of [false, true]) {
+    const base = sticky ? STICKY_PISTON : PISTON;
+    for (const f of FACINGS6) {
+      out.push(
+        block(
+          base + f,
+          name(sticky ? 'sticky_piston' : 'piston', f, f === 0),
+          sticky ? 'Tahmea mäntä' : 'Mäntä',
+          'piston_side',
+          {
+            shape: 'boxes',
+            boxes: turned(pistonBoxes(sticky), f),
+            facing: f,
+            placeable: f === 0,
+            item: base,
+          },
+        ),
+      );
+    }
+  }
+  for (const f of FACINGS6) {
+    out.push(
+      block(PISTON_BASE_ON + f, `piston_base_on_${SIDE_NAMES[f]}`, 'Mäntä', 'piston_side', {
+        ...PARTS,
+        ...SHOWN,
+        boxes: turned(PISTON_BASE_BOXES, f),
+        facing: f,
+        item: PISTON,
+      }),
+    );
+  }
+  for (const sticky of [false, true]) {
+    for (const f of FACINGS6) {
+      out.push(
+        block(
+          (sticky ? STICKY_HEAD : PISTON_HEAD) + f,
+          `${sticky ? 'sticky_' : ''}piston_head_${SIDE_NAMES[f]}`,
+          'Männän pää',
+          'planks',
+          {
+            ...PARTS,
+            ...SHOWN,
+            boxes: turned(pistonHeadBoxes(sticky), f),
+            facing: f,
+            item: sticky ? STICKY_PISTON : PISTON,
+          },
+        ),
+      );
+    }
+  }
+  return out;
+}
 
 const LIST: BlockType[] = [
   block(AIR, 'air', 'Ilma', 'stone', { solid: false, transparent: true, placeable: false }),
@@ -411,6 +1033,7 @@ const LIST: BlockType[] = [
   block(LEVER, 'lever', 'Vipu', 'lever_stick', { ...GADGET, shape: 'boxes', boxes: lever(false) }),
   block(LEVER_ON, 'lever_on', 'Vipu', 'lever_stick', {
     ...GADGET,
+    item: LEVER,
     shape: 'boxes',
     boxes: lever(true),
     placeable: false,
@@ -418,6 +1041,7 @@ const LIST: BlockType[] = [
   block(BUTTON, 'button', 'Nappi', 'stone', { ...GADGET, shape: 'boxes', boxes: button(false) }),
   block(BUTTON_ON, 'button_on', 'Nappi', 'stone', {
     ...GADGET,
+    item: BUTTON,
     shape: 'boxes',
     boxes: button(true),
     placeable: false,
@@ -453,7 +1077,12 @@ const LIST: BlockType[] = [
     },
     { placeable: false },
   ),
+  ...moreBlocks(),
 ];
+
+LIST.forEach((b, i) => {
+  if (b.id !== i) throw new Error(`Block ${b.key} has id ${b.id} but is at ${i}`);
+});
 
 export const BLOCKS: readonly BlockType[] = LIST;
 export const BLOCK_COUNT = LIST.length;
@@ -474,6 +1103,18 @@ export function isSolid(id: number): boolean {
 export function isOpaque(id: number): boolean {
   const b = getBlockType(id);
   return b.solid && !b.transparent;
+}
+
+/**
+ * The same block turned `turns` quarter turns clockwise (for builds that are
+ * turned to face you): a door facing north faces east after one turn.
+ */
+export function turnBlock(id: number, turns: number): number {
+  const b = getBlockType(id);
+  const f = b.facing;
+  if (f === undefined || f > 3 || turns % 4 === 0) return id;
+  const sides = b.item === FENCE_GATE ? 2 : 4;
+  return id - f + ((f + turns) % sides);
 }
 
 const BY_KEY = new Map(LIST.map((b) => [b.key, b.id]));

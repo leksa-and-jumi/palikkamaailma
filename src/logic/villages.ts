@@ -182,12 +182,16 @@ function houseShapes(m: Materials): Shape[] {
     { shape: 'box', block: m.corner, from: [6, 1, 0], to: [6, 3, 0] },
     { shape: 'box', block: m.corner, from: [0, 1, 6], to: [0, 3, 6] },
     { shape: 'box', block: m.corner, from: [6, 1, 6], to: [6, 3, 6] },
-    { shape: 'box', block: 'air', from: [3, 1, 0], to: [3, 2, 0] },
+    // A wooden door (facing away from the well, into the house).
+    { shape: 'box', block: 'oak_door', from: [3, 1, 0], to: [3, 1, 0] },
+    { shape: 'box', block: 'oak_door_upper_closed_north', from: [3, 2, 0], to: [3, 2, 0] },
     { shape: 'box', block: 'glass', from: [1, 2, 0], to: [1, 2, 0] },
     { shape: 'box', block: 'glass', from: [5, 2, 0], to: [5, 2, 0] },
     { shape: 'box', block: 'glass', from: [0, 2, 3], to: [0, 2, 3] },
     { shape: 'box', block: 'glass', from: [6, 2, 3], to: [6, 2, 3] },
-    { shape: 'box', block: 'torch', from: [2, 1, 1], to: [2, 1, 1] },
+    // Torches on the walls inside.
+    { shape: 'box', block: 'wall_torch_east', from: [1, 2, 2], to: [1, 2, 2] },
+    { shape: 'box', block: 'wall_torch_west', from: [5, 2, 4], to: [5, 2, 4] },
   ];
   if (m.flatRoof) shapes.push({ shape: 'box', block: m.roof, from: [0, 4, 0], to: [6, 4, 6] });
   else shapes.push({ shape: 'pyramid', block: m.roof, center: [3, 4, 3], radius: 4 });

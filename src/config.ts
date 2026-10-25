@@ -83,6 +83,10 @@ export const PLAYER = {
   width: 0.6,
   height: 1.75,
   eyeHeight: 1.6,
+  /** Stairs and slabs this high are walked up (Minecraft: 0.6). */
+  stepHeight: 0.6,
+  /** Climbing speed on ladders (blocks per second). */
+  climbSpeed: 2.4,
   walkSpeed: 4.6,
   sprintSpeed: 7,
   flySpeed: 11,
@@ -285,6 +289,20 @@ export const FIREWORKS = {
 } as const;
 
 // --- Rendering ------------------------------------------------------------
+export const PISTONS = {
+  /** A piston pushes at most this many blocks (Minecraft: 12). */
+  maxPush: 12,
+  /** Ticks between moves of one piston (it takes time to go out and in). */
+  minTicks: 3,
+  /**
+   * Piston moves are sent to the room, so this computer sends at most this
+   * many per second (the Cloudflare quota). Others wait a moment.
+   */
+  maxSendsPerSecond: 4,
+  /** Of the players this close to a piston, the one with the smallest id moves the blocks. */
+  ownerRange: 96,
+} as const;
+
 export const RENDER = {
   /** Chunks drawn around the player. */
   viewDistance: 6,

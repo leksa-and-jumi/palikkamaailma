@@ -6,6 +6,7 @@
 // The same place always explodes the same way (the dice come from the
 // position), so every player's computer gets the same hole.
 
+import { fallingWith } from './blockShapes';
 import { AIR, TNT, TNT_LIT, getBlockType } from './blocks';
 import { blockRules } from './mining';
 import { mulberry32 } from './noise';
@@ -107,11 +108,13 @@ export function explode(
   }
   // The exploding TNT itself is gone.
   hit.set(`${x},${y},${z}`, [x, y, z, AIR]);
-  // Dust, levers and torches whose floor broke fall off too.
-  for (const [bx, by, bz, id] of [...hit.values()]) {
-    const k = `${bx},${by + 1},${bz}`;
-    if (id !== AIR || hit.has(k) || !getBlockType(getBlock(bx, by + 1, bz)).needsFloor) continue;
-    hit.set(k, [bx, by + 1, bz, AIR]);
+  // Dust, torches and doors whose block broke fall off too.
+  const removed = [...hit.values()]
+    .filter((e) => e[3] === AIR)
+    .map((e): [number, number, number] => [e[0], e[1], e[2]]);
+  for (const [bx, by, bz] of fallingWith(getBlock, removed)) {
+    const k = `${bx},${by},${bz}`;
+    if (!hit.has(k)) hit.set(k, [bx, by, bz, AIR]);
   }
   const edits = [...hit.values()];
   const lit = edits

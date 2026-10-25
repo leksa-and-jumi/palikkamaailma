@@ -11,10 +11,13 @@ import {
   REDSTONE_WIRE,
   REDSTONE_WIRE_ON,
   WATER,
+  FACING_STEPS,
   type BlockType,
+  type BoxFace,
   type TileName,
 } from './blocks';
-import { isRedstoneThing } from './redstone';
+import { renderBoxes } from './blockShapes';
+import { joinsDust } from './redstone';
 import { tileUV } from './atlas';
 import { chunkIndex } from './terrain';
 import { chunkOf, type VoxelWorld } from './world';
@@ -120,6 +123,14 @@ const FACES: readonly Face[] = [
   },
 ];
 
+/** How far a wall torch's foot and top are pushed towards the wall, and lifted. */
+const LEAN_FOOT = 0.36;
+const LEAN_TOP = 0.1;
+const LEAN_LIFT = 0.2;
+
+/** Box side names in the same order as FACES. */
+const FACE_KEYS: readonly BoxFace[] = ['px', 'nx', 'py', 'ny', 'pz', 'nz'];
+
 /** Redstone dust lies this high above the ground. */
 const DUST_HEIGHT = 0.02;
 /** The dust line is this wide (from DUST_EDGE to 1 - DUST_EDGE). */
@@ -133,7 +144,7 @@ const DIRECTIONS = [
 const WIRES: readonly boolean[] = BLOCKS.map(
   (b) => b.id === REDSTONE_WIRE || b.id === REDSTONE_WIRE_ON,
 );
-const JOINS_DUST: readonly boolean[] = BLOCKS.map((b) => isRedstoneThing(b.id));
+const JOINS_DUST: readonly boolean[] = BLOCKS.map((b) => joinsDust(b.id));
 
 /** Picture position (0–1) of a point on a box face, so pictures are not squashed. */
 function boxUV(normal: Vec3, x: number, y: number, z: number): [number, number] {
@@ -369,10 +380,15 @@ function emitBlock(
     const [u0, v0, u1, v1] = tileUV(block.tiles.side);
     const sky = glows ? 1 : skyAt(x, y, z) / max;
     const lit = glows ? 1 : blockAt(x, y, z) / max;
+    // A wall torch leans out from the wall: its foot is near the wall.
+    const wall = block.lean === undefined ? null : FACING_STEPS[block.lean]!;
     for (const quad of CROSS_QUADS) {
       const base = out.positions.length / 3;
       quad.forEach(([ox, oy, oz], i) => {
-        out.positions.push(x + ox, y + oy, z + oz);
+        if (wall) {
+          const lean = LEAN_FOOT - (LEAN_FOOT - LEAN_TOP) * oy;
+          out.positions.push(x + ox - wall[0] * lean, y + oy + LEAN_LIFT, z + oz - wall[2] * lean);
+        } else out.positions.push(x + ox, y + oy, z + oz);
         const [cu, cv] = CORNER_UVS[i]!;
         out.uvs.push(cu ? u1 : u0, cv ? v1 : v0);
         out.colors.push(1, sky, lit);
@@ -459,12 +475,19 @@ function emitBlock(
     return;
   }
 
-  if (block.shape === 'boxes') {
-    const sky = skyAt(x, y, z) / max;
-    const lit = blockAt(x, y, z) / max;
-    for (const box of block.boxes ?? []) {
-      const [u0, v0, u1, v1] = tileUV(box.tile ?? block.tiles.side);
-      for (const face of FACES) {
+  const boxes = renderBoxes(block.id, (dx, dz) => at(x + dx, y, z + dz).id);
+  if (boxes) {
+    const own = [skyAt(x, y, z), blockAt(x, y, z)] as const;
+    for (const box of boxes) {
+      FACES.forEach((face, faceIndex) => {
+        const tile = box.faces?.[FACE_KEYS[faceIndex]!] ?? box.tile ?? block.tiles.side;
+        const [u0, v0, u1, v1] = tileUV(tile);
+        // A side on the edge of the block takes the light from the next block.
+        const [nx, ny, nz] = face.normal;
+        const axis = nx !== 0 ? 0 : ny !== 0 ? 1 : 2;
+        const edge = face.normal[axis]! > 0 ? box.to[axis]! >= 1 : box.from[axis]! <= 0;
+        const sky = (edge ? Math.max(own[0], skyAt(x + nx, y + ny, z + nz)) : own[0]) / max;
+        const lit = (edge ? Math.max(own[1], blockAt(x + nx, y + ny, z + nz)) : own[1]) / max;
         const base = out.positions.length / 3;
         for (const corner of face.corners) {
           const p = [0, 1, 2].map((a) => (corner[a] ? box.to[a]! : box.from[a]!)) as [
@@ -478,7 +501,7 @@ function emitBlock(
           out.colors.push(face.shade, sky, lit);
         }
         out.indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
-      }
+      });
     }
     return;
   }

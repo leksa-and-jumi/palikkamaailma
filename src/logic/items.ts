@@ -245,6 +245,9 @@ for (const material of ['leather', 'iron', 'gold', 'diamond'] as const) {
   }
 }
 
+// New items go to the end, so the old ids stay the same.
+ITEM_SPECS.push({ key: 'slime_ball', name: 'Limapallo' });
+
 /** Blocks that burn in a furnace (seconds). */
 const BLOCK_FUEL: Record<string, number> = {
   log: 15,
@@ -255,6 +258,13 @@ const BLOCK_FUEL: Record<string, number> = {
   chest: 15,
   bookshelf: 15,
   coal_block: 800,
+  oak_door: 10,
+  trapdoor: 15,
+  fence: 15,
+  fence_gate: 15,
+  ladder: 15,
+  oak_stairs: 15,
+  oak_slab: 7.5,
 };
 
 function blockItem(b: BlockType): ItemType {

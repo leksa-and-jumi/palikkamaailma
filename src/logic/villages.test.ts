@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { VILLAGES } from '../config';
-import { COBBLE, PLANKS, SANDSTONE, TORCH, WATER } from './blocks';
+import { COBBLE, OAK_DOOR, PLANKS, SANDSTONE, TORCH, WATER, getBlockType } from './blocks';
 import { TerrainGenerator } from './terrain';
 import { villageBlocks, villageInRegion, type Village } from './villages';
 import { VoxelWorld } from './world';
@@ -42,10 +42,20 @@ describe('villages', () => {
     const world = new VoxelWorld(42);
     // The well's water is in the middle of the village.
     expect(world.getBlock(v.x, v.y, v.z)).toBe(WATER);
-    // Every house has a doorway: two air blocks above its front floor.
+    // Every house has a door (two halves) at its front, facing into the house.
     for (const h of v.houses) {
-      expect(world.getBlock(h.x, h.y + 1, h.z)).toBe(0);
-      expect(world.getBlock(h.x, h.y + 2, h.z)).toBe(0);
+      const near: [number, number][] = [];
+      for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) near.push([dx, dz]);
+      const spot = near.find(
+        ([dx, dz]) => getBlockType(world.getBlock(h.x + dx, h.y + 1, h.z + dz)).item === OAK_DOOR,
+      );
+      expect(spot).toBeDefined();
+      const [dx, dz] = spot!;
+      const lower = getBlockType(world.getBlock(h.x + dx, h.y + 1, h.z + dz));
+      const upper = getBlockType(world.getBlock(h.x + dx, h.y + 2, h.z + dz));
+      expect(lower.facing).toBe(h.facing);
+      expect(upper.item).toBe(OAK_DOOR);
+      expect(upper.partner).toEqual([0, -1, 0]);
     }
   });
 });

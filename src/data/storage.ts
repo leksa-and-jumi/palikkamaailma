@@ -66,6 +66,8 @@ export interface SavedPlayer {
   yaw?: number;
   mode?: string;
   xp?: number;
+  /** Where your bed is (you wake up there). */
+  bed?: [number, number, number];
 }
 
 export function loadPlayer(code: string): SavedPlayer {
