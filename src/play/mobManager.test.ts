@@ -4,7 +4,14 @@ import { mulberry32 } from '../logic/noise';
 import { MobManager, type MobEvents } from './mobManager';
 
 function setup() {
-  const events: MobEvents = { drop: vi.fn(), xp: vi.fn(), sendHit: vi.fn(), toast: vi.fn() };
+  const events: MobEvents = {
+    drop: vi.fn(),
+    xp: vi.fn(),
+    sendHit: vi.fn(),
+    toast: vi.fn(),
+    hurtPlayer: vi.fn(),
+    blast: vi.fn(),
+  };
   const mobs = new MobManager(events, mulberry32(5));
   return { events, mobs };
 }
@@ -66,5 +73,13 @@ describe('mob manager', () => {
     expect(mobs.feed(b.id, 'apple')).toBe(true);
     (mobs as unknown as { breed(): void }).breed();
     expect([...mobs.owned.values()].filter((m) => m.baby)).toHaveLength(1);
+  });
+});
+
+describe('monsters', () => {
+  it('a new zombie can attack straight away', () => {
+    const { mobs } = setup();
+    expect(mobs.spawn('zombie', 0, 50, 0).cooldown).toBe(0);
+    expect(mobs.spawn('chicken', 0, 50, 0).cooldown).toBeGreaterThan(0);
   });
 });

@@ -58,6 +58,8 @@ export type ClientMessage =
   | { t: 'chat'; text: string }
   /** You hit someone else's creature; its owner works out what happens. */
   | { t: 'hitMob'; id: string; damage: number; from: [number, number] }
+  /** Your monster hurt another player (`kind` = which monster). */
+  | { t: 'hurtPlayer'; id: string; damage: number; kind: MobKind }
   | { t: 'drop'; item: ItemStack; p: [number, number, number]; v: [number, number, number] }
   | { t: 'pickup'; id: string }
   /** Asks for the contents of a chest or furnace. */
@@ -83,6 +85,7 @@ export type ServerMessage =
     }
   | { t: 'set'; edits: Edit[] }
   | { t: 'hitMob'; id: string; damage: number; from: [number, number]; by: string }
+  | { t: 'hurtPlayer'; id: string; damage: number; kind: MobKind }
   | { t: 'chat'; id: string; avatar: string; text: string }
   | { t: 'item'; drop: DroppedItem }
   /** Someone picked an item up; only the player `by` gets it. */
@@ -222,6 +225,11 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       if (!from || !from.every((n) => isFiniteNumber(n))) return null;
       return { t: 'hitMob', id: msg.id, damage: msg.damage, from: from as [number, number] };
     }
+    case 'hurtPlayer':
+      if (typeof msg.id !== 'string' || !ID_PATTERN.test(msg.id)) return null;
+      if (!isFiniteNumber(msg.damage, MAX_HIT_DAMAGE) || msg.damage <= 0) return null;
+      if (typeof msg.kind !== 'string' || !MOB_KINDS.includes(msg.kind as MobKind)) return null;
+      return { t: 'hurtPlayer', id: msg.id, damage: msg.damage, kind: msg.kind as MobKind };
     case 'pickup':
       return typeof msg.id === 'string' && /^[a-z0-9-]{1,40}$/.test(msg.id)
         ? { t: 'pickup', id: msg.id }
