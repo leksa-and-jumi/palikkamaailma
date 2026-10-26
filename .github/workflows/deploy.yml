@@ -46,7 +46,7 @@ jobs:
       - name: Build without Convex
         if: env.CONVEX_DEPLOY_KEY == ''
         run: npm run build
-      - uses: actions/configure-pages@v5
+      - uses: actions/configure-pages@v6
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
