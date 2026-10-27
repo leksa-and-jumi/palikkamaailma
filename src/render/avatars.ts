@@ -30,6 +30,8 @@ interface Figure {
   lastUpdate: number;
   /** Seconds predicted since the last update. */
   predicted: number;
+  /** In creative (monsters leave them alone). */
+  safe: boolean;
   lastReported?: THREE.Vector3;
   targetYaw: number;
   targetPitch: number;
@@ -82,12 +84,13 @@ export class OtherPlayers {
   }
 
   /** Where the other players are (for creatures that follow or avoid them). */
-  positions(): { id: string; x: number; y: number; z: number }[] {
+  positions(): { id: string; x: number; y: number; z: number; safe: boolean }[] {
     return [...this.figures.entries()].map(([id, f]) => ({
       id,
       x: f.group.position.x,
       y: f.group.position.y,
       z: f.group.position.z,
+      safe: f.safe,
     }));
   }
 
@@ -149,15 +152,17 @@ export class OtherPlayers {
       velocity: new THREE.Vector3(),
       lastUpdate: performance.now(),
       predicted: 0,
+      safe: player.safe ?? false,
       targetYaw: player.yaw,
       targetPitch: player.pitch,
       walk: 0,
     });
   }
 
-  move(id: string, p: [number, number, number], yaw: number, pitch: number): void {
+  move(id: string, p: [number, number, number], yaw: number, pitch: number, safe = false): void {
     const figure = this.figures.get(id);
     if (!figure) return;
+    figure.safe = safe;
     const now = performance.now();
     const seconds = Math.max(0.05, (now - figure.lastUpdate) / 1000);
     const next = new THREE.Vector3(...p);
@@ -168,6 +173,8 @@ export class OtherPlayers {
         .sub(figure.lastReported ?? next)
         .divideScalar(seconds);
       figure.velocity.clampLength(0, MAX_PREDICT_SPEED);
+      // Never guess up or down: a guessed jump left figures floating in the air.
+      figure.velocity.y = 0;
     } else {
       figure.velocity.set(0, 0, 0);
     }

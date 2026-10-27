@@ -346,10 +346,18 @@ export class WorldRoom extends DurableObject<Env> {
       }
       case 'move': {
         if (!me.player) return;
-        me.player = { ...me.player, p: msg.p, yaw: msg.yaw, pitch: msg.pitch };
+        me.player = { ...me.player, p: msg.p, yaw: msg.yaw, pitch: msg.pitch, safe: msg.safe };
         ws.serializeAttachment(me);
         this.broadcast(
-          { t: 'move', id: me.id, p: msg.p, yaw: msg.yaw, pitch: msg.pitch, mobs: msg.mobs },
+          {
+            t: 'move',
+            id: me.id,
+            p: msg.p,
+            yaw: msg.yaw,
+            pitch: msg.pitch,
+            mobs: msg.mobs,
+            safe: msg.safe,
+          },
           ws,
         );
         return;

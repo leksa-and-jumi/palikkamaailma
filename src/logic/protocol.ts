@@ -19,6 +19,8 @@ export interface PlayerInfo {
   p: [number, number, number];
   yaw: number;
   pitch: number;
+  /** In creative: monsters leave this player alone. */
+  safe?: boolean;
 }
 
 /** An item lying on the ground. */
@@ -54,7 +56,15 @@ export const MOB_FLAG = { baby: 1, hurt: 2, fuse: 4 } as const;
 
 export type ClientMessage =
   | { t: 'hello'; avatar: string }
-  | { t: 'move'; p: [number, number, number]; yaw: number; pitch: number; mobs?: MobNet[] }
+  | {
+      t: 'move';
+      p: [number, number, number];
+      yaw: number;
+      pitch: number;
+      mobs?: MobNet[];
+      /** In creative: monsters leave this player alone. */
+      safe?: boolean;
+    }
   | { t: 'set'; edits: Edit[] }
   | { t: 'chat'; text: string }
   /** You hit someone else's creature; its owner works out what happens. */
@@ -98,6 +108,7 @@ export type ServerMessage =
       yaw: number;
       pitch: number;
       mobs?: MobNet[];
+      safe?: boolean;
     }
   | { t: 'set'; edits: Edit[] }
   | { t: 'hitMob'; id: string; damage: number; from: [number, number]; by: string }
@@ -225,10 +236,12 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
     case 'move': {
       const p = parseVec3(msg.p);
       if (!p || !isFiniteNumber(msg.yaw, 1000) || !isFiniteNumber(msg.pitch, 10)) return null;
-      if (msg.mobs === undefined) return { t: 'move', p, yaw: msg.yaw, pitch: msg.pitch };
+      const move: ClientMessage = { t: 'move', p, yaw: msg.yaw, pitch: msg.pitch };
+      if (msg.safe === true) move.safe = true;
+      if (msg.mobs === undefined) return move;
       if (!Array.isArray(msg.mobs) || msg.mobs.length > NET.maxMobsPerMove) return null;
-      const mobs = msg.mobs.map(parseMob).filter((m): m is MobNet => m !== null);
-      return { t: 'move', p, yaw: msg.yaw, pitch: msg.pitch, mobs };
+      move.mobs = msg.mobs.map(parseMob).filter((m): m is MobNet => m !== null);
+      return move;
     }
     case 'set': {
       const edits = parseEdits(msg.edits);

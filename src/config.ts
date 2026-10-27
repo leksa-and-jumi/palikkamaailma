@@ -6,12 +6,17 @@
 export const CHUNK_SIZE = 16;
 /** The world goes on (almost) forever: up to this many blocks from the middle. */
 export const WORLD_LIMIT = 30_000;
-/** Blocks from the bottom (y = 0) to the sky limit. */
-export const WORLD_HEIGHT = 96;
+/**
+ * Blocks from the bottom (y = 0) to the sky limit. Mountains stay below
+ * TERRAIN.maxHeight, so there is plenty of room to build on top of them.
+ */
+export const WORLD_HEIGHT = 192;
 export const SEA_LEVEL = 40;
 
 // --- Terrain --------------------------------------------------------------
 export const TERRAIN = {
+  /** The highest ground (the world was 96 high before; this keeps old worlds the same). */
+  maxHeight: 80,
   /** Land rises this much above the sea on average. */
   landHeight: 4,
   continentScale: 1 / 320,
@@ -311,8 +316,8 @@ export const SKY = {
   stars: 700,
   horizonDay: 0xc4e4ff,
   horizonNight: 0x141c38,
-  /** Clouds float above the highest mountains. */
-  cloudHeight: 112,
+  /** Clouds float high above the mountains (Minecraft: 192). */
+  cloudHeight: 150,
   /** One cloud pixel is this many blocks; the picture is this many pixels wide. */
   cloudBlock: 8,
   cloudPixels: 64,
@@ -379,6 +384,8 @@ export const RENDER = {
   underwaterColor: 0x1d4f91,
   fogNear: 50,
   fogFar: 96,
+  /** The camera sees this far (clouds and builds high up; land is hidden by fog sooner). */
+  cameraFar: 400,
   /** Pixels per texture tile. */
   tilePixels: 16,
   /** Tiles per row in the texture atlas. */

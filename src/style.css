@@ -890,3 +890,12 @@ kbd {
 .screen.sleep {
   background: rgba(6, 8, 24, 0.82);
 }
+
+.click-hint {
+  position: absolute;
+  left: 50%;
+  top: 40%;
+  transform: translateX(-50%);
+  font-size: 1.2rem;
+  pointer-events: none;
+}

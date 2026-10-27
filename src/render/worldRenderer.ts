@@ -88,7 +88,7 @@ export class WorldRenderer {
       RENDER.fov,
       window.innerWidth / window.innerHeight,
       0.05,
-      RENDER.fogFar + CHUNK_SIZE,
+      RENDER.cameraFar,
     );
     this.camera.rotation.order = 'YXZ';
 

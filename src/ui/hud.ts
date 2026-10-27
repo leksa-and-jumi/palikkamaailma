@@ -260,6 +260,11 @@ export class Hud {
     $('wake').onclick = () => onWake?.();
   }
 
+  /** "Click to play" after a window was closed with Esc (the mouse needs a click). */
+  showClickHint(show: boolean): void {
+    $('click-hint').hidden = !show;
+  }
+
   get chatOpen(): boolean {
     return !$('chat-form').hidden;
   }

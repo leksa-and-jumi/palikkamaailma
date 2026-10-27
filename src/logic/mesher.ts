@@ -212,8 +212,14 @@ function padIndex(x: number, y: number, z: number): number {
 }
 
 /** Copies the chunk and PAD blocks of its neighbours into one array. */
-function fillPadded(world: VoxelWorld, cx: number, cz: number): Uint8Array {
+function fillPadded(
+  world: VoxelWorld,
+  cx: number,
+  cz: number,
+): { padded: Uint8Array; top: number } {
   const padded = new Uint8Array(CELLS);
+  /** Everything from this height up is air (the world is tall, so this saves time). */
+  let top = 0;
   const x0 = cx * CHUNK_SIZE;
   const z0 = cz * CHUNK_SIZE;
   for (let pz = 0; pz < SIZE; pz++) {
@@ -223,11 +229,13 @@ function fillPadded(world: VoxelWorld, cx: number, cz: number): Uint8Array {
       const ncx = chunkOf(wx);
       const ncz = chunkOf(wz);
       const chunk = world.getChunk(ncx, ncz);
+      const chunkTop = world.chunkTop(ncx, ncz);
+      top = Math.max(top, chunkTop);
       const lx = wx - ncx * CHUNK_SIZE;
       const lz = wz - ncz * CHUNK_SIZE;
       const column = px + pz * STEP_Z;
       padded[column] = BEDROCK;
-      for (let y = 0; y < WORLD_HEIGHT; y++) {
+      for (let y = 0; y < chunkTop; y++) {
         padded[column + (y + 1) * STEP_Y] = chunk[chunkIndex(lx, y, lz)]!;
       }
       // The top row (y = WORLD_HEIGHT) stays air.
@@ -241,10 +249,11 @@ function fillPadded(world: VoxelWorld, cx: number, cz: number): Uint8Array {
         const pz = z - z0 + PAD;
         if (px < 0 || pz < 0 || px >= SIZE || pz >= SIZE) continue;
         padded[px + pz * STEP_Z + (y + 1) * STEP_Y] = id;
+        top = Math.max(top, y + 1);
       }
     }
   }
-  return padded;
+  return { padded, top: Math.min(WORLD_HEIGHT, top) };
 }
 
 // A cell can wait in the queue more than once, so leave plenty of room.
@@ -290,11 +299,14 @@ function spread(padded: Uint8Array, light: Uint8Array, queue: Int32Array, tail: 
  * Two kinds of light: sunlight (straight down, then spreading under
  * overhangs; it dims at night) and block light from torches, lamps and lava.
  */
-function computeLight(padded: Uint8Array): { sky: Uint8Array; block: Uint8Array } {
+function computeLight(padded: Uint8Array, top: number): { sky: Uint8Array; block: Uint8Array } {
   const sky = new Uint8Array(CELLS);
   const block = new Uint8Array(CELLS);
   const queue = LIGHT_QUEUE;
 
+  // Above the highest block everything is in full sunlight and nothing can
+  // spread further, so only cells below it are put in the queue (the world
+  // is tall, so this saves a lot of work). Padded y is one higher.
   let tail = 0;
   for (let column = 0; column < STEP_Y; column++) {
     let level: number = LIGHT.max;
@@ -304,7 +316,7 @@ function computeLight(padded: Uint8Array): { sky: Uint8Array; block: Uint8Array 
       if (OPAQUE[id]) break;
       if (DIMS[id]) level = Math.max(0, level - LIGHT.falloff);
       sky[i] = level;
-      if (level > LIGHT.falloff) {
+      if (level > LIGHT.falloff && y <= top + 1) {
         queue[tail] = i;
         tail = (tail + 1) % QUEUE_SIZE;
       }
@@ -565,8 +577,8 @@ function emitBlock(
 }
 
 export function buildChunkMesh(world: VoxelWorld, cx: number, cz: number): ChunkMesh {
-  const padded = fillPadded(world, cx, cz);
-  const light = computeLight(padded);
+  const { padded, top } = fillPadded(world, cx, cz);
+  const light = computeLight(padded, top);
   const solid = new MeshBuilder();
   const water = new MeshBuilder();
   const grid: Grid = {
@@ -576,7 +588,7 @@ export function buildChunkMesh(world: VoxelWorld, cx: number, cz: number): Chunk
     blockAt: (x, y, z) => light.block[padIndex(x, y, z)]!,
   };
 
-  for (let y = 0; y < WORLD_HEIGHT; y++) {
+  for (let y = 0; y < top; y++) {
     for (let z = 0; z < CHUNK_SIZE; z++) {
       for (let x = 0; x < CHUNK_SIZE; x++) emitBlock(solid, water, grid, x, y, z);
     }

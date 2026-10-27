@@ -119,6 +119,7 @@ function start(world: WorldInfo, solo: boolean): void {
       updateModeButton();
     },
     onPause: (paused: boolean) => {
+      if (paused && $('pause').hidden) pauseShownAt = performance.now();
       $('pause').hidden = !paused;
       updateModeButton();
       if (paused && game) $('village-hint').textContent = game.villageHint();
@@ -180,6 +181,25 @@ $('join-form').addEventListener('submit', (e) => {
 });
 
 $('resume').addEventListener('click', () => game?.resume());
+// Clicking beside a window or pressing Esc closes it (no need to find the button).
+$('pause').addEventListener('click', (e) => {
+  if (e.target !== $('pause') || !game) return;
+  $('pause').hidden = true;
+  game.resume();
+});
+let pauseShownAt = 0;
+document.addEventListener('keydown', (e) => {
+  // The Esc that opened the pause menu must not close it again.
+  const fresh = performance.now() - pauseShownAt < 400;
+  if (e.code === 'Escape' && !$('pause').hidden && game && !fresh) {
+    e.preventDefault();
+    $('pause').hidden = true;
+    game.resume();
+  }
+});
+$('inventory').addEventListener('mousedown', (e) => {
+  if (e.target === $('inventory')) inventoryScreen.close();
+});
 $('to-menu').addEventListener('click', () => showMenu());
 $('switch-mode').addEventListener('click', () => {
   game?.toggleMode();
