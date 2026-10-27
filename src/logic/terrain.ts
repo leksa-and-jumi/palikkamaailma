@@ -3,7 +3,9 @@
 // The same seed always gives the same world, so only the changed blocks
 // (edits) need to be saved and sent over the network.
 
-import { CHUNK_SIZE, ORES, SEA_LEVEL, TERRAIN, VILLAGES, WORLD_HEIGHT } from '../config';
+import { CHUNK_SIZE, NETHER, ORES, SEA_LEVEL, TERRAIN, VILLAGES, WORLD_HEIGHT } from '../config';
+import { NetherGenerator } from './nether';
+import { isNether } from './world';
 import {
   AIR,
   BEDROCK,
@@ -46,7 +48,7 @@ export function chunkIndex(x: number, y: number, z: number): number {
 export const CHUNK_VOLUME = CHUNK_SIZE * CHUNK_SIZE * WORLD_HEIGHT;
 
 export type Biome =
-  'ocean' | 'beach' | 'plains' | 'forest' | 'desert' | 'snowy' | 'taiga' | 'mountains';
+  'ocean' | 'beach' | 'plains' | 'forest' | 'desert' | 'snowy' | 'taiga' | 'mountains' | 'nether';
 
 /** Finnish names for the biomes (shown in the game). */
 export const BIOME_NAMES: Record<Biome, string> = {
@@ -58,6 +60,7 @@ export const BIOME_NAMES: Record<Biome, string> = {
   snowy: 'Lumimaa',
   taiga: 'Havumetsä',
   mountains: 'Vuoret',
+  nether: 'Nether',
 };
 
 export interface Column {
@@ -85,6 +88,7 @@ const TREE_CHANCE: Record<Biome, number> = {
   snowy: 0.006,
   taiga: 0.03,
   mountains: 0.003,
+  nether: 0,
 };
 
 const ORE_IDS = ORES.map((o) => ({ ...o, id: blockIdFromKey(o.key)! }));
@@ -105,6 +109,8 @@ function smoothstep(edge0: number, edge1: number, x: number): number {
 function clamp(v: number, lo: number, hi: number): number {
   return Math.min(hi, Math.max(lo, v));
 }
+
+const NETHER_COLUMN: Column = { height: NETHER.lavaLevel, biome: 'nether', cold: false };
 
 export class TerrainGenerator {
   private readonly continent: (x: number, z: number) => number;
@@ -131,8 +137,17 @@ export class TerrainGenerator {
     this.caverns = createNoise3D(seed ^ 0x0b5ad4ec);
   }
 
+  private netherGenerator: NetherGenerator | null = null;
+
+  /** The Nether's own generator (made when someone first goes there). */
+  get nether(): NetherGenerator {
+    this.netherGenerator ??= new NetherGenerator(this.seed);
+    return this.netherGenerator;
+  }
+
   /** Height and biome of a column (cached). */
   column(x: number, z: number): Column {
+    if (isNether(x)) return NETHER_COLUMN;
     const key = (x + 32768) * 65536 + (z + 32768);
     const cached = this.columns.get(key);
     if (cached) return cached;
@@ -323,6 +338,7 @@ export class TerrainGenerator {
 
   /** Makes all blocks of one chunk. cx and cz are chunk coordinates. */
   generateChunk(cx: number, cz: number): Uint8Array {
+    if (isNether(cx * CHUNK_SIZE + CHUNK_SIZE / 2)) return this.nether.generateChunk(cx, cz);
     const blocks = new Uint8Array(CHUNK_VOLUME);
     const x0 = cx * CHUNK_SIZE;
     const z0 = cz * CHUNK_SIZE;

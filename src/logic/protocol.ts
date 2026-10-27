@@ -2,7 +2,7 @@
 // Both sides use this file. Everything from the network is checked here, so
 // a broken or nasty message can never put strange data into the world.
 
-import { AVATAR_EMOJIS, CARTS, DAY, NET, WORLD_LIMIT } from '../config';
+import { AVATAR_EMOJIS, CARTS, DAY, NET, NETHER } from '../config';
 import type { RequestKind } from './commands';
 import { getBlockType, isValidBlockId } from './blocks';
 import { parseContainer, type Container } from './containers';
@@ -147,7 +147,8 @@ export type ServerMessage =
   | { t: 'sleepers'; sleeping: number; total: number }
   | { t: 'full' };
 
-const POSITION_LIMIT = WORLD_LIMIT + 100;
+/** Positions go up to the far side of the Nether band. */
+const POSITION_LIMIT = NETHER.offset + NETHER.halfSize + 100;
 const MAX_CARTS_PER_MOVE = 8;
 const REQUEST_KINDS: readonly RequestKind[] = ['tpa', 'invite'];
 /** A clock jump is never more than a whole day. */

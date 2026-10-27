@@ -78,6 +78,7 @@ const BIOME_GROUND: Record<Biome, RGB> = {
   snowy: BY_KEY.snow!,
   taiga: [58, 104, 66],
   mountains: BY_KEY.stone!,
+  nether: [118, 38, 36],
 };
 
 /** The top of a column that is not in memory, from the world's recipe. */

@@ -114,6 +114,9 @@ export const RECIPES: readonly Recipe[] = [
     'piston',
   ),
   shaped(['S', 'P'], { S: 'slime_ball', P: 'piston' }, 'sticky_piston'),
+  // Nether blocks.
+  shaped(['QQ', 'QQ'], { Q: 'quartz' }, 'quartz_block'),
+  shaped(['BB', 'BB'], { B: 'nether_brick' }, 'nether_bricks'),
   // Rails and minecarts.
   shaped(['I I', 'ISI', 'I I'], { I: 'iron_ingot', S: 'stick' }, 'rail', 16),
   shaped(['G G', 'GSG', 'GRG'], { G: 'gold_ingot', S: 'stick', R: 'redstone' }, 'powered_rail', 6),
@@ -260,6 +263,8 @@ export const SMELTING: Record<string, string> = {
   mutton: 'cooked_mutton',
   clay: 'brick',
   cactus: 'green',
+  netherrack: 'nether_brick',
+  quartz_ore: 'quartz',
 };
 
 export function smeltResult(id: number): number | undefined {

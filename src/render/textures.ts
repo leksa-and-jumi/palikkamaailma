@@ -807,6 +807,56 @@ const PAINTERS: Record<TileName, Painter> = {
   piston_back: framed([118, 118, 118], [86, 86, 86], (px) => {
     for (let y = 6; y < 10; y++) for (let x = 6; x < 10; x++) px(x, y, [70, 70, 74]);
   }),
+  netherrack: (px, rnd) => {
+    for (let y = 0; y < S; y++) {
+      for (let x = 0; x < S; x++) {
+        const crack = rnd() < 0.18;
+        px(x, y, vary(crack ? [82, 22, 22] : [118, 38, 36], rnd, 22));
+      }
+    }
+  },
+  soul_sand: (px, rnd) => {
+    noisy([84, 64, 50], 18)(px, rnd);
+    // Little sad faces in the sand.
+    for (const [fx, fy] of [
+      [3, 4],
+      [10, 9],
+    ] as const) {
+      px(fx, fy, [44, 32, 26]);
+      px(fx + 2, fy, [44, 32, 26]);
+      px(fx + 1, fy + 2, [44, 32, 26]);
+    }
+  },
+  quartz_ore: (px, rnd) => {
+    for (let y = 0; y < S; y++) {
+      for (let x = 0; x < S; x++) px(x, y, vary([118, 38, 36], rnd, 22));
+    }
+    for (let i = 0; i < 7; i++) {
+      const cx = 2 + Math.floor(rnd() * 11);
+      const cy = 2 + Math.floor(rnd() * 11);
+      px(cx, cy, [236, 230, 222]);
+      px(cx + 1, cy, [220, 212, 204]);
+    }
+  },
+  nether_bricks: (px, rnd) => {
+    for (let y = 0; y < S; y++) {
+      for (let x = 0; x < S; x++) {
+        const row = Math.floor(y / 4);
+        const mortar = y % 4 === 3 || (x + (row % 2) * 4) % 8 === 7;
+        px(x, y, vary(mortar ? [30, 12, 16] : [70, 26, 32], rnd, 12));
+      }
+    }
+  },
+  quartz_block: shiny([234, 228, 220]),
+  portal: (px, rnd) => {
+    for (let y = 0; y < S; y++) {
+      for (let x = 0; x < S; x++) {
+        const swirl = Math.sin(x * 0.9 + Math.cos(y * 0.7) * 2) + Math.cos(y * 0.8 - x * 0.3);
+        const light = 0.5 + swirl * 0.25;
+        px(x, y, vary([110 + light * 90, 30 + light * 40, 200 + light * 50], rnd, 20), 200);
+      }
+    }
+  },
   rail: rail([150, 150, 156], null),
   rail_corner: railCorner,
   powered_rail: rail([236, 196, 60], [110, 20, 16]),

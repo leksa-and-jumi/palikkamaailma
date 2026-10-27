@@ -13,6 +13,31 @@ export const WORLD_LIMIT = 30_000;
 export const WORLD_HEIGHT = 192;
 export const SEA_LEVEL = 40;
 
+/**
+ * The Nether is a band of the same world far to the east (x around
+ * NETHER.offset), so storing, sending and drawing it works like the rest.
+ * One block there is 8 blocks in the normal world (like Minecraft).
+ */
+export const NETHER = {
+  offset: 60_000,
+  scale: 8,
+  /** Blocks from the Nether's middle to its edge. */
+  halfSize: WORLD_LIMIT / 8,
+  /** Bedrock floor at 0 and roof at this height. */
+  roof: 127,
+  lavaLevel: 31,
+  /** Seconds to stand in a portal before travelling (creative is quicker). */
+  portalSeconds: 3,
+  portalSecondsCreative: 1,
+  /** How far to look for a portal on the other side before building one. */
+  searchRadius: 24,
+  /** Darkest light in the Nether (it glows a little red). */
+  minBrightness: 0.16,
+  fogColor: 0x3a0f0a,
+  fogNear: 20,
+  fogFar: 80,
+} as const;
+
 // --- Terrain --------------------------------------------------------------
 export const TERRAIN = {
   /** The highest ground (the world was 96 high before; this keeps old worlds the same). */

@@ -11,6 +11,7 @@ import {
   MOBS,
   MONSTERS,
   NET,
+  NETHER,
   PISTONS,
   PLAYER,
   REDSTONE,
@@ -18,6 +19,7 @@ import {
   SURVIVAL,
   TNT_RULES,
   VILLAGES,
+  WORLD_HEIGHT,
   type Difficulty,
   type GameMode,
 } from './config';
@@ -92,7 +94,7 @@ import {
   type Someone,
 } from './logic/commands';
 import { BIOME_NAMES } from './logic/terrain';
-import { VoxelWorld, chunkOf, editKey, isInsideWorld, type Edit } from './logic/world';
+import { VoxelWorld, chunkOf, editKey, isInsideWorld, isNether, type Edit } from './logic/world';
 import { askBuilder } from './net/convex';
 import { ContainerService } from './net/containers';
 import { ROOM_URL, RoomClient, type RoomStatus } from './net/room';
@@ -115,6 +117,8 @@ import { MapScreen } from './ui/mapScreen';
 import { CartManager, type Cart } from './play/carts';
 import { CartRenderer } from './render/cartRenderer';
 import { isRail } from './logic/rails';
+import { buildPortal, findPortal, isPortal, lightPortal } from './logic/portal';
+import { toNether, toOverworld } from './logic/nether';
 import { MapTiles, drawMap, villagesIn, type MapMarker } from './ui/worldMap';
 
 export interface GameOptions {
@@ -173,6 +177,9 @@ const NIGHT = 0.6;
 function skipTo(now: number, target: number): number {
   return Math.round(((((target - now) % 1) + 1) % 1) * DAY.length * 1000);
 }
+
+/** How far around a Nether portal's place to look for floor (blocks). */
+const NETHER_PORTAL_SEARCH = 12;
 
 const BUILDER_ERRORS: Record<string, string> = {
   'too-many': '😅 Nyt on taiottu tosi paljon. Odota hetki ja kokeile uudestaan!',
@@ -268,6 +275,9 @@ export class Game {
   private targetCart: Cart | null = null;
   private readonly mapScreen = new MapScreen();
   private mapTimer = 0;
+  /** Seconds standing in a portal, and true after travelling until you step out. */
+  private portalTime = 0;
+  private portalCooldown = false;
   private minimapOn = true;
   private readonly effects: Effects;
   private redstoneTimer = 0;
@@ -511,6 +521,8 @@ export class Game {
     this.others.update(dt);
     if (this.ready && !this.dead) this.updateMobs(dt);
     if (this.ready && !this.dead) this.updateCarts(dt);
+    if (this.ready && !this.dead && !this.paused) this.updatePortal(dt);
+    this.renderer.nether = isNether(this.player.x);
     if (this.ready) this.updateMaps(dt);
     if (this.request && performance.now() > this.request.until) {
       this.request = null;
@@ -638,12 +650,16 @@ export class Game {
     this.mapTimer -= dt;
     if (this.mapTimer > 0) return;
     this.mapTimer = MAP.redraw;
+    const nether = isNether(x);
     const mini = document.getElementById('minimap') as HTMLCanvasElement | null;
     if (mini) {
-      mini.hidden = !this.minimapOn;
-      if (this.minimapOn) drawMap(mini, this.mapTiles, x, z, 1, this.mapMarkers(MAP.miniRadius));
+      // Maps don't work in the Nether (like Minecraft).
+      mini.hidden = !this.minimapOn || nether;
+      if (this.minimapOn && !nether) {
+        drawMap(mini, this.mapTiles, x, z, 1, this.mapMarkers(MAP.miniRadius));
+      }
     }
-    if (big) this.mapScreen.draw(this.mapTiles, x, z, this.mapMarkers(radius));
+    if (big) this.mapScreen.draw(this.mapTiles, x, z, this.mapMarkers(radius), nether);
   }
 
   /** You, your friends, villages, your bed and the start, for the maps. */
@@ -855,6 +871,22 @@ export class Game {
         if (this.mode === 'survival') this.wearSelected();
         return;
       }
+      if (item?.special === 'flint_and_steel') {
+        // Lighting the inside of an obsidian frame opens a Nether portal.
+        const portal = lightPortal(
+          (x, y, z) => this.world.getBlock(x, y, z),
+          t0.x + t0.nx,
+          t0.y + t0.ny,
+          t0.z + t0.nz,
+        );
+        if (portal) {
+          this.change(portal);
+          sounds.magic();
+          this.hud.toast('🟣 Portaali aukesi! Seiso siinä hetki, niin pääset Netheriin.');
+          if (this.mode === 'survival') this.wearSelected();
+        }
+        return;
+      }
     }
     if (item?.special === 'firework') {
       this.launchFromHand(item.firework ?? 0);
@@ -921,6 +953,77 @@ export class Game {
   }
 
   // --- Creatures --------------------------------------------------------
+
+  // --- Nether portals -------------------------------------------------------
+
+  private updatePortal(dt: number): void {
+    const p = this.player;
+    const inPortal = [0.1, 1].some((dy) =>
+      isPortal(this.world.getBlock(Math.floor(p.x), Math.floor(p.y + dy), Math.floor(p.z))),
+    );
+    if (!inPortal) {
+      // You have to step out before a portal can take you back.
+      this.portalTime = 0;
+      this.portalCooldown = false;
+      this.hud.setPortalGlow(0);
+      return;
+    }
+    if (this.portalCooldown) return;
+    this.portalTime += dt;
+    const need = this.mode === 'creative' ? NETHER.portalSecondsCreative : NETHER.portalSeconds;
+    this.hud.setPortalGlow(Math.min(1, this.portalTime / need));
+    if (this.portalTime >= need) this.travelThroughPortal();
+  }
+
+  /** To the Nether (or back): find the portal on the other side, or build one. */
+  private travelThroughPortal(): void {
+    const p = this.player;
+    const toNetherSide = !isNether(p.x);
+    const [tx, tz] = (toNetherSide ? toNether(p.x, p.z) : toOverworld(p.x, p.z)).map(
+      Math.floor,
+    ) as [number, number];
+    const get = (x: number, y: number, z: number) => this.world.getBlock(x, y, z);
+    const maxY = toNetherSide ? NETHER.roof : WORLD_HEIGHT;
+    let spot = findPortal(get, tx, tz, NETHER.searchRadius, maxY);
+    if (!spot) {
+      spot = toNetherSide
+        ? this.netherFloor(tx, tz)
+        : [tx, Math.max(this.world.surfaceY(tx, tz), SEA_LEVEL) + 1, tz];
+      this.change(buildPortal(...spot));
+    }
+    this.portalCooldown = true;
+    this.portalTime = 0;
+    this.hud.setPortalGlow(0);
+    p.x = spot[0] + 0.5;
+    p.y = spot[1];
+    p.z = spot[2] + 0.5;
+    p.vx = p.vy = p.vz = 0;
+    this.fallStart = null;
+    this.lastSentMove = null;
+    sounds.magic();
+    this.hud.toast(
+      toNetherSide ? '🔥 Tervetuloa Netheriin! Varo laavaa.' : '🌍 Takaisin kotimaailmaan!',
+    );
+  }
+
+  /** A floor for a new portal in the Nether near (x, z), looking around a bit. */
+  private netherFloor(x: number, z: number): [number, number, number] {
+    const get = (bx: number, by: number, bz: number) => this.world.getBlock(bx, by, bz);
+    for (let r = 0; r <= NETHER_PORTAL_SEARCH; r += 2) {
+      for (const [dx, dz] of [
+        [0, 0],
+        [r, 0],
+        [-r, 0],
+        [0, r],
+        [0, -r],
+      ] as const) {
+        const y = this.world.terrain.nether.floorNear(get, x + dx, z + dz);
+        if (y !== null) return [x + dx, y, z + dz];
+      }
+    }
+    // No good floor: the portal floats on its own obsidian platform.
+    return [x, NETHER.lavaLevel + 20, z];
+  }
 
   // --- Minecarts ----------------------------------------------------------
 

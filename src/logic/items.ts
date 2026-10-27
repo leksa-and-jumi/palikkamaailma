@@ -249,6 +249,10 @@ for (const material of ['leather', 'iron', 'gold', 'diamond'] as const) {
 // New items go to the end, so the old ids stay the same.
 ITEM_SPECS.push({ key: 'slime_ball', name: 'Limapallo' });
 ITEM_SPECS.push({ key: 'minecart', name: 'Kaivosvaunu', stack: 1, special: 'minecart' });
+ITEM_SPECS.push(
+  { key: 'quartz', name: 'Hornakvartsi' },
+  { key: 'nether_brick', name: 'Hornatiili' },
+);
 
 /** Blocks that burn in a furnace (seconds). */
 const BLOCK_FUEL: Record<string, number> = {

@@ -128,6 +128,12 @@ const RULES: Record<string, BlockRules> = {
   piston: { hardness: 1.5 },
   sticky_piston: { hardness: 1.5 },
   rail: { hardness: 0.7, tool: 'pickaxe' },
+  netherrack: { hardness: 0.4, tool: 'pickaxe', needsLevel: 0 },
+  soul_sand: { hardness: 0.5, tool: 'shovel' },
+  quartz_ore: { hardness: 3, tool: 'pickaxe', needsLevel: 0, drops: [{ key: 'quartz', count: 1 }] },
+  nether_bricks: { hardness: 2, tool: 'pickaxe', needsLevel: 0 },
+  quartz_block: { hardness: 0.8, tool: 'pickaxe', needsLevel: 0 },
+  nether_portal: { hardness: 0, drops: [] },
   powered_rail: { hardness: 0.7, tool: 'pickaxe' },
   tnt_lit: { hardness: Infinity },
 };

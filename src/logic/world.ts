@@ -1,7 +1,7 @@
 // The whole block world: generated chunks plus the blocks players changed.
 // Chunks are made when needed and forgotten when far away; the edits stay.
 
-import { CHUNK_SIZE, WORLD_HEIGHT, WORLD_LIMIT } from '../config';
+import { CHUNK_SIZE, NETHER, WORLD_HEIGHT, WORLD_LIMIT } from '../config';
 import { AIR, BEDROCK, getBlockType } from './blocks';
 import { TerrainGenerator, chunkIndex } from './terrain';
 
@@ -16,8 +16,15 @@ export function editKey(x: number, y: number, z: number): string {
   return `${x},${y},${z}`;
 }
 
+/** Is this x in the Nether (the band far to the east)? */
+export function isNether(x: number): boolean {
+  return Math.abs(x - NETHER.offset) < NETHER.halfSize + CHUNK_SIZE * 4;
+}
+
 export function isInsideWorld(x: number, y: number, z: number): boolean {
-  return y >= 0 && y < WORLD_HEIGHT && Math.abs(x) < WORLD_LIMIT && Math.abs(z) < WORLD_LIMIT;
+  if (y < 0 || y >= WORLD_HEIGHT) return false;
+  if (Math.abs(x - NETHER.offset) < NETHER.halfSize) return Math.abs(z) < NETHER.halfSize;
+  return Math.abs(x) < WORLD_LIMIT && Math.abs(z) < WORLD_LIMIT;
 }
 
 export function chunkOf(v: number): number {

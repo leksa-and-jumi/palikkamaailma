@@ -105,6 +105,10 @@ Repun välilehdillä **⚡ Punakivi** ja **🎆 Ilotulitteet** (Nikkaroija-tilas
 - **Sähköraide** vauhdittaa vaunua, kun siinä on virtaa (vipu, punakivisoihtu, punakivipalikka). Ilman virtaa se pysäyttää vaunun. Virta kulkee 8 sähköraidetta eteenpäin.
 - **Kaivosvaunu**: laita se raiteelle (oikea hiiri), hyppää kyytiin (oikea hiiri), `W` vauhdittaa ja `Shift` hyppää pois. Vaunua voi myös työntää kävelemällä sitä päin. Kaveri näkee, kun ajat!
 
+## 🔥 Nether
+
+Rakenna **obsidiaanista** kehys (sisältä vähintään 2 leveä ja 3 korkea, kuten Minecraftissa) ja sytytä se **tuluksilla**. Seiso violetissa portaalissa hetki, niin pääset **Netheriin**: kuumia luolia, laavamereä, hehkukiveä, sielunhiekkaa ja kvartsia. Netherissä yksi palikka on 8 palikkaa kotimaailmassa, joten sen kautta pääsee nopeasti kauas! Takaisin pääsee samasta portaalista.
+
 ## 🚪 Ovet ja rakentaminen
 
 Välilehdellä **🚪 Ovet ja portaat**: puuovi, rautaovi, luukku, aita, aidan portti, tikkaat, portaat, laatat, kivitiilet, lasiruutu ja sänky. **Soihdun, napin ja vivun voi laittaa seinään** (klikkaa seinän kylkeä). Portaita ja laattoja pääsee ylös ilman hyppyä, ja tikkaita kiivetään kävelemällä niitä kohti. Kaksi laattaa päällekkäin tekee kokonaisen palikan.

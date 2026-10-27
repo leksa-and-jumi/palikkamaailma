@@ -255,8 +255,12 @@ export class Sky {
     material.color.setScalar(0.1 + 0.9 * light).lerp(this.sunset, glow * 0.35);
   }
 
-  setVisible(visible: boolean): void {
+  /** `visible` = clouds and stars, `sky` = the dome, sun and moon (none in the Nether). */
+  setVisible(visible: boolean, sky = true): void {
     this.clouds.visible = visible;
     this.stars.visible = visible;
+    this.dome.visible = sky;
+    this.sun.visible = sky;
+    this.moon.visible = sky;
   }
 }
