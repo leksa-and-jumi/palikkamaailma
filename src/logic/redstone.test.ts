@@ -12,6 +12,8 @@ import {
   REDSTONE_WIRE_ON,
   OAK_DOOR,
   PISTON,
+  POWERED_RAIL,
+  POWERED_RAIL_ON,
   PISTON_BASE_ON,
   PISTON_HEAD,
   REPEATER,
@@ -284,5 +286,15 @@ describe('redstone', () => {
     };
     expect(w.circuit.tick(blocked).moves).toEqual([]);
     expect(w.circuit.isExtended(0, 1, 0)).toBe(false);
+  });
+
+  it('powers a line of powered rails up to 8 away', () => {
+    const w = new TestWorld();
+    w.set(-1, 1, 0, LEVER_ON);
+    for (let x = 0; x < 12; x++) w.set(x, 1, 0, POWERED_RAIL + 1);
+    const { looks } = w.tick();
+    expect(looks).toContainEqual([0, 1, 0, POWERED_RAIL_ON + 1]);
+    expect(looks).toContainEqual([8, 1, 0, POWERED_RAIL_ON + 1]);
+    expect(looks).not.toContainEqual([9, 1, 0, POWERED_RAIL_ON + 1]);
   });
 });

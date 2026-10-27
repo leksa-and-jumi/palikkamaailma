@@ -7,7 +7,7 @@
 // Only the game's own web pages may connect (ALLOWED_ORIGINS).
 
 import { DurableObject } from 'cloudflare:workers';
-import { COMMANDS, DROPS, FIREWORKS, NET } from '../src/config';
+import { CARTS, COMMANDS, DROPS, FIREWORKS, NET } from '../src/config';
 import { isValidWorldCode } from '../src/logic/codes';
 import {
   advanceFurnace,
@@ -19,6 +19,7 @@ import {
 } from '../src/logic/containers';
 import {
   parseClientMessage,
+  type CartNet,
   type DroppedItem,
   type PlayerInfo,
   type ServerMessage,
@@ -87,6 +88,8 @@ interface Attachment {
   fireworkTimes?: number[];
   /** When this player's recent /tpa, /kutsu and /aika were sent (ms). */
   requestTimes?: number[];
+  /** When this player's recent minecart messages were sent (ms). */
+  cartTimes?: number[];
   /** Lying in a bed, and how far the clock must jump to reach the morning. */
   sleeping?: boolean;
   skip?: number;
@@ -102,6 +105,7 @@ export class WorldRoom extends DurableObject<Env> {
   private allChunksLoaded = false;
   private editCount: number | null = null;
   private droppedItems: DroppedItem[] | null = null;
+  private cartList: CartNet[] | null = null;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -339,6 +343,7 @@ export class WorldRoom extends DurableObject<Env> {
           players: others,
           items: this.items(),
           timeOffset: this.timeOffset(),
+          carts: this.carts(),
         });
         this.sendAllEdits(ws);
         this.broadcast({ t: 'join', player: me.player }, ws);
@@ -357,6 +362,7 @@ export class WorldRoom extends DurableObject<Env> {
             pitch: msg.pitch,
             mobs: msg.mobs,
             safe: msg.safe,
+            carts: msg.carts,
           },
           ws,
         );
@@ -459,6 +465,22 @@ export class WorldRoom extends DurableObject<Env> {
         }
         return;
       }
+      case 'cart': {
+        // Stored when a cart is placed, gets a rider or stops (not while it rolls).
+        if (!me.player || !this.allowCart(ws, me)) return;
+        const carts = this.carts().filter((c) => c[0] !== msg.cart[0]);
+        if (carts.length >= CARTS.maxPerRoom) return;
+        carts.push(msg.cart);
+        this.saveCarts(carts);
+        this.broadcast({ t: 'cart', cart: msg.cart, by: me.id }, ws);
+        return;
+      }
+      case 'cartGone': {
+        if (!me.player || !this.allowCart(ws, me)) return;
+        this.saveCarts(this.carts().filter((c) => c[0] !== msg.id));
+        this.broadcast({ t: 'cartGone', id: msg.id }, ws);
+        return;
+      }
       case 'sleep': {
         if (!me.player) return;
         me.sleeping = msg.on;
@@ -494,6 +516,27 @@ export class WorldRoom extends DurableObject<Env> {
     me.requestTimes = [...recent, now];
     ws.serializeAttachment(me);
     return true;
+  }
+
+  /** Minecart messages are limited like chat (they come only when a cart starts or stops). */
+  private allowCart(ws: WebSocket, me: Attachment): boolean {
+    const now = Date.now();
+    const recent = (me.cartTimes ?? []).filter((t) => now - t < NET.chatWindowMs);
+    if (recent.length >= NET.cartRateLimit) return false;
+    me.cartTimes = [...recent, now];
+    ws.serializeAttachment(me);
+    return true;
+  }
+
+  /** Minecarts in this world, in one meta row (like items on the ground). */
+  private carts(): CartNet[] {
+    this.cartList ??= JSON.parse(this.meta('carts') ?? '[]') as CartNet[];
+    return this.cartList;
+  }
+
+  private saveCarts(carts: CartNet[]): void {
+    this.cartList = carts;
+    this.setMeta('carts', JSON.stringify(carts));
   }
 
   private timeOffset(): number {

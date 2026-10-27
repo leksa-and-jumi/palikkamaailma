@@ -251,6 +251,27 @@ const SPRITES: Record<string, Sprite> = {
     colors: { s: HANDLE },
   },
   coal: { rows: LUMP, colors: { g: [40, 40, 40], G: [70, 70, 70] } },
+  minecart: {
+    rows: [
+      '................',
+      '................',
+      '................',
+      '................',
+      '................',
+      'g..............g',
+      'gG............Gg',
+      'gGGGGGGGGGGGGGGg',
+      'gGddddddddddddGg',
+      'gGddddddddddddGg',
+      '.gGGGGGGGGGGGGg.',
+      '..gggggggggggg..',
+      '...ww......ww...',
+      '..wwww....wwww..',
+      '...ww......ww...',
+      '................',
+    ],
+    colors: { g: [120, 124, 132], G: [170, 174, 182], d: [80, 82, 88], w: [40, 40, 44] },
+  },
   slime_ball: {
     rows: [
       '................',

@@ -3,6 +3,7 @@
 
 import {
   BUILDER,
+  CARTS,
   COMMANDS,
   DAY,
   FIREWORKS,
@@ -21,7 +22,14 @@ import {
   type GameMode,
 } from './config';
 import { sounds } from './audio/sounds';
-import { loadLocalEdits, loadPlayer, saveLocalEdits, savePlayer } from './data/storage';
+import {
+  loadLocalCarts,
+  loadLocalEdits,
+  loadPlayer,
+  saveLocalCarts,
+  saveLocalEdits,
+  savePlayer,
+} from './data/storage';
 import {
   AIR,
   BED,
@@ -46,7 +54,7 @@ import { HOTBAR_SIZE, Inventory, stackLimit, type ItemStack } from './logic/inve
 import { getItem, itemId } from './logic/items';
 import { blockDrops, breakTime, wearsWhenMining } from './logic/mining';
 import { createPlayer, overlapsBlock, stepPlayer, type PlayerState } from './logic/physics';
-import { cleanChatText, type DroppedItem, type ServerMessage } from './logic/protocol';
+import { cleanChatText, parseCart, type DroppedItem, type ServerMessage } from './logic/protocol';
 import { raycast, type RayHit } from './logic/raycast';
 import { nearSideOffset, planPlacement } from './logic/placement';
 import { planPlace } from './logic/placing';
@@ -104,6 +112,9 @@ import { MOB_TYPES, PERSONALITY_NAMES } from './logic/mobs';
 import { HURT_REASONS, MobManager, villagerProfession } from './play/mobManager';
 import { MobRenderer } from './render/mobRenderer';
 import { MapScreen } from './ui/mapScreen';
+import { CartManager, type Cart } from './play/carts';
+import { CartRenderer } from './render/cartRenderer';
+import { isRail } from './logic/rails';
 import { MapTiles, drawMap, villagesIn, type MapMarker } from './ui/worldMap';
 
 export interface GameOptions {
@@ -251,6 +262,10 @@ export class Game {
 
   private readonly circuit = new Circuit();
   private readonly mapTiles: MapTiles;
+  readonly carts: CartManager;
+  private readonly cartRenderer: CartRenderer;
+  /** The minecart under the crosshair (closer than any block), if any. */
+  private targetCart: Cart | null = null;
   private readonly mapScreen = new MapScreen();
   private mapTimer = 0;
   private minimapOn = true;
@@ -277,6 +292,17 @@ export class Game {
     this.world = new VoxelWorld(seedFromCode(options.code));
     this.world.onChange = (x, y, z, old, id) => this.onBlockChange(x, y, z, old, id);
     this.mapTiles = new MapTiles(this.world);
+    this.cartRenderer = new CartRenderer(renderer.scene);
+    this.carts = new CartManager({
+      save: (cart) => {
+        if (this.room) this.room.send({ t: 'cart', cart });
+        else saveLocalCarts(options.code, this.carts.all());
+      },
+      gone: (id) => {
+        if (this.room) this.room.send({ t: 'cartGone', id });
+        else saveLocalCarts(options.code, this.carts.all());
+      },
+    });
     renderer.setWorld(this.world);
     this.effects = new Effects(renderer.scene);
     this.effects.onBurst = (x, y, z) => sounds.pop(this.distanceTo(x, y, z));
@@ -351,6 +377,10 @@ export class Game {
     if (options.solo || !ROOM_URL) {
       hud.setStatus('solo');
       this.world.applyEdits(loadLocalEdits(options.code));
+      for (const raw of loadLocalCarts(options.code)) {
+        const cart = parseCart(raw);
+        if (cart) this.carts.receive(cart, this.cartWorld(), null);
+      }
     } else {
       this.room = new RoomClient(options.code, options.avatar, {
         onMessage: (msg) => this.onServerMessage(msg),
@@ -389,6 +419,7 @@ export class Game {
     this.savePlayerNow();
     this.others.clear();
     this.dropRenderer.clear();
+    this.cartRenderer.clear();
     this.effects.clear();
     this.world.onChange = null;
     this.hud.show(false);
@@ -479,6 +510,7 @@ export class Game {
     this.updateTarget();
     this.others.update(dt);
     if (this.ready && !this.dead) this.updateMobs(dt);
+    if (this.ready && !this.dead) this.updateCarts(dt);
     if (this.ready) this.updateMaps(dt);
     if (this.request && performance.now() > this.request.until) {
       this.request = null;
@@ -492,6 +524,15 @@ export class Game {
     this.player.yaw += yaw;
     this.player.pitch = Math.max(-MAX_PITCH, Math.min(MAX_PITCH, this.player.pitch + pitch));
     const shift = this.input.isDown('ShiftLeft') || this.input.isDown('ShiftRight');
+    if (this.carts.riding) {
+      // Shift gets out of the minecart; the cart carries you otherwise.
+      if (shift) {
+        const out = this.carts.leave();
+        if (out) [this.player.x, this.player.y, this.player.z] = out;
+        this.player.vx = this.player.vy = this.player.vz = 0;
+      }
+      return;
+    }
     const wasOnGround = this.player.onGround;
     stepPlayer(
       blockQuery((x, y, z) => this.world.solidLook(x, y, z)),
@@ -632,6 +673,20 @@ export class Game {
       this.breakCooldown = SURVIVAL.creativeBreakDelay;
       return;
     }
+    if (this.targetCart) {
+      const c = this.targetCart;
+      this.carts.breakCart(c);
+      this.targetCart = null;
+      sounds.break();
+      if (this.mode === 'survival') {
+        this.spawnDrop(
+          { id: itemId('minecart'), count: 1 },
+          [c.state.x, c.y + 0.5, c.state.z],
+          true,
+        );
+      }
+      return;
+    }
     if (this.targetMob) {
       this.attack(this.targetMob.id);
       return;
@@ -748,6 +803,18 @@ export class Game {
     const sneaking = this.input.isDown('ShiftLeft') || this.input.isDown('ShiftRight');
     const stack = this.selectedStack();
     const item = stack ? getItem(stack.id) : undefined;
+    if (this.targetCart && !sneaking && !repeat) {
+      this.carts.ride(this.targetCart);
+      sounds.click();
+      this.hud.toast('🛒 Kyydissä! W vauhdittaa, Shift hyppää pois.');
+      return;
+    }
+    if (item?.special === 'minecart') {
+      if (this.target && isRail(this.world.getBlock(this.target.x, this.target.y, this.target.z))) {
+        this.placeCartOn(this.target);
+      }
+      return;
+    }
     // Feeding an animal its favourite food.
     if (this.targetMob && item && this.mobs.feed(this.targetMob.id, item.key)) {
       if (this.mode === 'survival') this.inventory.takeOne(this.hud.selected);
@@ -854,6 +921,49 @@ export class Game {
   }
 
   // --- Creatures --------------------------------------------------------
+
+  // --- Minecarts ----------------------------------------------------------
+
+  private cartWorld() {
+    return {
+      getBlock: (x: number, y: number, z: number) => this.world.getBlock(x, y, z),
+      shownBlock: (x: number, y: number, z: number) => this.world.shownBlock(x, y, z),
+    };
+  }
+
+  private updateCarts(dt: number): void {
+    const p = this.player;
+    const riding = this.carts.riding;
+    const forward =
+      riding && !this.paused && this.input.isDown('KeyW')
+        ? { dx: -Math.sin(p.yaw), dz: -Math.cos(p.yaw) }
+        : null;
+    const walking = !this.paused && !riding ? { vx: p.vx, vz: p.vz } : { vx: 0, vz: 0 };
+    this.carts.update(this.cartWorld(), dt, { x: p.x, y: p.y, z: p.z, ...walking }, forward);
+    const ride = this.carts.riding;
+    if (ride) {
+      // Sitting in the cart.
+      p.x = ride.state.x;
+      p.y = ride.y + CARTS.seatHeight;
+      p.z = ride.state.z;
+      p.vx = p.vy = p.vz = 0;
+      p.onGround = true;
+      this.fallStart = null;
+    }
+    this.cartRenderer.sync(this.carts.views(this.cartWorld()), dt, this.myId);
+    const [dx, dy, dz] = this.lookDirection();
+    const hit = this.carts.pick([p.x, p.y + PLAYER.eyeHeight, p.z], [dx, dy, dz], MOBS.attackReach);
+    this.targetCart =
+      hit && (!this.target || hit.distance < this.target.distance) ? hit.cart : null;
+  }
+
+  /** Puts a minecart on the rail you look at. */
+  private placeCartOn(t: RayHit): boolean {
+    if (!this.carts.place(this.cartWorld(), t.x, t.y, t.z)) return false;
+    if (this.mode === 'survival') this.inventory.takeOne(this.hud.selected);
+    sounds.place();
+    return true;
+  }
 
   private updateMobs(dt: number): void {
     const stack = this.selectedStack();
@@ -1859,8 +1969,9 @@ export class Game {
     this.mobSyncTimer -= 1 / NET.moveSendRate;
     const mobs = this.mobSyncTimer <= 0 ? this.mobs.netList(this.others.positions()) : [];
     if (mobs.length > 0) this.mobSyncTimer = 1 / NET.mobSendRate;
+    const carts = this.carts.netList();
     const last = this.lastSentMove;
-    if (last && mobs.length === 0) {
+    if (last && mobs.length === 0 && carts.length === 0) {
       const moved = Math.hypot(p.x - last[0], p.y - last[1], p.z - last[2]);
       const turned = Math.abs(p.yaw - last[3]) + Math.abs(p.pitch - last[4]);
       const small = moved < NET.moveDeadZone && turned < NET.turnDeadZone;
@@ -1878,6 +1989,7 @@ export class Game {
       yaw,
       pitch,
       ...(mobs.length > 0 ? { mobs } : {}),
+      ...(carts.length > 0 ? { carts } : {}),
       ...(this.mode === 'creative' ? { safe: true } : {}),
     });
   }
@@ -1897,6 +2009,9 @@ export class Game {
         this.myId = msg.you;
         this.timeOffset = msg.timeOffset ?? 0;
         this.mobs.myId = msg.you;
+        this.carts.myId = msg.you;
+        this.carts.carts.clear();
+        for (const c of msg.carts ?? []) this.carts.receive(c, this.cartWorld(), null);
         this.others.clear();
         for (const p of msg.players) {
           this.others.add(p);
@@ -1926,6 +2041,7 @@ export class Game {
         return;
       case 'leave':
         this.mobs.forgetOwner(msg.id);
+        this.carts.forgetOwner(msg.id);
         this.others.remove(msg.id);
         this.avatars.delete(msg.id);
         this.updatePlayerList();
@@ -1933,6 +2049,13 @@ export class Game {
       case 'move':
         this.others.move(msg.id, msg.p, msg.yaw, msg.pitch, msg.safe === true);
         if (msg.mobs) this.mobs.receive(msg.id, msg.mobs);
+        if (msg.carts) this.carts.receiveMoving(msg.id, msg.carts, this.cartWorld());
+        return;
+      case 'cart':
+        this.carts.receive(msg.cart, this.cartWorld(), msg.by);
+        return;
+      case 'cartGone':
+        this.carts.remove(msg.id);
         return;
       case 'hitMob':
         this.mobs.receiveHit(msg.id, msg.damage, msg.from);

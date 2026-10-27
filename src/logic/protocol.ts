@@ -2,7 +2,7 @@
 // Both sides use this file. Everything from the network is checked here, so
 // a broken or nasty message can never put strange data into the world.
 
-import { AVATAR_EMOJIS, DAY, NET, WORLD_LIMIT } from '../config';
+import { AVATAR_EMOJIS, CARTS, DAY, NET, WORLD_LIMIT } from '../config';
 import type { RequestKind } from './commands';
 import { getBlockType, isValidBlockId } from './blocks';
 import { parseContainer, type Container } from './containers';
@@ -54,6 +54,9 @@ export type MobNet = [
 
 export const MOB_FLAG = { baby: 1, hurt: 2, fuse: 4 } as const;
 
+/** A minecart: id, x, y, z, heading (0–3), speed, rider id ('' = nobody). */
+export type CartNet = [string, number, number, number, number, number, string];
+
 export type ClientMessage =
   | { t: 'hello'; avatar: string }
   | {
@@ -64,6 +67,8 @@ export type ClientMessage =
       mobs?: MobNet[];
       /** In creative: monsters leave this player alone. */
       safe?: boolean;
+      /** Minecarts this player is moving (not stored). */
+      carts?: CartNet[];
     }
   | { t: 'set'; edits: Edit[] }
   | { t: 'chat'; text: string }
@@ -86,7 +91,11 @@ export type ClientMessage =
   /** Lying down in a bed (or getting up). `skip` = ms from now to the morning. */
   | { t: 'sleep'; on: boolean; skip: number }
   /** /aika: move the world's clock forward by `skip` ms. */
-  | { t: 'time'; skip: number };
+  | { t: 'time'; skip: number }
+  /** A minecart was placed, got a rider or came to rest (the room stores it). */
+  | { t: 'cart'; cart: CartNet }
+  /** A minecart was broken. */
+  | { t: 'cartGone'; id: string };
 
 export type ServerMessage =
   | {
@@ -96,6 +105,7 @@ export type ServerMessage =
       items: DroppedItem[];
       /** How far the world's clock has been moved (sleeping, /aika), ms. */
       timeOffset?: number;
+      carts?: CartNet[];
     }
   /** Changed blocks, sent in pages after welcome. `done` is true on the last page. */
   | { t: 'edits'; edits: Edit[]; done: boolean }
@@ -109,6 +119,7 @@ export type ServerMessage =
       pitch: number;
       mobs?: MobNet[];
       safe?: boolean;
+      carts?: CartNet[];
     }
   | { t: 'set'; edits: Edit[] }
   | { t: 'hitMob'; id: string; damage: number; from: [number, number]; by: string }
@@ -130,11 +141,14 @@ export type ServerMessage =
     }
   /** The world's clock moved: everyone uses the new offset. */
   | { t: 'time'; offset: number; avatar?: string; slept?: boolean }
+  | { t: 'cart'; cart: CartNet; by: string }
+  | { t: 'cartGone'; id: string }
   /** How many are sleeping in beds now. */
   | { t: 'sleepers'; sleeping: number; total: number }
   | { t: 'full' };
 
 const POSITION_LIMIT = WORLD_LIMIT + 100;
+const MAX_CARTS_PER_MOVE = 8;
 const REQUEST_KINDS: readonly RequestKind[] = ['tpa', 'invite'];
 /** A clock jump is never more than a whole day. */
 const MAX_SKIP = DAY.length * 1000;
@@ -189,6 +203,17 @@ const ID_PATTERN = /^[a-z0-9-]{1,40}$/;
 const MAX_MOB_HEALTH = 100;
 const MAX_HIT_DAMAGE = 50;
 
+export function parseCart(v: unknown): CartNet | null {
+  if (!Array.isArray(v) || v.length !== 7) return null;
+  const [id, x, y, z, heading, speed, rider] = v as unknown[];
+  if (typeof id !== 'string' || !ID_PATTERN.test(id)) return null;
+  if (![x, y, z].every((n) => isFiniteNumber(n))) return null;
+  if (typeof heading !== 'number' || ![0, 1, 2, 3].includes(heading)) return null;
+  if (!isFiniteNumber(speed, CARTS.maxSpeed + 1) || (speed as number) < 0) return null;
+  if (typeof rider !== 'string' || (rider !== '' && !ID_PATTERN.test(rider))) return null;
+  return v as CartNet;
+}
+
 export function parseMob(v: unknown): MobNet | null {
   if (!Array.isArray(v) || v.length !== 10) return null;
   const [id, kind, x, y, z, yaw, health, flags, personality, name] = v as unknown[];
@@ -238,6 +263,9 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       if (!p || !isFiniteNumber(msg.yaw, 1000) || !isFiniteNumber(msg.pitch, 10)) return null;
       const move: ClientMessage = { t: 'move', p, yaw: msg.yaw, pitch: msg.pitch };
       if (msg.safe === true) move.safe = true;
+      if (Array.isArray(msg.carts) && msg.carts.length <= MAX_CARTS_PER_MOVE) {
+        move.carts = msg.carts.map(parseCart).filter((c): c is CartNet => c !== null);
+      }
       if (msg.mobs === undefined) return move;
       if (!Array.isArray(msg.mobs) || msg.mobs.length > NET.maxMobsPerMove) return null;
       move.mobs = msg.mobs.map(parseMob).filter((m): m is MobNet => m !== null);
@@ -316,6 +344,14 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       return { t: 'sleep', on: msg.on, skip: msg.skip };
     case 'time':
       return isSkip(msg.skip) ? { t: 'time', skip: msg.skip } : null;
+    case 'cart': {
+      const cart = parseCart(msg.cart);
+      return cart ? { t: 'cart', cart } : null;
+    }
+    case 'cartGone':
+      return typeof msg.id === 'string' && ID_PATTERN.test(msg.id)
+        ? { t: 'cartGone', id: msg.id }
+        : null;
     default:
       return null;
   }

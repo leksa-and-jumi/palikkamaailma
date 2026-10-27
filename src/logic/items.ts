@@ -60,7 +60,8 @@ export interface ItemType {
     | 'lava_bucket'
     | 'enchanted_book'
     | 'flint_and_steel'
-    | 'firework';
+    | 'firework'
+    | 'minecart';
   /** Which firework this rocket makes (index in FIREWORK_KINDS). */
   firework?: number;
 }
@@ -247,6 +248,7 @@ for (const material of ['leather', 'iron', 'gold', 'diamond'] as const) {
 
 // New items go to the end, so the old ids stay the same.
 ITEM_SPECS.push({ key: 'slime_ball', name: 'Limapallo' });
+ITEM_SPECS.push({ key: 'minecart', name: 'Kaivosvaunu', stack: 1, special: 'minecart' });
 
 /** Blocks that burn in a furnace (seconds). */
 const BLOCK_FUEL: Record<string, number> = {

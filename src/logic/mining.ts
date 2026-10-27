@@ -127,6 +127,8 @@ const RULES: Record<string, BlockRules> = {
   repeater: { hardness: 0 },
   piston: { hardness: 1.5 },
   sticky_piston: { hardness: 1.5 },
+  rail: { hardness: 0.7, tool: 'pickaxe' },
+  powered_rail: { hardness: 0.7, tool: 'pickaxe' },
   tnt_lit: { hardness: Infinity },
 };
 

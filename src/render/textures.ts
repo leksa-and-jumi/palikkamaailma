@@ -252,6 +252,39 @@ function doorItem(iron: boolean): Painter {
   };
 }
 
+/** Straight track running north–south (top to bottom of the picture). */
+function rail(metal: RGB, middle: RGB | null): Painter {
+  return (px, rnd) => {
+    for (let y = 0; y < S; y++) {
+      for (let x = 0; x < S; x++) {
+        const isRail = x === 2 || x === 3 || x === 12 || x === 13;
+        const tie = (y % 4 === 1 || y % 4 === 2) && x >= 1 && x <= 14;
+        if (isRail) px(x, y, vary(metal, rnd, 14));
+        else if (middle && (x === 7 || x === 8)) px(x, y, vary(middle, rnd, 20));
+        else if (tie) px(x, y, vary([120, 86, 50], rnd, 14));
+        else px(x, y, [0, 0, 0], 0);
+      }
+    }
+  };
+}
+
+/** A curve from the top edge to the right edge (north to east). */
+function railCorner(px: Pixel, rnd: () => number): void {
+  for (let y = 0; y < S; y++) {
+    for (let x = 0; x < S; x++) {
+      // Distance from the top-right corner.
+      const d = Math.hypot(x + 0.5 - S, y + 0.5);
+      const isRail = (d >= 2.5 && d < 4.5) || (d >= 11.5 && d < 13.5);
+      const angle = Math.atan2(y + 0.5, S - x - 0.5);
+      const tie = d >= 2 && d < 14 && Math.round(angle / (Math.PI / 12)) % 2 === 0;
+      if (isRail) px(x, y, vary([150, 150, 156], rnd, 14));
+      else if (tie && Math.abs(angle - Math.round(angle / (Math.PI / 12)) * (Math.PI / 12)) < 0.1) {
+        px(x, y, vary([120, 86, 50], rnd, 14));
+      } else px(x, y, [0, 0, 0], 0);
+    }
+  }
+}
+
 const GRASS: RGB = [96, 170, 58];
 const DIRT: RGB = [134, 96, 67];
 const SNOW: RGB = [240, 246, 252];
@@ -774,6 +807,10 @@ const PAINTERS: Record<TileName, Painter> = {
   piston_back: framed([118, 118, 118], [86, 86, 86], (px) => {
     for (let y = 6; y < 10; y++) for (let x = 6; x < 10; x++) px(x, y, [70, 70, 74]);
   }),
+  rail: rail([150, 150, 156], null),
+  rail_corner: railCorner,
+  powered_rail: rail([236, 196, 60], [110, 20, 16]),
+  powered_rail_on: rail([250, 214, 80], [255, 40, 30]),
   piston_inner: framed([128, 128, 128], [96, 96, 96], (px) => {
     for (let y = 5; y < 11; y++) for (let x = 5; x < 11; x++) px(x, y, [40, 40, 44]);
     for (let y = 6; y < 10; y++) for (let x = 6; x < 10; x++) px(x, y, [178, 140, 86]);
