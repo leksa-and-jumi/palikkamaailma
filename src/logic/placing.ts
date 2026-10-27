@@ -21,6 +21,8 @@ import {
   OAK_SLAB,
   PISTON,
   PLANKS,
+  POWERED_RAIL,
+  RAIL,
   REPEATER,
   STICKY_PISTON,
   STONE_BRICKS,
@@ -35,6 +37,7 @@ import {
   type Facing,
   type Facing6,
 } from './blocks';
+import { planRail } from './rails';
 import type { Edit } from './world';
 
 /** Turned blocks: the first one faces north, the next ones east, south and west. */
@@ -91,6 +94,9 @@ export function planPlace(blockId: number, input: PlaceInput): Edit[] | null {
     return [[x, y, z, base + wall]];
   }
   if (blockId === LADDER) return onWall ? [[x, y, z, LADDER + wall]] : null;
+  if (blockId === RAIL || blockId === POWERED_RAIL) {
+    return planRail(getBlock, x, y, z, blockId === POWERED_RAIL, look);
+  }
   if (blockId === OAK_DOOR || blockId === IRON_DOOR) {
     if (!floor || !isFree(getBlock(x, y + 1, z))) return null;
     return [

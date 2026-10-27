@@ -106,3 +106,13 @@ export function loadSettings(): WorldSettings {
 export function saveSettings(settings: WorldSettings): void {
   write(STORAGE.soloSettings, settings);
 }
+
+/** Minecarts in a world played alone. */
+export function loadLocalCarts(code: string): unknown[] {
+  const saved = read<unknown[]>(`${STORAGE.soloEdits}.carts.${code}`, []);
+  return Array.isArray(saved) ? saved : [];
+}
+
+export function saveLocalCarts(code: string, carts: unknown[]): void {
+  write(`${STORAGE.soloEdits}.carts.${code}`, carts);
+}

@@ -114,6 +114,10 @@ export const RECIPES: readonly Recipe[] = [
     'piston',
   ),
   shaped(['S', 'P'], { S: 'slime_ball', P: 'piston' }, 'sticky_piston'),
+  // Rails and minecarts.
+  shaped(['I I', 'ISI', 'I I'], { I: 'iron_ingot', S: 'stick' }, 'rail', 16),
+  shaped(['G G', 'GSG', 'GRG'], { G: 'gold_ingot', S: 'stick', R: 'redstone' }, 'powered_rail', 6),
+  shaped(['I I', 'III'], { I: 'iron_ingot' }, 'minecart'),
   // Doors, fences and building blocks.
   shaped(['PP', 'PP', 'PP'], { P: 'planks' }, 'oak_door', 3),
   shaped(['II', 'II', 'II'], { I: 'iron_ingot' }, 'iron_door', 3),

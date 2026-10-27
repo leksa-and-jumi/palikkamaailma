@@ -24,6 +24,8 @@ import {
   OAK_PLATE_ON,
   PISTON,
   PISTON_BASE_ON,
+  POWERED_RAIL,
+  POWERED_RAIL_ON,
   PISTON_HEAD,
   REDSTONE_BLOCK,
   REDSTONE_LAMP,
@@ -146,8 +148,10 @@ export function isOpenable(id: number): boolean {
 
 /** Does the circuit care about this block? */
 export function isRedstoneThing(id: number): boolean {
-  return DUST_JOINS.has(id) || PISTONS_ALL.has(id) || isOpenable(id);
+  return DUST_JOINS.has(id) || PISTONS_ALL.has(id) || isOpenable(id) || POWERED_RAILS.has(id);
 }
+
+const POWERED_RAILS = new Set(range(POWERED_RAIL, 6));
 
 const SIDES = [
   [1, 0, 0],
@@ -361,6 +365,33 @@ export class Circuit {
     }
     this.powered = powered;
 
+    // Powered rails: power reaches 8 more rails along the track.
+    const railsOn = new Map<string, number>();
+    const railQueue: Pos[] = [];
+    for (const p of active) {
+      if (!POWERED_RAILS.has(get(...p)) || !fedAt(p)) continue;
+      railsOn.set(key(...p), 0);
+      railQueue.push(p);
+    }
+    for (let i = 0; i < railQueue.length; i++) {
+      const p = railQueue[i]!;
+      const depth = railsOn.get(key(...p))!;
+      if (depth >= REDSTONE.railReach) continue;
+      const shape = getBlockType(get(...p)).rail!;
+      for (const f of shape.exits) {
+        const [dx, , dz] = FACING_STEPS[f]!;
+        for (const dy of [0, shape.up === f ? 1 : 0, -1]) {
+          const n: Pos = [p[0] + dx, p[1] + dy, p[2] + dz];
+          const k = key(...n);
+          if (railsOn.has(k) || !POWERED_RAILS.has(get(...n))) continue;
+          const back = (f + 2) % 4;
+          if (!getBlockType(get(...n)).rail!.exits.includes(back as never)) continue;
+          railsOn.set(k, depth + 1);
+          railQueue.push(n);
+        }
+      }
+    }
+
     // 3. Torches turn off when the block under them has power, and repeaters
     // pass on what reaches their back (both a tick later).
     const unlit = new Set<string>();
@@ -407,6 +438,7 @@ export class Circuit {
       if (PLATES.has(id) && pressed(x, y, z)) look = id + 1;
       if (REPEATERS.has(id) && nextRepeaters.has(k)) look = id + 4;
       if (doorLooks.has(k)) look = doorLooks.get(k)!;
+      if (railsOn.has(k)) look = POWERED_RAIL_ON + (id - POWERED_RAIL);
       if (PISTONS_ALL.has(id) && this.extended.has(k)) {
         const f = getBlockType(id).facing!;
         look = PISTON_BASE_ON + f;

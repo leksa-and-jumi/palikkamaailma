@@ -108,6 +108,10 @@ export const TILE_NAMES = [
   'piston_side',
   'piston_back',
   'piston_inner',
+  'rail',
+  'rail_corner',
+  'powered_rail',
+  'powered_rail_on',
 ] as const;
 export type TileName = (typeof TILE_NAMES)[number];
 
@@ -118,6 +122,29 @@ export interface BlockTiles {
   /** Used on the north and south sides when set (furnace, crafting table). */
   front?: TileName;
 }
+
+/** A piece of track: it joins two sides; a slope climbs towards `up`. */
+export interface RailShape {
+  exits: readonly [Facing, Facing];
+  up?: Facing;
+}
+
+/**
+ * Rail shapes like Minecraft: straight north–south and east–west, four
+ * slopes and four curves (powered rails have only the first six).
+ */
+export const RAIL_SHAPES: readonly RailShape[] = [
+  { exits: [0, 2] },
+  { exits: [1, 3] },
+  { exits: [0, 2], up: 0 },
+  { exits: [1, 3], up: 1 },
+  { exits: [0, 2], up: 2 },
+  { exits: [1, 3], up: 3 },
+  { exits: [0, 1] },
+  { exits: [1, 2] },
+  { exits: [2, 3] },
+  { exits: [3, 0] },
+];
 
 /** Sides of a box: +x, -x, +y, -y, +z, -z. */
 export type BoxFace = 'px' | 'nx' | 'py' | 'ny' | 'pz' | 'nz';
@@ -237,7 +264,9 @@ export interface BlockType {
    * 'boxes' = small boxes (levers, doors, stairs),
    * 'fence' and 'pane' = a post that joins its neighbours.
    */
-  shape: 'cube' | 'cross' | 'dust' | 'boxes' | 'fence' | 'pane';
+  shape: 'cube' | 'cross' | 'dust' | 'boxes' | 'fence' | 'pane' | 'rail';
+  /** Rails: which two sides the track goes to, and which way it climbs (slopes). */
+  rail?: RailShape;
   boxes?: readonly BlockBox[];
   /** Bumping boxes when they differ from the drawn ones (fences are taller). */
   collision?: readonly BlockBox[];
@@ -300,6 +329,7 @@ type BlockOptions = Partial<
     | 'item'
     | 'noDrop'
     | 'icon'
+    | 'rail'
   >
 >;
 
@@ -336,6 +366,7 @@ function block(
     item: options.item ?? id,
     noDrop: options.noDrop ?? false,
     icon: options.icon,
+    rail: options.rail,
     tiles: faces,
   };
 }
@@ -481,6 +512,10 @@ export const STICKY_PISTON = 186;
 export const PISTON_BASE_ON = 192;
 export const PISTON_HEAD = 198;
 export const STICKY_HEAD = 204;
+/** Rails: base + shape (RAIL_SHAPES). Powered rails have shapes 0–5 and a lit look. */
+export const RAIL = 210;
+export const POWERED_RAIL = 220;
+export const POWERED_RAIL_ON = 226;
 
 const SIDE_NAMES = ['north', 'east', 'south', 'west', 'up', 'down'] as const;
 const FACINGS: readonly Facing[] = [0, 1, 2, 3];
@@ -899,6 +934,50 @@ function moreBlocks(): BlockType[] {
             boxes: turned(pistonHeadBoxes(sticky), f),
             facing: f,
             item: sticky ? STICKY_PISTON : PISTON,
+          },
+        ),
+      );
+    }
+  }
+  const RAIL_NAMES = ['ns', 'ew', 'up_n', 'up_e', 'up_s', 'up_w', 'ne', 'es', 'sw', 'wn'];
+  RAIL_SHAPES.forEach((shape, i) => {
+    out.push(
+      block(
+        RAIL + i,
+        i === 0 ? 'rail' : `rail_${RAIL_NAMES[i]}`,
+        'Raide',
+        i < 6 ? 'rail' : 'rail_corner',
+        {
+          ...GADGET,
+          shape: 'rail',
+          rail: shape,
+          placeable: i === 0,
+          item: RAIL,
+          icon: 'rail',
+        },
+      ),
+    );
+  });
+  for (const on of [false, true]) {
+    for (let i = 0; i < 6; i++) {
+      const id = (on ? POWERED_RAIL_ON : POWERED_RAIL) + i;
+      out.push(
+        block(
+          id,
+          on
+            ? `powered_rail_on_${RAIL_NAMES[i]}`
+            : i === 0
+              ? 'powered_rail'
+              : `powered_rail_${RAIL_NAMES[i]}`,
+          'Sähköraide',
+          on ? 'powered_rail_on' : 'powered_rail',
+          {
+            ...GADGET,
+            ...(on ? SHOWN : { placeable: i === 0 }),
+            shape: 'rail',
+            rail: RAIL_SHAPES[i],
+            item: POWERED_RAIL,
+            icon: 'powered_rail',
           },
         ),
       );

@@ -31,6 +31,8 @@ import {
   STONE_BRICKS,
   GLASS_PANE,
   BED,
+  POWERED_RAIL,
+  RAIL,
   TORCH,
 } from '../logic/blocks';
 import {
@@ -105,6 +107,9 @@ const CATEGORIES: readonly Category[] = [
       OAK_DOOR,
       TRAPDOOR,
       FENCE_GATE,
+      POWERED_RAIL,
+      RAIL,
+      itemId('minecart'),
     ],
   },
   {
@@ -127,6 +132,9 @@ const CATEGORIES: readonly Category[] = [
       GLASS_PANE,
       BED,
       TORCH,
+      RAIL,
+      POWERED_RAIL,
+      itemId('minecart'),
     ],
   },
   {

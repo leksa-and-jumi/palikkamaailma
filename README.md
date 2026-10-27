@@ -99,6 +99,12 @@ Repun välilehdillä **⚡ Punakivi** ja **🎆 Ilotulitteet** (Nikkaroija-tilas
 - **Mäntä** työntää jopa 12 palikkaa, **tahmea mäntä** vetää palikan takaisin.
 - **Ovet, luukut ja portit** aukeavat virralla. **Rautaovi** aukeaa vain napilla, vivulla tai painelaatalla!
 
+## 🛒 Raiteet ja kaivosvaunut
+
+- **Raide** liittyy viereisiin raiteisiin: suoraan, kaarteeseen tai mäkeen ylös.
+- **Sähköraide** vauhdittaa vaunua, kun siinä on virtaa (vipu, punakivisoihtu, punakivipalikka). Ilman virtaa se pysäyttää vaunun. Virta kulkee 8 sähköraidetta eteenpäin.
+- **Kaivosvaunu**: laita se raiteelle (oikea hiiri), hyppää kyytiin (oikea hiiri), `W` vauhdittaa ja `Shift` hyppää pois. Vaunua voi myös työntää kävelemällä sitä päin. Kaveri näkee, kun ajat!
+
 ## 🚪 Ovet ja rakentaminen
 
 Välilehdellä **🚪 Ovet ja portaat**: puuovi, rautaovi, luukku, aita, aidan portti, tikkaat, portaat, laatat, kivitiilet, lasiruutu ja sänky. **Soihdun, napin ja vivun voi laittaa seinään** (klikkaa seinän kylkeä). Portaita ja laattoja pääsee ylös ilman hyppyä, ja tikkaita kiivetään kävelemällä niitä kohti. Kaksi laattaa päällekkäin tekee kokonaisen palikan.

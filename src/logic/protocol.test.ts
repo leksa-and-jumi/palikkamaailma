@@ -93,4 +93,21 @@ describe('protocol', () => {
     expect(parseClientMessage(JSON.stringify(sleep))).toEqual(sleep);
     expect(parseClientMessage(JSON.stringify({ ...sleep, on: 'yes' }))).toBeNull();
   });
+
+  it('checks minecarts', () => {
+    const cart = ['c-abc-1-x', 1.5, 60, 2.5, 1, 3.2, ''];
+    expect(parseClientMessage(JSON.stringify({ t: 'cart', cart }))).toEqual({ t: 'cart', cart });
+    expect(
+      parseClientMessage(JSON.stringify({ t: 'cart', cart: [...cart.slice(0, 4), 7, 0, ''] })),
+    ).toBeNull();
+    expect(
+      parseClientMessage(JSON.stringify({ t: 'cart', cart: [...cart.slice(0, 5), 99, ''] })),
+    ).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ t: 'cartGone', id: 'c-abc-1-x' }))).toEqual({
+      t: 'cartGone',
+      id: 'c-abc-1-x',
+    });
+    const move = { t: 'move', p: [1, 60, 2], yaw: 0, pitch: 0, carts: [cart] };
+    expect(parseClientMessage(JSON.stringify(move))).toEqual(move);
+  });
 });

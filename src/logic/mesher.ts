@@ -12,6 +12,8 @@ import {
   REDSTONE_WIRE_ON,
   WATER,
   FACING_STEPS,
+  POWERED_RAIL_ON,
+  RAIL_SHAPES,
   type BlockType,
   type BoxFace,
   type TileName,
@@ -127,6 +129,9 @@ const FACES: readonly Face[] = [
 const LEAN_FOOT = 0.36;
 const LEAN_TOP = 0.1;
 const LEAN_LIFT = 0.2;
+
+/** Track lies this high above the ground. */
+const RAIL_HEIGHT = 0.0625;
 
 /** Box side names in the same order as FACES. */
 const FACE_KEYS: readonly BoxFace[] = ['px', 'nx', 'py', 'ny', 'pz', 'nz'];
@@ -484,6 +489,36 @@ function emitBlock(
           w,
         );
     });
+    return;
+  }
+
+  if (block.shape === 'rail' && block.rail) {
+    const [u0, v0, u1, v1] = tileUV(block.tiles.side);
+    // Lit powered rails glow a little.
+    const glow = block.id >= POWERED_RAIL_ON && block.id < POWERED_RAIL_ON + 6;
+    const sky = glow ? 1 : skyAt(x, y, z) / max;
+    const lit = glow ? 1 : blockAt(x, y, z) / max;
+    const shape = block.rail;
+    // The picture is drawn for north–south (curves: north to east); turn it.
+    const index = RAIL_SHAPES.indexOf(shape);
+    const turns = index >= 6 ? index - 6 : shape.exits[0] % 2;
+    const up = shape.up === undefined ? null : FACING_STEPS[shape.up]!;
+    const base = out.positions.length / 3;
+    for (const [px, pz] of [
+      [0, 1],
+      [1, 1],
+      [1, 0],
+      [0, 0],
+    ] as const) {
+      const rise = up ? (up[0] * (px - 0.5) + up[2] * (pz - 0.5) > 0 ? 1 : 0) : 0;
+      out.positions.push(x + px, y + RAIL_HEIGHT + rise, z + pz);
+      let [cx, cz]: number[] = [px, pz];
+      for (let i = 0; i < turns; i++) [cx, cz] = [cz!, 1 - cx!];
+      out.uvs.push(u0 + (u1 - u0) * cx!, v0 + (v1 - v0) * (1 - cz!));
+      out.colors.push(1, sky, lit);
+    }
+    out.indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
+    out.indices.push(base, base + 2, base + 1, base, base + 3, base + 2);
     return;
   }
 

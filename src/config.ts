@@ -271,6 +271,8 @@ export const REDSTONE = {
   tickSeconds: 0.1,
   /** A button stays pressed this many seconds. */
   buttonSeconds: 1,
+  /** Power goes this many powered rails further along the track (Minecraft: 8). */
+  railReach: 8,
   /** A torch that turns on and off this often within the window burns out. */
   burnoutFlips: 8,
   burnoutWindow: 30,
@@ -357,6 +359,33 @@ export const MAP = {
   iconSize: 14,
 } as const;
 
+/** Minecarts (blocks per second, and per second squared). */
+export const CARTS = {
+  maxSpeed: 8,
+  /** Pushing by walking into a cart or pressing forward while riding. */
+  pushSpeed: 4,
+  /** Walking this close to a cart pushes it. */
+  pushReach: 0.8,
+  pushAccel: 6,
+  rideAccel: 2,
+  slopeAccel: 5,
+  /** A powered rail with power. */
+  boost: 14,
+  startSpeed: 1.5,
+  /** A powered rail without power stops the cart quickly. */
+  brake: 8,
+  /** Slowing down on normal rails (part per second, and a little extra). */
+  friction: 0.12,
+  drag: 0.05,
+  stopSpeed: 0.05,
+  /** Carts in one world at most (the room server stores them). */
+  maxPerRoom: 64,
+  /** A cart standing still this long is saved and nobody moves it. */
+  restSeconds: 1,
+  /** Your feet are this high above the cart's wheels when you ride. */
+  seatHeight: 0.35,
+} as const;
+
 export const PISTONS = {
   /** A piston pushes at most this many blocks (Minecraft: 12). */
   maxPush: 12,
@@ -420,6 +449,8 @@ export const NET = {
   maxChatLength: 200,
   /** Chat messages per player in CHAT_WINDOW_MS (stops spamming). */
   chatRateLimit: 8,
+  /** Minecart messages (place, ride, stop) per player in chatWindowMs. */
+  cartRateLimit: 20,
   chatWindowMs: 10_000,
   reconnectDelayMs: 1500,
   reconnectMaxDelayMs: 15_000,
