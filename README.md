@@ -59,6 +59,8 @@ Niityillä ja metsissä asuu possuja, lehmiä, kanoja ja lampaita. Jokaisella on
 - Ruoki kahta samanlaista eläintä (oikea hiiri), niin ne saavat vauvan 💕
 - Kana munii välillä munan.
 
+Lisäksi metsissä ja havumetsissä asuu **susia** (rauhallisia, kunnes niitä lyö), lumella ja havumetsissä **kettuja**, monessa paikassa **kaneja** (hyppivät!), niityillä **hevosia** ja **kissoja**. Netherissä on **zombipigliinejä** (älä lyö, ne suuttuvat) ja hyppiviä **magmakuutioita**.
+
 ## Kylät ja kyläläiset
 
 Niityillä, aavikoilla ja havumetsissä on kyliä: kaivo keskellä, taloja ympärillä ja polkuja. Taukovalikko kertoo, missä lähin kylä on.

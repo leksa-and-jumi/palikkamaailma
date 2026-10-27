@@ -133,6 +133,12 @@ function walkTo(m: Mob, x: number, z: number, sprint: boolean, stopAt = 0.6): Th
   return { input: { ...STILL, forward: 1, sprint, jump: m.blocked }, yaw };
 }
 
+/** Rabbits and magma cubes move by hopping. */
+function hop(m: Mob, t: Thought): Thought {
+  if (!mobType(m.kind).hops || t.input.forward === 0) return t;
+  return { ...t, input: { ...t.input, jump: true } };
+}
+
 /** Monsters: notice a player, then chase, shoot or explode. Null = nothing to fight. */
 function thinkHostile(
   m: Mob,
@@ -220,9 +226,11 @@ export function think(
   m.cooldown -= dt;
   const close = nearest(m, players);
 
-  if (type.hostile) {
+  // Neutral ones (wolves, zombie piglins) fight back for a while when hurt.
+  const angry = type.neutral && m.hurt < MOBS.angerSeconds && m.hurtFrom !== null;
+  if (type.hostile || angry) {
     const fight = thinkHostile(m, players, dt, around);
-    if (fight) return fight;
+    if (fight) return hop(m, fight);
   }
   if (m.hurt >= MOBS.fleeSeconds) {
     const home = thinkHome(m, around);
@@ -230,7 +238,7 @@ export function think(
   }
 
   // Hurt animals run away from whoever hit them.
-  if (!type.hostile && m.hurt < MOBS.fleeSeconds && m.hurtFrom) {
+  if (!type.hostile && !type.neutral && m.hurt < MOBS.fleeSeconds && m.hurtFrom) {
     m.mode = 'flee';
     const [hx, hz] = m.hurtFrom;
     const away = yawTowards(hx, hz, m.body.x, m.body.z);
@@ -279,7 +287,7 @@ export function think(
     if (t.input.forward === 0) m.timer = 0;
     // Playful ones hop around.
     if (random() < traits.hop * dt) t.input = { ...t.input, jump: true };
-    return t;
+    return hop(m, t);
   }
   // Idle: maybe look at the nearest player.
   const yaw =

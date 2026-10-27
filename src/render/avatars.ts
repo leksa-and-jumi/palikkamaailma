@@ -2,6 +2,7 @@
 
 import * as THREE from 'three';
 import { AVATARS, PLAYER } from '../config';
+import { shadowMesh } from './mobRenderer';
 import type { PlayerInfo } from '../logic/protocol';
 
 const FACE_PIXELS = 64;
@@ -136,7 +137,7 @@ export class OtherPlayers {
     label.scale.set(0.5, 0.5, 0.5);
     label.position.y = PLAYER.height + LABEL_HEIGHT;
 
-    group.add(leftLeg, rightLeg, torso, leftArm, rightArm, head, label);
+    group.add(leftLeg, rightLeg, torso, leftArm, rightArm, head, label, shadowMesh(PLAYER.width));
     group.position.set(...player.p);
     group.rotation.y = player.yaw;
     this.scene.add(group);

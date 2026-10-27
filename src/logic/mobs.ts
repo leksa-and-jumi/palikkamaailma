@@ -5,7 +5,22 @@
 import type { Body } from './physics';
 
 export type MobKind =
-  'pig' | 'cow' | 'chicken' | 'sheep' | 'zombie' | 'skeleton' | 'creeper' | 'spider' | 'villager';
+  | 'pig'
+  | 'cow'
+  | 'chicken'
+  | 'sheep'
+  | 'zombie'
+  | 'skeleton'
+  | 'creeper'
+  | 'spider'
+  | 'villager'
+  | 'wolf'
+  | 'fox'
+  | 'rabbit'
+  | 'cat'
+  | 'horse'
+  | 'piglin'
+  | 'magma_cube';
 
 export type Personality = 'curious' | 'shy' | 'lazy' | 'playful' | 'friendly' | 'grumpy' | 'brave';
 
@@ -34,6 +49,10 @@ export interface MobType {
   personalities: readonly Personality[];
   /** Holding this makes the animal follow you, and feeding it makes babies. */
   food?: string;
+  /** Peaceful until hurt, then it fights back (wolves, zombie piglins). */
+  neutral?: boolean;
+  /** Moves by hopping (rabbits, magma cubes). */
+  hops?: boolean;
 }
 
 const ANIMAL_PERSONALITIES: readonly Personality[] = [
@@ -176,6 +195,109 @@ export const MOB_TYPES: Record<MobKind, MobType> = {
     burnsInDay: false,
     personalities: ['grumpy', 'playful', 'brave'],
   },
+  wolf: {
+    kind: 'wolf',
+    name: 'Susi',
+    emoji: '🐺',
+    health: 8,
+    body: body(0.6, 0.85, 2.2),
+    hostile: false,
+    neutral: true,
+    attack: 3,
+    drops: [],
+    xp: 2,
+    burnsInDay: false,
+    personalities: ['curious', 'playful', 'friendly', 'grumpy', 'brave'],
+    food: 'bone',
+  },
+  fox: {
+    kind: 'fox',
+    name: 'Kettu',
+    emoji: '🦊',
+    health: 10,
+    body: body(0.6, 0.7, 2.4),
+    hostile: false,
+    attack: 0,
+    drops: [],
+    xp: 2,
+    burnsInDay: false,
+    personalities: ['shy', 'curious', 'playful', 'lazy'],
+    food: 'apple',
+  },
+  rabbit: {
+    kind: 'rabbit',
+    name: 'Kani',
+    emoji: '🐰',
+    health: 3,
+    body: body(0.4, 0.5, 2.2),
+    hostile: false,
+    hops: true,
+    attack: 0,
+    drops: [{ key: 'leather', min: 0, max: 1 }],
+    xp: 1,
+    burnsInDay: false,
+    personalities: ['shy', 'playful', 'curious'],
+    food: 'wheat',
+  },
+  cat: {
+    kind: 'cat',
+    name: 'Kissa',
+    emoji: '🐱',
+    health: 10,
+    body: body(0.6, 0.7, 2),
+    hostile: false,
+    attack: 0,
+    drops: [{ key: 'string', min: 0, max: 1 }],
+    xp: 1,
+    burnsInDay: false,
+    personalities: ['lazy', 'curious', 'shy', 'playful', 'friendly'],
+    food: 'apple',
+  },
+  horse: {
+    kind: 'horse',
+    name: 'Hevonen',
+    emoji: '🐴',
+    health: 22,
+    body: body(1.3, 1.6, 2.4),
+    hostile: false,
+    attack: 0,
+    drops: [{ key: 'leather', min: 0, max: 2 }],
+    xp: 2,
+    burnsInDay: false,
+    personalities: ANIMAL_PERSONALITIES,
+    food: 'apple',
+  },
+  piglin: {
+    kind: 'piglin',
+    name: 'Zombipiglin',
+    emoji: '🐗',
+    health: 20,
+    body: body(0.6, 1.9, 1.8),
+    hostile: false,
+    neutral: true,
+    attack: 5,
+    drops: [
+      { key: 'rotten_flesh', min: 0, max: 1 },
+      { key: 'gold_ingot', min: 0, max: 1 },
+    ],
+    xp: 5,
+    burnsInDay: false,
+    personalities: ['grumpy', 'lazy', 'brave'],
+  },
+  magma_cube: {
+    kind: 'magma_cube',
+    name: 'Magmakuutio',
+    emoji: '🟧',
+    health: 16,
+    body: body(1, 1, 1.6),
+    hostile: true,
+    hops: true,
+    attack: 4,
+    drops: [{ key: 'slime_ball', min: 0, max: 1 }],
+    xp: 4,
+    burnsInDay: false,
+    personalities: ['grumpy', 'playful', 'brave'],
+  },
   villager: {
     kind: 'villager',
     name: 'Kyläläinen',
@@ -192,7 +314,17 @@ export const MOB_TYPES: Record<MobKind, MobType> = {
 };
 
 export const MOB_KINDS = Object.keys(MOB_TYPES) as MobKind[];
-export const PASSIVE_KINDS: readonly MobKind[] = ['pig', 'cow', 'chicken', 'sheep'];
+export const PASSIVE_KINDS: readonly MobKind[] = [
+  'pig',
+  'cow',
+  'chicken',
+  'sheep',
+  'wolf',
+  'fox',
+  'rabbit',
+  'cat',
+  'horse',
+];
 export const HOSTILE_KINDS: readonly MobKind[] = ['zombie', 'skeleton', 'creeper', 'spider'];
 
 export const PERSONALITIES: readonly Personality[] = [

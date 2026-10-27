@@ -112,3 +112,36 @@ describe('monster brain', () => {
     expect(think(sp, [player(0, -1)], 0.1, random, { day: true }).action).toBe('attack');
   });
 });
+
+describe('new creatures', () => {
+  it('a wolf is calm until hurt, then bites back', () => {
+    const wolf = createMob('w', 'wolf', 0, 50, 0, 'brave', 'Hukka');
+    const calm = think(wolf, [player(0, -1)], 0.1, random);
+    expect(calm.action).toBeUndefined();
+    wolf.hurt = 0;
+    wolf.hurtFrom = [0, -1];
+    wolf.cooldown = 0;
+    const angry = think(wolf, [player(0, -1)], 0.1, random);
+    expect(wolf.mode).toBe('chase');
+    expect(angry.action).toBe('attack');
+  });
+
+  it('creative players are left alone even by angry wolves', () => {
+    const wolf = createMob('w', 'wolf', 0, 50, 0, 'brave', 'Hukka');
+    wolf.hurt = 0;
+    wolf.hurtFrom = [0, -1];
+    wolf.cooldown = 0;
+    const t = think(wolf, [{ ...player(0, -1), safe: true }], 0.1, random);
+    expect(t.action).toBeUndefined();
+  });
+
+  it('rabbits hop when they move', () => {
+    const rabbit = createMob('r', 'rabbit', 0, 50, 0, 'curious', 'Pupu');
+    rabbit.mode = 'wander';
+    rabbit.goal = [10, 10];
+    rabbit.timer = 5;
+    const t = think(rabbit, [], 0.1, () => 0.99);
+    expect(t.input.forward).toBe(1);
+    expect(t.input.jump).toBe(true);
+  });
+});

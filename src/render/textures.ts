@@ -857,6 +857,7 @@ const PAINTERS: Record<TileName, Painter> = {
       }
     }
   },
+  chest_inside: framed([70, 44, 22], [110, 70, 30], () => undefined),
   rail: rail([150, 150, 156], null),
   rail_corner: railCorner,
   powered_rail: rail([236, 196, 60], [110, 20, 16]),
@@ -1043,4 +1044,25 @@ function drawIsoBoxes(
       0.65,
     );
   }
+}
+
+const tileTextures = new Map<TileName, THREE.Texture>();
+
+/** One block picture as its own texture (for chest lids and break crumbs). */
+export function tileTexture(name: TileName): THREE.Texture {
+  let texture = tileTextures.get(name);
+  if (texture) return texture;
+  texture = new THREE.CanvasTexture(getAtlasCanvas());
+  texture.magFilter = THREE.NearestFilter;
+  texture.minFilter = THREE.NearestFilter;
+  texture.generateMipmaps = false;
+  texture.colorSpace = THREE.SRGBColorSpace;
+  const i = tileIndex(name);
+  texture.repeat.set(1 / ATLAS_COLUMNS, 1 / ATLAS_ROWS);
+  texture.offset.set(
+    (i % ATLAS_COLUMNS) / ATLAS_COLUMNS,
+    1 - (Math.floor(i / ATLAS_COLUMNS) + 1) / ATLAS_ROWS,
+  );
+  tileTextures.set(name, texture);
+  return texture;
 }

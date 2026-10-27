@@ -118,6 +118,7 @@ export const TILE_NAMES = [
   'nether_bricks',
   'quartz_block',
   'portal',
+  'chest_inside',
 ] as const;
 export type TileName = (typeof TILE_NAMES)[number];
 
@@ -533,6 +534,8 @@ export const NETHER_BRICKS = 235;
 export const QUARTZ_BLOCK = 236;
 /** Nether portal: + 0 = a portal along x (thin in z), + 1 = along z. */
 export const NETHER_PORTAL = 237;
+/** An open chest (its lid is drawn by itself, opening). Only a look. */
+export const CHEST_OPEN = 239;
 
 const SIDE_NAMES = ['north', 'east', 'south', 'west', 'up', 'down'] as const;
 const FACINGS: readonly Facing[] = [0, 1, 2, 3];
@@ -639,6 +642,32 @@ const pistonHeadBoxes = (sticky: boolean): BlockBox[] => [
   },
   { from: [0.375, 0.375, 0.25], to: [0.625, 0.625, 1], tile: 'planks' },
 ];
+
+/** A chest like Minecraft's: a bit smaller than a block, lid and a latch in front and back. */
+function chestBoxes(lid: boolean): BlockBox[] {
+  const e = 1 / 16;
+  const boxes: BlockBox[] = [
+    {
+      from: [e, 0, e],
+      to: [1 - e, 10 * e, 1 - e],
+      tile: 'chest_side',
+      faces: { py: 'chest_inside' },
+    },
+  ];
+  if (lid) {
+    boxes.push(
+      {
+        from: [e, 10 * e, e],
+        to: [1 - e, 14 * e, 1 - e],
+        tile: 'chest_side',
+        faces: { py: 'chest_top' },
+      },
+      { from: [7 * e, 7 * e, 0], to: [9 * e, 11 * e, e], tile: 'iron_block' },
+      { from: [7 * e, 7 * e, 1 - e], to: [9 * e, 11 * e, 1], tile: 'iron_block' },
+    );
+  }
+  return boxes;
+}
 
 /** Solid, see-through little boxes (doors, stairs, beds). */
 const PARTS: BlockOptions = { transparent: true, shape: 'boxes' };
@@ -1027,6 +1056,14 @@ function moreBlocks(): BlockType[] {
       ),
     );
   }
+  out.push(
+    block(CHEST_OPEN, 'chest_open', 'Arkku', 'chest_side', {
+      ...PARTS,
+      ...SHOWN,
+      boxes: chestBoxes(false),
+      item: CHEST,
+    }),
+  );
   return out;
 }
 
@@ -1117,12 +1154,13 @@ const LIST: BlockType[] = [
     front: 'furnace_front',
     bottom: 'furnace_top',
   }),
-  block(CHEST, 'chest', 'Arkku', {
-    top: 'chest_top',
-    side: 'chest_side',
-    front: 'chest_front',
-    bottom: 'chest_top',
-  }),
+  block(
+    CHEST,
+    'chest',
+    'Arkku',
+    { top: 'chest_top', side: 'chest_side', front: 'chest_front', bottom: 'chest_top' },
+    { transparent: true, shape: 'boxes', boxes: chestBoxes(true) },
+  ),
   block(ENCHANTING_TABLE, 'enchanting_table', 'Lumouspöytä', {
     top: 'enchanting_top',
     side: 'enchanting_side',
