@@ -49,9 +49,21 @@ export class MapScreen {
     this.zoom = Math.max(0, Math.min(MAP.zooms.length - 1, this.zoom + step));
   }
 
-  draw(tiles: MapTiles, x: number, z: number, markers: readonly MapMarker[]): void {
+  draw(tiles: MapTiles, x: number, z: number, markers: readonly MapMarker[], nether = false): void {
     if (!this.isOpen) return;
     const canvas = $('big-map') as HTMLCanvasElement;
+    if (nether) {
+      // Like Minecraft: the map just spins in the Nether.
+      const ctx = canvas.getContext('2d')!;
+      ctx.fillStyle = '#3a0f0a';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#ffb38a';
+      ctx.font = 'bold 26px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('🔥 Kartta ei toimi Netherissä', canvas.width / 2, canvas.height / 2);
+      $('map-info').textContent = 'M sulkee';
+      return;
+    }
     drawMap(canvas, tiles, x, z, MAP.zooms[this.zoom] ?? 1, markers);
     $('map-info').textContent =
       `📍 x ${Math.floor(x)}, z ${Math.floor(z)} · ➕ ➖ zoomaa · M sulkee`;

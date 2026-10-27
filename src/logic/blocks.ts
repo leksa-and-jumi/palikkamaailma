@@ -112,6 +112,12 @@ export const TILE_NAMES = [
   'rail_corner',
   'powered_rail',
   'powered_rail_on',
+  'netherrack',
+  'soul_sand',
+  'quartz_ore',
+  'nether_bricks',
+  'quartz_block',
+  'portal',
 ] as const;
 export type TileName = (typeof TILE_NAMES)[number];
 
@@ -293,6 +299,8 @@ export interface BlockType {
   noDrop: boolean;
   /** Flat picture for the inventory (doors and ladders). */
   icon?: TileName;
+  /** Drawn half see-through, like water (Nether portals). */
+  translucent: boolean;
   /** Must stand on a solid block (dust, levers, buttons, torches). */
   needsFloor: boolean;
   /**
@@ -330,6 +338,7 @@ type BlockOptions = Partial<
     | 'noDrop'
     | 'icon'
     | 'rail'
+    | 'translucent'
   >
 >;
 
@@ -367,6 +376,7 @@ function block(
     noDrop: options.noDrop ?? false,
     icon: options.icon,
     rail: options.rail,
+    translucent: options.translucent ?? false,
     tiles: faces,
   };
 }
@@ -516,6 +526,13 @@ export const STICKY_HEAD = 204;
 export const RAIL = 210;
 export const POWERED_RAIL = 220;
 export const POWERED_RAIL_ON = 226;
+export const NETHERRACK = 232;
+export const SOUL_SAND = 233;
+export const QUARTZ_ORE = 234;
+export const NETHER_BRICKS = 235;
+export const QUARTZ_BLOCK = 236;
+/** Nether portal: + 0 = a portal along x (thin in z), + 1 = along z. */
+export const NETHER_PORTAL = 237;
 
 const SIDE_NAMES = ['north', 'east', 'south', 'west', 'up', 'down'] as const;
 const FACINGS: readonly Facing[] = [0, 1, 2, 3];
@@ -982,6 +999,33 @@ function moreBlocks(): BlockType[] {
         ),
       );
     }
+  }
+  out.push(
+    block(NETHERRACK, 'netherrack', 'Hornakivi', 'netherrack'),
+    block(SOUL_SAND, 'soul_sand', 'Sielunhiekka', 'soul_sand'),
+    block(QUARTZ_ORE, 'quartz_ore', 'Kvartsimalmi', 'quartz_ore'),
+    block(NETHER_BRICKS, 'nether_bricks', 'Hornatiilet', 'nether_bricks'),
+    block(QUARTZ_BLOCK, 'quartz_block', 'Kvartsipalikka', 'quartz_block'),
+  );
+  for (const axis of [0, 1] as const) {
+    out.push(
+      block(
+        NETHER_PORTAL + axis,
+        axis ? 'nether_portal_z' : 'nether_portal',
+        'Portaali',
+        'portal',
+        {
+          solid: false,
+          transparent: true,
+          translucent: true,
+          shape: 'boxes',
+          boxes: turned([{ from: [0, 0, 0.375], to: [1, 1, 0.625] }], axis),
+          light: 11,
+          placeable: false,
+          item: NETHER_PORTAL,
+        },
+      ),
+    );
   }
   return out;
 }

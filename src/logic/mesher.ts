@@ -390,7 +390,7 @@ function emitBlock(
   const max = LIGHT.max;
   const block = at(x, y, z);
   if (block.id === AIR) return;
-  const out = block.id === WATER ? water : solid;
+  const out = block.id === WATER || block.translucent ? water : solid;
   const glows = block.light > 0;
 
   if (block.shape === 'cross') {

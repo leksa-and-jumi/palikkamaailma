@@ -339,6 +339,8 @@ export class MobManager {
   /** Monsters appear in the dark: at night on the surface, any time in caves, never near torches. */
   private trySpawnMonsters(ctx: MobContext): void {
     if (this.monsterCount() >= MONSTERS.max[ctx.difficulty]) return;
+    // The Nether has its own creatures (not the overworld's).
+    if (ctx.world.terrain.biomeAt(Math.floor(ctx.me.x), Math.floor(ctx.me.z)) === 'nether') return;
     const { world } = ctx;
     for (let i = 0; i < SPAWN_TRIES; i++) {
       const angle = this.random() * Math.PI * 2;

@@ -13,6 +13,7 @@ import {
   type Facing,
 } from './blocks';
 import type { BlockQuery } from './physics';
+import { connectedPortal, isPortal } from './portal';
 
 /** The block next to this one at the same height: (dx, dz) = one step. */
 export type Near = (dx: number, dz: number) => number;
@@ -147,7 +148,18 @@ export function fallingWith(
       const n: Pos = [x + dx, y + dy, z + dz];
       const k = n.join(',');
       if (gone.has(k)) continue;
-      const b = getBlockType(getBlock(...n));
+      const id = getBlock(...n);
+      // A broken frame (or portal block) makes the whole portal go out.
+      if (isPortal(id)) {
+        for (const p of connectedPortal(getBlock, ...n)) {
+          const pk = p.join(',');
+          if (gone.has(pk)) continue;
+          gone.add(pk);
+          out.push(p);
+        }
+        continue;
+      }
+      const b = getBlockType(id);
       const hangs = (s: readonly number[] | null) =>
         !!s && s[0] === -dx && s[1] === -dy && s[2] === -dz;
       if (!hangs(b.support) && !hangs(b.partner)) continue;

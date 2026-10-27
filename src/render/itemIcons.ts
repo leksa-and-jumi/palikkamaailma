@@ -251,6 +251,11 @@ const SPRITES: Record<string, Sprite> = {
     colors: { s: HANDLE },
   },
   coal: { rows: LUMP, colors: { g: [40, 40, 40], G: [70, 70, 70] } },
+  quartz: { rows: GEM, colors: { g: [236, 230, 222], G: [200, 190, 180], w: [255, 255, 255] } },
+  nether_brick: {
+    rows: INGOT,
+    colors: { g: [92, 34, 40], G: [62, 22, 28], w: [130, 60, 66] },
+  },
   minecart: {
     rows: [
       '................',

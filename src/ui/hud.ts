@@ -260,6 +260,13 @@ export class Hud {
     $('wake').onclick = () => onWake?.();
   }
 
+  /** The purple swirl while standing in a Nether portal (0–1). */
+  setPortalGlow(amount: number): void {
+    const glow = $('portal-glow');
+    glow.hidden = amount <= 0;
+    glow.style.opacity = String(amount * 0.75);
+  }
+
   /** "Click to play" after a window was closed with Esc (the mouse needs a click). */
   showClickHint(show: boolean): void {
     $('click-hint').hidden = !show;

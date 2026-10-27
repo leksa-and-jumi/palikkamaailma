@@ -1,6 +1,6 @@
 // Moves the player: walking, jumping, flying, swimming and bumping into blocks.
 
-import { PLAYER, WORLD_HEIGHT, WORLD_LIMIT } from '../config';
+import { NETHER, PLAYER, WORLD_HEIGHT, WORLD_LIMIT } from '../config';
 import type { BlockBox } from './blocks';
 
 export interface PlayerState {
@@ -279,10 +279,16 @@ function step(world: BlockQuery, b: Body, s: PlayerState, input: MoveInput, dt: 
   s.onGround = s.vy <= 0 && collides(world, b, s.x, s.y - GROUND_PROBE, s.z);
   if (s.onGround && s.flying) s.flying = false;
 
-  // Stay inside the world and below the sky.
-  const edge = WORLD_LIMIT - 1;
-  s.x = Math.min(edge, Math.max(-edge, s.x));
-  s.z = Math.min(edge, Math.max(-edge, s.z));
+  // Stay inside the world (or the Nether) and below the sky.
+  if (Math.abs(s.x - NETHER.offset) < NETHER.halfSize + 64) {
+    const edge = NETHER.halfSize - 1;
+    s.x = Math.min(NETHER.offset + edge, Math.max(NETHER.offset - edge, s.x));
+    s.z = Math.min(edge, Math.max(-edge, s.z));
+  } else {
+    const edge = WORLD_LIMIT - 1;
+    s.x = Math.min(edge, Math.max(-edge, s.x));
+    s.z = Math.min(edge, Math.max(-edge, s.z));
+  }
   s.y = Math.min(WORLD_HEIGHT + 8, s.y);
 }
 
