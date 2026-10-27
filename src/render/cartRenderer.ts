@@ -2,6 +2,7 @@
 
 import * as THREE from 'three';
 import type { CartView } from '../play/carts';
+import { shadowMesh } from './mobRenderer';
 
 const IRON = new THREE.MeshLambertMaterial({ color: 0x9a9ea6 });
 const INSIDE = new THREE.MeshLambertMaterial({ color: 0x55585e });
@@ -34,6 +35,7 @@ function buildCart(): THREE.Group {
   for (const x of [-0.3, 0.3]) {
     for (const z of [-0.32, 0.32]) g.add(box(0.12, 0.22, 0.22, WHEEL, x * 1.15, 0.11, z));
   }
+  g.add(shadowMesh(1));
   g.rotation.order = 'YXZ';
   return g;
 }

@@ -166,6 +166,8 @@ export const MOBS = {
   despawnDistance: 96,
   spawnInterval: 3,
   fleeSeconds: 5,
+  /** Wolves and zombie piglins stay angry this long after being hurt. */
+  angerSeconds: 20,
   followDistance: 8,
   followStop: 2,
   noticeDistance: 10,

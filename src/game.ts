@@ -36,6 +36,7 @@ import {
   AIR,
   BED,
   CHEST,
+  CHEST_OPEN,
   CRAFTING_TABLE,
   DEFAULT_HOTBAR,
   FURNACE,
@@ -116,6 +117,7 @@ import { MobRenderer } from './render/mobRenderer';
 import { MapScreen } from './ui/mapScreen';
 import { CartManager, type Cart } from './play/carts';
 import { CartRenderer } from './render/cartRenderer';
+import { BlockBits } from './render/blockBits';
 import { isRail } from './logic/rails';
 import { buildPortal, findPortal, isPortal, lightPortal } from './logic/portal';
 import { toNether, toOverworld } from './logic/nether';
@@ -271,6 +273,7 @@ export class Game {
   private readonly mapTiles: MapTiles;
   readonly carts: CartManager;
   private readonly cartRenderer: CartRenderer;
+  private readonly blockBits: BlockBits;
   /** The minecart under the crosshair (closer than any block), if any. */
   private targetCart: Cart | null = null;
   private readonly mapScreen = new MapScreen();
@@ -303,6 +306,7 @@ export class Game {
     this.world.onChange = (x, y, z, old, id) => this.onBlockChange(x, y, z, old, id);
     this.mapTiles = new MapTiles(this.world);
     this.cartRenderer = new CartRenderer(renderer.scene);
+    this.blockBits = new BlockBits(renderer.scene);
     this.carts = new CartManager({
       save: (cart) => {
         if (this.room) this.room.send({ t: 'cart', cart });
@@ -430,6 +434,7 @@ export class Game {
     this.others.clear();
     this.dropRenderer.clear();
     this.cartRenderer.clear();
+    this.blockBits.clear();
     this.effects.clear();
     this.world.onChange = null;
     this.hud.show(false);
@@ -516,6 +521,9 @@ export class Game {
     this.updateDrops(dt);
     if (this.ready) this.updateRedstone(dt);
     this.effects.update(dt);
+    this.blockBits.update(dt, (x, y, z) => {
+      if (this.world.shownBlock(x, y, z) === CHEST_OPEN) this.world.setShown(x, y, z, null);
+    });
     this.updateCamera(dt);
     this.updateTarget();
     this.others.update(dt);
@@ -762,6 +770,7 @@ export class Game {
     );
     this.change([[t.x, t.y, t.z, AIR], ...fallen.map(([x, y, z]): Edit => [x, y, z, AIR])]);
     sounds.break();
+    this.blockBits.burst(t.x, t.y, t.z, getBlockType(block).tiles.side);
     // Alone, the chest's items fall out here (the room server does it in multiplayer).
     if (!this.room && isContainerBlock(block)) {
       for (const item of this.containers.removeLocal([t.x, t.y, t.z])) {
@@ -1214,8 +1223,19 @@ export class Game {
       const panel =
         data.kind === 'furnace' ? new FurnacePanel(data, save) : new ChestPanel(data, save);
       this.openContainer = { key: positionKey(p), panel };
+      const chest = data.kind === 'chest';
+      if (chest) {
+        // The lid opens while you look inside.
+        this.world.setShown(...p, CHEST_OPEN);
+        this.blockBits.chest(...p, true, this.player.x, this.player.z);
+        sounds.door(true);
+      }
       this.openScreen(panel, data.kind === 'furnace' ? '🔥 Uuni' : '📦 Arkku', () => {
         this.openContainer = null;
+        if (chest) {
+          this.blockBits.chest(...p, false);
+          sounds.door(false);
+        }
       });
     });
     return true;

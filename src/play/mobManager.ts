@@ -50,10 +50,11 @@ const EGG_MAX = 600;
 
 /** Which animals live where. */
 const ANIMALS_BY_BIOME: Partial<Record<Biome, readonly MobKind[]>> = {
-  plains: ['pig', 'cow', 'sheep', 'chicken'],
-  forest: ['pig', 'chicken', 'cow'],
-  taiga: ['sheep', 'cow'],
-  snowy: ['sheep'],
+  plains: ['pig', 'cow', 'sheep', 'chicken', 'horse', 'rabbit', 'cat'],
+  forest: ['pig', 'chicken', 'cow', 'wolf', 'rabbit'],
+  taiga: ['sheep', 'cow', 'wolf', 'fox', 'rabbit'],
+  snowy: ['sheep', 'fox', 'rabbit'],
+  desert: ['rabbit'],
 };
 
 interface RemoteMob {
@@ -83,12 +84,21 @@ const MONSTER_WEIGHTS: readonly [MobKind, number][] = [
   ['creeper', 20],
   ['spider', 20],
 ];
+/** The Nether's own creatures. */
+const NETHER_WEIGHTS: readonly [MobKind, number][] = [
+  ['piglin', 60],
+  ['magma_cube', 40],
+];
+const NETHER_KINDS: readonly MobKind[] = NETHER_WEIGHTS.map(([k]) => k);
 /** Why you got hurt, for the death screen. */
 export const HURT_REASONS: Partial<Record<MobKind, string>> = {
   zombie: 'Zombi sai sinut kiinni.',
   spider: 'Hämähäkki puri.',
   skeleton: 'Luurangon nuoli osui.',
   creeper: 'Creeper räjähti vieressä!',
+  wolf: 'Susi suuttui ja puri.',
+  piglin: 'Zombipiglin suuttui.',
+  magma_cube: 'Magmakuutio hyppäsi päälle.',
 };
 
 export interface MobEvents {
@@ -332,26 +342,29 @@ export class MobManager {
 
   private monsterCount(): number {
     let n = 0;
-    for (const m of this.owned.values()) if (MOB_TYPES[m.kind].hostile) n++;
+    for (const m of this.owned.values()) {
+      if (MOB_TYPES[m.kind].hostile || NETHER_KINDS.includes(m.kind)) n++;
+    }
     return n;
   }
 
   /** Monsters appear in the dark: at night on the surface, any time in caves, never near torches. */
   private trySpawnMonsters(ctx: MobContext): void {
     if (this.monsterCount() >= MONSTERS.max[ctx.difficulty]) return;
-    // The Nether has its own creatures (not the overworld's).
-    if (ctx.world.terrain.biomeAt(Math.floor(ctx.me.x), Math.floor(ctx.me.z)) === 'nether') return;
     const { world } = ctx;
+    // The Nether has its own creatures, and they don't mind light.
+    const nether = world.terrain.biomeAt(Math.floor(ctx.me.x), Math.floor(ctx.me.z)) === 'nether';
+    const weights = nether ? NETHER_WEIGHTS : MONSTER_WEIGHTS;
     for (let i = 0; i < SPAWN_TRIES; i++) {
       const angle = this.random() * Math.PI * 2;
       const distance = MONSTERS.spawnMin + this.random() * (MONSTERS.spawnMax - MONSTERS.spawnMin);
       const x = Math.floor(ctx.me.x + Math.cos(angle) * distance);
       const z = Math.floor(ctx.me.z + Math.sin(angle) * distance);
-      const y = this.darkSpot(world, x, z, Math.floor(ctx.me.y), ctx.day);
+      const y = this.darkSpot(world, x, z, Math.floor(ctx.me.y), ctx.day, nether);
       if (y === null) continue;
-      let pick = this.random() * MONSTER_WEIGHTS.reduce((n, [, w]) => n + w, 0);
-      let kind: MobKind = 'zombie';
-      for (const [k, w] of MONSTER_WEIGHTS) {
+      let pick = this.random() * weights.reduce((n, [, w]) => n + w, 0);
+      let kind: MobKind = weights[0]![0];
+      for (const [k, w] of weights) {
         pick -= w;
         if (pick <= 0) {
           kind = k;
@@ -370,6 +383,7 @@ export class MobManager {
     z: number,
     nearY: number,
     day: boolean,
+    anyLight = false,
   ): number | null {
     const surface = world.surfaceY(x, z);
     const candidates: number[] = [];
@@ -383,7 +397,7 @@ export class MobManager {
       const floor = world.getBlock(x, y - 1, z);
       if (!isSolid(floor) || floor === BEDROCK) continue;
       if (world.getBlock(x, y, z) !== 0 || world.getBlock(x, y + 1, z) !== 0) continue;
-      if (this.nearLight(world, x, y, z)) continue;
+      if (!anyLight && this.nearLight(world, x, y, z)) continue;
       return y;
     }
     return null;
