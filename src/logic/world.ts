@@ -24,9 +24,19 @@ export function chunkOf(v: number): number {
   return Math.floor(v / CHUNK_SIZE);
 }
 
+/** The y of the highest non-air block in a chunk, or -1. */
+function highestBlock(chunk: Uint8Array): number {
+  for (let i = chunk.length - 1; i >= 0; i--) {
+    if (chunk[i] !== AIR) return Math.floor(i / (CHUNK_SIZE * CHUNK_SIZE));
+  }
+  return -1;
+}
+
 export class VoxelWorld {
   readonly terrain: TerrainGenerator;
   private readonly chunks = new Map<string, Uint8Array>();
+  /** One above the highest non-air block of each chunk in memory (for faster drawing). */
+  private readonly tops = new Map<string, number>();
   /** Blocks changed by players, grouped by chunk. */
   private readonly editsByChunk = new Map<string, Map<string, Edit>>();
   /**
@@ -70,10 +80,17 @@ export class VoxelWorld {
         }
       }
       this.chunks.set(key, chunk);
+      this.tops.set(key, highestBlock(chunk) + 1);
     }
     this.lastKey = key;
     this.lastChunk = chunk;
     return chunk;
+  }
+
+  /** Nothing in this chunk is at this height or higher (all air). */
+  chunkTop(cx: number, cz: number): number {
+    this.getChunk(cx, cz);
+    return this.tops.get(chunkKey(cx, cz)) ?? WORLD_HEIGHT;
   }
 
   hasChunk(cx: number, cz: number): boolean {
@@ -99,6 +116,7 @@ export class VoxelWorld {
     const cz = chunkOf(z);
     const key = chunkKey(cx, cz);
     this.getChunk(cx, cz)[chunkIndex(x - cx * CHUNK_SIZE, y, z - cz * CHUNK_SIZE)] = id;
+    if (id !== AIR && y + 1 > (this.tops.get(key) ?? 0)) this.tops.set(key, y + 1);
     let edits = this.editsByChunk.get(key);
     if (!edits) {
       edits = new Map();
@@ -182,6 +200,7 @@ export class VoxelWorld {
       const [x, z] = key.split(',').map(Number) as [number, number];
       if (Math.max(Math.abs(x - cx), Math.abs(z - cz)) > distance) {
         this.chunks.delete(key);
+        this.tops.delete(key);
         this.dirtyChunks.delete(key);
         if (key === this.lastKey) this.lastChunk = null;
       }

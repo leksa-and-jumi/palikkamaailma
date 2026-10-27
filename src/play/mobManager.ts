@@ -124,6 +124,11 @@ function bodyFor(m: Mob): Body {
     : body;
 }
 
+/** A remote creature with no news for this long is put on the ground. */
+const STALE_MS = 700;
+/** …if the ground is at most this many blocks below. */
+const STALE_DROP = 6;
+
 export class MobManager {
   readonly owned = new Map<string, Mob>();
   private readonly remote = new Map<string, RemoteMob>();
@@ -133,6 +138,8 @@ export class MobManager {
   private counter = 0;
   /** Your id in the room ('me' when alone); new creatures are named after it. */
   myId = 'me';
+  /** The world from the last update (to put quiet remote creatures on the ground). */
+  private world: VoxelWorld | null = null;
 
   constructor(
     private readonly events: MobEvents,
@@ -168,6 +175,7 @@ export class MobManager {
 
   update(ctx: MobContext): void {
     const { dt } = ctx;
+    this.world = ctx.world;
     const everyone = [ctx.me, ...ctx.others];
     this.spawnTimer -= dt;
     if (this.spawnTimer <= 0) {
@@ -657,12 +665,15 @@ export class MobManager {
         remote: false,
       };
     }
-    for (const { net } of this.remote.values()) {
+    const now = performance.now();
+    for (const { net, seen } of this.remote.values()) {
+      // No news for a while (it walked away from us): stand it on the ground.
+      const y = now - seen > STALE_MS ? this.groundBelow(net[2], net[3], net[4]) : net[3];
       yield {
         id: net[0],
         kind: net[1],
         x: net[2],
-        y: net[3],
+        y,
         z: net[4],
         yaw: net[5],
         health: net[6],
@@ -674,6 +685,18 @@ export class MobManager {
         remote: true,
       };
     }
+  }
+
+  /** Feet height on the first solid block at or below y (a few blocks down at most). */
+  private groundBelow(x: number, y: number, z: number): number {
+    const world = this.world;
+    if (!world) return y;
+    const bx = Math.floor(x);
+    const bz = Math.floor(z);
+    for (let by = Math.floor(y); by > Math.floor(y) - STALE_DROP; by--) {
+      if (isSolid(world.getBlock(bx, by - 1, bz))) return Math.min(y, by);
+    }
+    return y;
   }
 
   /** The creature the ray hits first within `reach`, with the distance. */

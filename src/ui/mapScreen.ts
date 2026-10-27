@@ -37,6 +37,9 @@ export class MapScreen {
     // The key that opened the map must not close it straight away.
     setTimeout(() => window.addEventListener('keydown', keys), 0);
     $('map-close').onclick = close;
+    $('map-screen').onmousedown = (e) => {
+      if (e.target === $('map-screen')) close();
+    };
     $('map-in').onclick = () => this.zoomBy(-1);
     $('map-out').onclick = () => this.zoomBy(1);
     this.close = close;

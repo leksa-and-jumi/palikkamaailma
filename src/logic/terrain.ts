@@ -154,7 +154,7 @@ export class TerrainGenerator {
         : SEA_LEVEL + t.landHeight + cont * t.continentAmplitude * 0.6;
     const roughness = 0.4 + 0.6 * Math.max(0, cont);
     const raw = base + hill * t.hillAmplitude * roughness + mountain * t.mountainAmplitude;
-    const height = Math.round(clamp(raw, 4, WORLD_HEIGHT - 16));
+    const height = Math.round(clamp(raw, 4, t.maxHeight));
 
     const temp = fbm(this.temperature, x * t.temperatureScale, z * t.temperatureScale, 3);
     const hum = fbm(this.humidity, x * t.humidityScale, z * t.humidityScale, 3);

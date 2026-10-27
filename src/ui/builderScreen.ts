@@ -52,12 +52,24 @@ export class BuilderScreen {
   open(onClose: () => void): void {
     this.onClose = onClose;
     $('builder').hidden = false;
+    // Esc or a click beside the window closes it.
+    $('builder').onmousedown = (e) => {
+      if (e.target === $('builder')) this.close();
+    };
+    window.addEventListener('keydown', this.escape);
     if (this.ready) this.showPreview();
     else this.showAsk();
   }
 
+  private readonly escape = (e: KeyboardEvent): void => {
+    if (e.code !== 'Escape') return;
+    e.preventDefault();
+    this.close();
+  };
+
   close(): void {
     if (!this.isOpen) return;
+    window.removeEventListener('keydown', this.escape);
     $('builder').hidden = true;
     sharedPreview?.stop();
     this.stopTicker();

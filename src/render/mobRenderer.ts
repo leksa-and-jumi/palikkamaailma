@@ -497,6 +497,8 @@ export class MobRenderer {
           const seconds = Math.max(0.05, (now - m.lastTime) / 1000);
           const next = new THREE.Vector3(v.x, v.y, v.z);
           m.velocity.copy(next).sub(m.last).divideScalar(seconds).clampLength(0, 12);
+          // Only guess sideways: guessing a jump left creatures floating.
+          m.velocity.y = 0;
           m.last.copy(next);
           m.lastTime = now;
           m.target.copy(next);

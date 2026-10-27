@@ -371,7 +371,10 @@ export class Game {
   resume(): void {
     if (this.dead) return;
     this.input.enabled = true;
-    this.input.lock();
+    void this.input.lock().then((ok) => {
+      // The browser wants a click first: a small hint instead of the pause menu.
+      if (!ok && !this.input.locked && !this.overlayOpen) this.hud.showClickHint(true);
+    });
   }
 
   stop(): void {
@@ -409,6 +412,8 @@ export class Game {
       this.fallStart = null;
     }
     this.hud.toast(this.mode === 'creative' ? '🛠️ Nikkaroija-tila' : '⚔️ Selviytyjä-tila');
+    // Tell the others at once, so their monsters know.
+    this.lastSentMove = null;
     this.savePlayerNow();
     return this.mode;
   }
@@ -1824,6 +1829,7 @@ export class Game {
   /** Shows a window over the game; the mouse comes back when it closes. */
   private openOverlay(open: (done: () => void) => void): void {
     this.overlayOpen = true;
+    this.hud.showClickHint(false);
     this.input.unlock();
     open(() => {
       this.overlayOpen = false;
@@ -1833,6 +1839,7 @@ export class Game {
 
   private setPaused(paused: boolean): void {
     this.paused = paused;
+    if (!paused) this.hud.showClickHint(false);
     if (paused) this.mining = null;
     this.callbacks.onPause(paused && !this.overlayOpen && !this.dead);
   }
@@ -1865,9 +1872,14 @@ export class Game {
     const pitch = round(p.pitch);
     this.lastSentMove = [p.x, p.y, p.z, p.yaw, p.pitch];
     this.moveIdle = 0;
-    this.room.send(
-      mobs.length > 0 ? { t: 'move', p: pos, yaw, pitch, mobs } : { t: 'move', p: pos, yaw, pitch },
-    );
+    this.room.send({
+      t: 'move',
+      p: pos,
+      yaw,
+      pitch,
+      ...(mobs.length > 0 ? { mobs } : {}),
+      ...(this.mode === 'creative' ? { safe: true } : {}),
+    });
   }
 
   private onRoomStatus(status: RoomStatus): void {
@@ -1919,7 +1931,7 @@ export class Game {
         this.updatePlayerList();
         return;
       case 'move':
-        this.others.move(msg.id, msg.p, msg.yaw, msg.pitch);
+        this.others.move(msg.id, msg.p, msg.yaw, msg.pitch, msg.safe === true);
         if (msg.mobs) this.mobs.receive(msg.id, msg.mobs);
         return;
       case 'hitMob':

@@ -54,10 +54,21 @@ export class Input {
     return document.pointerLockElement === this.canvas;
   }
 
-  lock(): void {
-    const request = this.canvas.requestPointerLock() as Promise<void> | undefined;
-    // Some browsers refuse right after Esc; the player can click again.
-    request?.catch(() => undefined);
+  /**
+   * Catches the mouse. Resolves false when the browser says no (right after
+   * Esc it does); then a click on the game catches it.
+   */
+  lock(): Promise<boolean> {
+    try {
+      const request = this.canvas.requestPointerLock() as Promise<void> | undefined;
+      if (!request) return Promise.resolve(true);
+      return request.then(
+        () => true,
+        () => false,
+      );
+    } catch {
+      return Promise.resolve(false);
+    }
   }
 
   unlock(): void {
