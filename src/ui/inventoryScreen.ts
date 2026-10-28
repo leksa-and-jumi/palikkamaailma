@@ -187,7 +187,9 @@ export class InventoryScreen {
     document.addEventListener('keydown', (e) => {
       if (!this.isOpen) return;
       if (e.code === 'KeyE' || e.code === 'Escape') {
+        // Stop here: otherwise the game sees the same E and opens the backpack again.
         e.preventDefault();
+        e.stopImmediatePropagation();
         this.close();
       }
     });

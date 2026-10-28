@@ -1065,8 +1065,15 @@ export class Game {
     this.cartRenderer.sync(this.carts.views(this.cartWorld()), dt, this.myId);
     const [dx, dy, dz] = this.lookDirection();
     const hit = this.carts.pick([p.x, p.y + PLAYER.eyeHeight, p.z], [dx, dy, dz], MOBS.attackReach);
-    this.targetCart =
-      hit && (!this.target || hit.distance < this.target.distance) ? hit.cart : null;
+    // The rail under a cart is in the same block, so the ray reaches the rail
+    // first: only a solid block really in front hides the cart.
+    const t = this.target;
+    const blocked =
+      !!t &&
+      hit !== null &&
+      t.distance < hit.distance &&
+      isSolid(this.world.getBlock(t.x, t.y, t.z));
+    this.targetCart = hit && !blocked ? hit.cart : null;
   }
 
   /** Puts a minecart on the rail you look at. */
