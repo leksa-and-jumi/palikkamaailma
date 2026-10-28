@@ -98,7 +98,8 @@ export class Input {
   }
 
   private keyDown(e: KeyboardEvent): void {
-    if (!this.enabled) return;
+    // A window (backpack, map…) already used this key.
+    if (!this.enabled || e.defaultPrevented) return;
     if (e.target instanceof HTMLInputElement) return;
     if (this.handlers.onKey(e.code, e)) {
       e.preventDefault();
