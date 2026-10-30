@@ -8,6 +8,8 @@ import type { BlockBox } from '../logic/blocks';
 import { buildChunkMesh, type MeshData } from '../logic/mesher';
 import { chunkKey, type VoxelWorld } from '../logic/world';
 import { Sky } from './sky';
+import { Rain } from './weather';
+import type { Atmosphere } from '../mods/types';
 import { createAtlasTexture } from './textures';
 
 interface ChunkMeshes {
@@ -78,6 +80,10 @@ export class WorldRenderer {
   };
   /** In the Nether: red fog, no sky, a dim red glow everywhere. */
   nether = false;
+  /** A mod's fog, darkness and rain (null = normal). */
+  atmosphere: Atmosphere | null = null;
+  private readonly rain: Rain;
+  private lastSky = performance.now();
   private readonly sky: Sky;
   private readonly hemisphere: THREE.HemisphereLight;
   private readonly sunLight: THREE.DirectionalLight;
@@ -115,6 +121,7 @@ export class WorldRenderer {
     this.sunLight.position.set(0.4, 1, 0.3);
     this.scene.add(this.sunLight);
     this.sky = new Sky(this.scene);
+    this.rain = new Rain(this.scene);
 
     const atlas = createAtlasTexture();
     this.solidMaterial = new THREE.MeshBasicMaterial({
@@ -185,6 +192,22 @@ export class WorldRenderer {
     }
     this.lightUniforms.uMinLight.value.copy(this.nether ? NETHER_GLOW : DAY_MIN);
     this.sky.setVisible(!this.underwater && !this.nether, !this.nether);
+
+    // A mod's mood: its own fog colour hides the sky, darkness dims the sun.
+    const a = this.atmosphere;
+    if (a && !this.underwater) {
+      if (a.fogColor !== undefined) {
+        (this.scene.background as THREE.Color).setHex(a.fogColor);
+        this.fog.color.setHex(a.fogColor);
+        this.sky.setVisible(false, false);
+      }
+      if (a.fogNear !== undefined) this.fog.near = a.fogNear;
+      if (a.fogFar !== undefined) this.fog.far = a.fogFar;
+      if (a.darkness) this.lightUniforms.uDaylight.value *= 1 - a.darkness;
+    }
+    const t2 = performance.now();
+    this.rain.update(!!a?.rain, this.camera.position, Math.min(0.1, (t2 - this.lastSky) / 1000));
+    this.lastSky = t2;
     this.hemisphere.intensity = 0.5 + 1.7 * light;
     this.sunLight.intensity = 1.2 * light;
     this.sunLight.position.copy(this.sky.sunDir);

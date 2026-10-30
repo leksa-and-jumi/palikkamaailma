@@ -88,6 +88,28 @@ export const sounds = {
     blip(520, 0.12, 'sine', 0.08);
     setTimeout(() => blip(780, 0.15, 'sine', 0.08), 110);
   },
+  /** Spooky sounds for mods. */
+  thunder: () => {
+    noise(2.2, 0.45, 600, 40);
+    noise(1.2, 0.25, 2000, 200, 0.05);
+  },
+  whisper: () => {
+    noise(1.4, 0.07, 3000, 1200, 0, 'bandpass');
+    noise(0.9, 0.05, 2500, 1500, 0.5, 'bandpass');
+  },
+  laugh: () => {
+    [330, 300, 340, 290, 320].forEach((f, i) =>
+      setTimeout(() => blip(f, 0.14, 'sawtooth', 0.04), i * 140),
+    );
+  },
+  bell: () => {
+    blip(196, 1.6, 'sine', 0.12);
+    setTimeout(() => blip(196, 1.6, 'sine', 0.08), 700);
+  },
+  heartbeat: () => {
+    blip(60, 0.18, 'sine', 0.3);
+    setTimeout(() => blip(55, 0.2, 'sine', 0.25), 220);
+  },
   magic: () => {
     [523, 659, 784, 1046].forEach((f, i) =>
       setTimeout(() => blip(f, 0.18, 'triangle', 0.07), i * 90),

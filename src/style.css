@@ -1167,3 +1167,71 @@ kbd {
   font-size: 0.75rem;
   color: var(--muted);
 }
+
+/* --- Mods: mood, flashes, boss bar and speech ------------------------------ */
+
+.atmo,
+.screen-flash {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.screen-flash {
+  opacity: 0;
+}
+
+.boss-bar {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(440px, 70vw);
+  text-align: center;
+  color: #fff;
+  font-weight: 800;
+  text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.6);
+}
+
+.boss-track {
+  height: 12px;
+  margin-top: 4px;
+  border: 2px solid #111;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.boss-fill {
+  height: 100%;
+  width: 100%;
+  background: linear-gradient(#d860ff, #8a20c0);
+  transition: width 0.25s;
+}
+
+.dialogue {
+  position: absolute;
+  left: 50%;
+  bottom: 120px;
+  transform: translateX(-50%);
+  width: min(560px, 90vw);
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 16px;
+  border-radius: 14px;
+  background: rgba(12, 10, 18, 0.82);
+  border: 2px solid rgba(255, 255, 255, 0.15);
+  color: #f2eefc;
+}
+
+.dialogue-face {
+  font-size: 2.6rem;
+}
+
+.dialogue-name {
+  font-weight: 800;
+}
+
+.dialogue-text {
+  font-size: 1.05rem;
+  line-height: 1.35;
+}

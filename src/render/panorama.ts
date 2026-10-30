@@ -32,7 +32,6 @@ export class Panorama {
     if (!this.world) {
       this.world = new VoxelWorld(seedFromCode(PANORAMA_CODE));
       this.centre = this.findView(this.world);
-
     }
     this.renderer.setWorld(this.world);
     this.renderer.nether = false;

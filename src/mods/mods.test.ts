@@ -4,22 +4,9 @@ import { itemId } from '../logic/items';
 import { combineEffects } from './effects';
 import { ModManager } from './manager';
 import { MODS, modById } from './registry';
-import type { ModApi } from './types';
+import { fakeApi } from './fakeApi';
 
-function api(): ModApi & { toasts: string[]; sparks: number } {
-  const state = {
-    toasts: [] as string[],
-    sparks: 0,
-    player: { x: 0, y: 50, z: 0, vx: 3, vz: 0, onGround: true },
-    toast(text: string) {
-      state.toasts.push(text);
-    },
-    sparkle() {
-      state.sparks++;
-    },
-  };
-  return state;
-}
+const api = fakeApi;
 
 describe('mods', () => {
   it('have unique ids that are safe to save', () => {

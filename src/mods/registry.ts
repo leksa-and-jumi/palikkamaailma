@@ -4,9 +4,11 @@
 import { moonJump, superSpeed } from './builtin/movement';
 import { fastMining, neverHungry, noMonsters } from './builtin/survival';
 import { alwaysDay, easyRecipes, rainbowTrail } from './builtin/world';
+import { halloween } from './halloween';
 import type { Mod, Trophy } from './types';
 
 export const MODS: readonly Mod[] = [
+  halloween,
   moonJump,
   superSpeed,
   fastMining,
