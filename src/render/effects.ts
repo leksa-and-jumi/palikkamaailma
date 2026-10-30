@@ -126,6 +126,23 @@ export class Effects {
     });
   }
 
+  /** One little spark that floats up and fades (mods use it). */
+  sparkle(x: number, y: number, z: number, color: number): void {
+    const r = this.random;
+    this.spark(
+      x,
+      y,
+      z,
+      (r() - 0.5) * 0.6,
+      0.6 + r() * 0.6,
+      (r() - 0.5) * 0.6,
+      color,
+      0.9,
+      0.5,
+      false,
+    );
+  }
+
   /** Smoke and fire where TNT went off. */
   explosion(x: number, y: number, z: number): void {
     const r = this.random;

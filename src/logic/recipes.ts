@@ -211,11 +211,18 @@ function matchShapeless(recipe: ShapelessRecipe, grid: readonly Slot[]): boolean
   return true;
 }
 
+/** Recipes added by mods that are on (the game's own recipes always win). */
+let extraRecipes: readonly Recipe[] = [];
+
+export function setExtraRecipes(recipes: readonly Recipe[]): void {
+  extraRecipes = recipes;
+}
+
 /** Finds what the crafting grid makes (width 2 or 3), or null. */
 export function findRecipe(grid: readonly Slot[], width: number): Recipe | null {
   const rows = trim(grid, width);
   if (rows.length === 0) return null;
-  for (const recipe of RECIPES) {
+  for (const recipe of [...RECIPES, ...extraRecipes]) {
     if (recipe.kind === 'shaped') {
       if (matchShaped(recipe, rows, false) || matchShaped(recipe, rows, true)) return recipe;
     } else if (matchShapeless(recipe, grid)) {

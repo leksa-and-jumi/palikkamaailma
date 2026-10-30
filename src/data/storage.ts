@@ -116,3 +116,13 @@ export function loadLocalCarts(code: string): unknown[] {
 export function saveLocalCarts(code: string, carts: unknown[]): void {
   write(`${STORAGE.soloEdits}.carts.${code}`, carts);
 }
+
+/** Mods that are on in a world played alone. */
+export function loadLocalMods(code: string): string[] {
+  const saved = read<unknown>(`${STORAGE.soloEdits}.mods.${code}`, []);
+  return Array.isArray(saved) ? saved.filter((id): id is string => typeof id === 'string') : [];
+}
+
+export function saveLocalMods(code: string, ids: string[]): void {
+  write(`${STORAGE.soloEdits}.mods.${code}`, ids);
+}
