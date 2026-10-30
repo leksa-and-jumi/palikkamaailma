@@ -29,6 +29,8 @@ import {
   loadLocalEdits,
   loadLocalMods,
   loadPlayer,
+  winTrophy,
+  loadTrophies,
   saveLocalCarts,
   saveLocalEdits,
   saveLocalMods,
@@ -123,6 +125,8 @@ import { MOB_TYPES, PERSONALITY_NAMES } from './logic/mobs';
 import { HURT_REASONS, MobManager, villagerProfession } from './play/mobManager';
 import { MobRenderer } from './render/mobRenderer';
 import { ModManager } from './mods/manager';
+import type { ModApi } from './mods/types';
+import { ModActors } from './render/modActors';
 import { modById } from './mods/registry';
 import { MapScreen } from './ui/mapScreen';
 import { CartManager, type Cart } from './play/carts';
@@ -285,11 +289,14 @@ export class Game {
   private readonly cartRenderer: CartRenderer;
   /** Mods that are on in this world (the same for everyone in it). */
   readonly mods: ModManager;
+  private readonly modActors: ModActors;
   private readonly blockBits: BlockBits;
   /** The minecart under the crosshair (closer than any block), if any. */
   private targetCart: Cart | null = null;
   private readonly mapScreen = new MapScreen();
   private mapTimer = 0;
+  /** Seconds until the next lightning in a mod's storm. */
+  private lightningTimer = 0;
   /** Seconds standing in a portal, and true after travelling until you step out. */
   private portalTime = 0;
   private portalCooldown = false;
@@ -319,14 +326,15 @@ export class Game {
     this.mapTiles = new MapTiles(this.world);
     this.cartRenderer = new CartRenderer(renderer.scene);
     this.blockBits = new BlockBits(renderer.scene);
-    const player = () => this.player;
-    this.mods = new ModManager({
-      get player() {
-        return player();
-      },
-      toast: (text) => hud.toast(text),
-      sparkle: (x, y, z, color) => this.effects.sparkle(x, y, z, color),
-    });
+    this.modActors = new ModActors(renderer.scene);
+    this.mods = new ModManager(this.modApi());
+    this.mods.onTurnedOff = (id) => {
+      // A mod turned off leaves nothing behind.
+      this.modActors.removeAll(`${id}:`);
+      this.renderer.atmosphere = null;
+      this.hud.setAtmosphere(null, 0);
+      this.hud.bossBar(null);
+    };
     this.carts = new CartManager({
       save: (cart) => {
         if (this.room) this.room.send({ t: 'cart', cart });
@@ -457,6 +465,10 @@ export class Game {
     this.cartRenderer.clear();
     this.blockBits.clear();
     this.mods.stop();
+    this.modActors.removeAll();
+    this.renderer.atmosphere = null;
+    this.hud.setAtmosphere(null, 0);
+    this.hud.bossBar(null);
     this.effects.clear();
     this.world.onChange = null;
     this.hud.show(false);
@@ -551,7 +563,10 @@ export class Game {
     this.others.update(dt);
     if (this.ready && !this.dead) this.updateMobs(dt);
     if (this.ready && !this.dead) this.updateCarts(dt);
-    if (this.ready && !this.paused) this.mods.tick(dt);
+    if (this.ready && !this.paused) {
+      this.mods.tick(dt);
+      this.updateModWeather(dt);
+    }
     if (this.ready && !this.dead && !this.paused) this.updatePortal(dt);
     this.renderer.nether = isNether(this.player.x);
     if (this.ready) this.updateMaps(dt);
@@ -734,6 +749,7 @@ export class Game {
       this.breakCooldown = SURVIVAL.creativeBreakDelay;
       return;
     }
+    if (this.hitModActor()) return;
     if (this.targetCart) {
       const c = this.targetCart;
       this.carts.breakCart(c);
@@ -1003,6 +1019,88 @@ export class Game {
 
   // --- Mods ----------------------------------------------------------------
 
+  /** What mods may do: look, sound and play, never change the world's blocks. */
+  private modApi(): ModApi {
+    const dir = () => this.lookDirection();
+    const player = () => this.player;
+    const mode = () => this.mode;
+    const night = () => isNight(this.time) || isNether(this.player.x);
+    const dead = () => this.dead;
+    return {
+      get player() {
+        const p = player();
+        return {
+          x: p.x,
+          y: p.y,
+          z: p.z,
+          vx: p.vx,
+          vz: p.vz,
+          onGround: p.onGround,
+          yaw: p.yaw,
+          look: dir(),
+        };
+      },
+      get mode() {
+        return mode();
+      },
+      get night() {
+        return night();
+      },
+      get nether() {
+        return isNether(player().x);
+      },
+      get dead() {
+        return dead();
+      },
+      toast: (text) => this.hud.toast(text),
+      sparkle: (x, y, z, color) => this.effects.sparkle(x, y, z, color),
+      say: (who, text) => this.hud.say(who.emoji, who.name, who.color ?? '#ffd66b', text),
+      atmosphere: (a) => {
+        this.renderer.atmosphere = a;
+        this.hud.setAtmosphere(a?.tint ?? null, a?.vignette ?? 0);
+        this.lightningTimer = a?.lightning ? 2 : 0;
+      },
+      flash: (color, seconds) => this.hud.flash(color, seconds),
+      actor: (id, spec, state) => this.modActors.set(id, spec, state),
+      removeActor: (id) => this.modActors.remove(id),
+      bossBar: (name, health) => this.hud.bossBar(name, health),
+      hurt: (amount, reason) => this.takeDamage(amount, reason),
+      push: (vx, vy, vz) => {
+        this.player.vx += vx;
+        this.player.vy = Math.max(this.player.vy, vy);
+        this.player.vz += vz;
+      },
+      trophy: (id) => winTrophy(id),
+      hasTrophy: (id) => !!loadTrophies()[id],
+      sound: (name) => sounds[name](0),
+      isSolid: (x, y, z) =>
+        isSolid(this.world.getBlock(Math.floor(x), Math.floor(y), Math.floor(z))),
+      groundY: (x, z, nearY) => {
+        const bx = Math.floor(x);
+        const bz = Math.floor(z);
+        for (let y = Math.floor(nearY) + 6; y > Math.floor(nearY) - 12; y--) {
+          if (
+            isSolid(this.world.getBlock(bx, y - 1, bz)) &&
+            !isSolid(this.world.getBlock(bx, y, bz))
+          ) {
+            return y;
+          }
+        }
+        return nearY;
+      },
+    };
+  }
+
+  /** Lightning in a mod's storm: a white flash, then thunder. */
+  private updateModWeather(dt: number): void {
+    if (!this.renderer.atmosphere?.lightning) return;
+    this.lightningTimer -= dt;
+    if (this.lightningTimer > 0) return;
+    this.lightningTimer = 4 + Math.random() * 7;
+    this.hud.flash('rgba(235,240,255,0.85)', 0.5);
+    setTimeout(() => sounds.thunder(), 300 + Math.random() * 900);
+  }
+
   /** Turns a mod on or off for everyone in this world. Nothing in the world changes. */
   toggleMod(id: string): void {
     const mod = modById(id);
@@ -1240,6 +1338,25 @@ export class Game {
       },
     );
     this.openScreen(panel, '🏘️ Kauppa');
+  }
+
+  /** Hits a mod's character if one is in front of you (closer than a block). */
+  private hitModActor(): boolean {
+    const p = this.player;
+    const hit = this.modActors.pick(
+      [p.x, p.y + PLAYER.eyeHeight, p.z],
+      this.lookDirection(),
+      MOBS.attackReach,
+    );
+    if (!hit || (this.target && this.target.distance < hit.distance)) return false;
+    if (this.attackCooldown > 0) return true;
+    this.attackCooldown = MOBS.attackCooldown;
+    const stack = this.selectedStack();
+    const item = stack ? getItem(stack.id) : undefined;
+    this.mods.hitActor(hit.id, item?.tool?.damage ?? MOBS.fistDamage);
+    sounds.break();
+    if (this.mode === 'survival' && item?.tool) this.wearSelected();
+    return true;
   }
 
   /** Hits the creature with what you hold (swords hit hardest). */
@@ -1929,6 +2046,7 @@ export class Game {
     switch (c.kind) {
       case 'help':
         for (const info of COMMAND_LIST) this.say(info.help);
+        for (const line of this.mods.commandHelp) this.say(line);
         return;
       case 'tpa':
       case 'invite': {
@@ -2011,6 +2129,7 @@ export class Game {
         return;
       }
       case 'unknown':
+        if (this.mods.runCommand(c.name.toLowerCase(), c.args)) return;
         this.say(`❓ En tunne komentoa /${c.name}. Kirjoita /apua`);
         return;
     }

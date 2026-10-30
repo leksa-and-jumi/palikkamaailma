@@ -19,7 +19,7 @@ export type Command =
   | { kind: 'time'; value: 'day' | 'night' | null }
   | { kind: 'mode'; value: 'creative' | 'survival' | null }
   | { kind: 'mods' }
-  | { kind: 'unknown'; name: string };
+  | { kind: 'unknown'; name: string; args: string };
 
 interface CommandInfo {
   names: readonly string[];
@@ -115,7 +115,7 @@ export function parseCommand(text: string): Command | null {
   if (!trimmed.startsWith('/')) return null;
   const [name = '', ...rest] = trimmed.slice(1).split(/\s+/);
   const info = BY_NAME.get(name.toLowerCase());
-  if (!info) return { kind: 'unknown', name };
+  if (!info) return { kind: 'unknown', name, args: rest.join(' ') };
   return info.make(rest.join(' ').toLowerCase());
 }
 

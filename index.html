@@ -12,40 +12,87 @@
   <body>
     <div id="game"></div>
 
-    <!-- Start menu -->
-    <section id="menu" class="screen">
-      <div class="panel">
-        <h1>🧱 Palikkamaailma</h1>
-        <p class="lead">Rakenna, louhi ja selviydy yhdessä loputtomassa maailmassa!</p>
+    <!-- Start menu: a title screen like Minecraft's over a turning world -->
+    <section id="menu" class="title-screen">
+      <div class="title-top">
+        <canvas id="title-logo" class="title-logo" width="960" height="200"></canvas>
+        <div id="splash" class="splash"></div>
+      </div>
 
-        <h2>Kuka olet?</h2>
-        <div id="avatars" class="avatars"></div>
-
-        <h2>Pelitapa</h2>
-        <div id="mode-choice" class="choice"></div>
-        <div id="difficulty-choice" class="choice"></div>
-
-        <div class="menu-buttons">
-          <button id="new-world" class="big">🌍 Uusi maailma</button>
-          <button id="solo" class="big secondary">🧍 Pelaa yksin</button>
+      <!-- Main page -->
+      <div id="page-main" class="menu-page">
+        <button class="mc-button" data-page="page-solo">🧍 Yksinpeli</button>
+        <button class="mc-button" data-page="page-multi">👥 Moninpeli</button>
+        <div class="mc-row">
+          <button class="mc-button" data-page="page-avatar">
+            <span id="avatar-now">🦊</span> Hahmo
+          </button>
+          <button class="mc-button" data-page="page-trophies">🏆 Pokaalit</button>
         </div>
+      </div>
 
-        <h2>Liity kaverin maailmaan</h2>
-        <form id="join-form" class="join">
-          <input
-            id="join-code"
-            autocomplete="off"
-            spellcheck="false"
-            placeholder="esim. KALA-PUU-42"
-          />
-          <button type="submit">🔑 Liity</button>
-        </form>
-        <p id="menu-message" class="message"></p>
-
-        <div id="my-worlds-box" hidden>
-          <h2>Omat maailmat</h2>
-          <div id="my-worlds" class="worlds"></div>
+      <!-- Singleplayer -->
+      <div id="page-solo" class="menu-page" hidden>
+        <div class="mc-panel">
+          <h2>🧍 Yksinpeli</h2>
+          <p class="lead">Oma saari tällä koneella. Se tallentuu tänne ja toimii ilman nettiä.</p>
+          <div id="mode-choice" class="choice"></div>
+          <div id="difficulty-choice" class="choice"></div>
         </div>
+        <button id="solo" class="mc-button primary">▶️ Pelaa</button>
+        <button class="mc-button" data-page="page-main">← Takaisin</button>
+      </div>
+
+      <!-- Multiplayer -->
+      <div id="page-multi" class="menu-page" hidden>
+        <div class="mc-panel">
+          <h2>👥 Moninpeli</h2>
+          <div id="my-worlds-box" hidden>
+            <h3>Omat maailmat</h3>
+            <div id="my-worlds" class="worlds"></div>
+          </div>
+          <h3>Liity kaverin maailmaan</h3>
+          <form id="join-form" class="join">
+            <input
+              id="join-code"
+              autocomplete="off"
+              spellcheck="false"
+              placeholder="esim. KALA-PUU-42"
+            />
+            <button type="submit">🔑 Liity</button>
+          </form>
+          <h3>Tee uusi maailma kavereille</h3>
+          <div id="multi-mode-choice" class="choice"></div>
+          <div id="multi-difficulty-choice" class="choice"></div>
+        </div>
+        <button id="new-world" class="mc-button primary">🌍 Uusi maailma</button>
+        <button class="mc-button" data-page="page-main">← Takaisin</button>
+      </div>
+
+      <!-- Avatar -->
+      <div id="page-avatar" class="menu-page" hidden>
+        <div class="mc-panel">
+          <h2>Kuka olet?</h2>
+          <div id="avatars" class="avatars"></div>
+        </div>
+        <button class="mc-button" data-page="page-main">✔️ Valmis</button>
+      </div>
+
+      <!-- Trophies -->
+      <div id="page-trophies" class="menu-page" hidden>
+        <div class="mc-panel wide">
+          <h2>🏆 Pokaalit</h2>
+          <p class="lead">Voita modien päähahmot selviytyjä-tilassa, niin saat niiden pokaalit.</p>
+          <div id="trophy-list" class="trophy-list"></div>
+        </div>
+        <button class="mc-button" data-page="page-main">← Takaisin</button>
+      </div>
+
+      <p id="menu-message" class="message title-message"></p>
+
+      <div class="title-foot">
+        <span>Palikkamaailma</span>
+        <span>Suunnitelleet Julius ja Leo</span>
       </div>
     </section>
 
@@ -94,6 +141,19 @@
         </div>
       </div>
       <div id="portal-glow" class="portal-glow" hidden></div>
+      <div id="atmo" class="atmo"></div>
+      <div id="screen-flash" class="screen-flash"></div>
+      <div id="boss-bar" class="boss-bar" hidden>
+        <div id="boss-name" class="boss-name"></div>
+        <div class="boss-track"><div id="boss-fill" class="boss-fill"></div></div>
+      </div>
+      <div id="dialogue" class="dialogue" hidden>
+        <div id="dialogue-face" class="dialogue-face"></div>
+        <div>
+          <div id="dialogue-name" class="dialogue-name"></div>
+          <div id="dialogue-text" class="dialogue-text"></div>
+        </div>
+      </div>
       <div id="click-hint" class="click-hint card" hidden>🖱️ Klikkaa peliin, niin jatketaan!</div>
       <div id="chat-log" class="chat-log"></div>
       <div id="chat-hint" class="chat-hint card" hidden></div>
@@ -108,11 +168,22 @@
     </div>
 
     <!-- Pause -->
-    <section id="pause" class="screen" hidden>
-      <div class="panel">
-        <h2>⏸️ Tauko</h2>
-        <button id="resume" class="big">▶️ Jatka pelaamista</button>
-        <div class="help">
+    <section id="pause" class="screen pause-screen" hidden>
+      <div class="pause-menu">
+        <h2>Peli tauolla</h2>
+        <button id="resume" class="mc-button primary">▶️ Takaisin peliin</button>
+        <div class="mc-row">
+          <button id="open-mods" class="mc-button">🧩 Modit</button>
+          <button id="open-trophies" class="mc-button">🏆 Pokaalit</button>
+        </div>
+        <div class="mc-row">
+          <button id="switch-mode" class="mc-button"></button>
+          <button id="open-help" class="mc-button">❓ Näppäimet</button>
+        </div>
+        <button id="to-menu" class="mc-button">💾 Tallenna ja lopeta</button>
+        <p id="pause-code" class="code-hint"></p>
+        <p id="village-hint" class="code-hint"></p>
+        <div id="help" class="help mc-panel" hidden>
           <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> liiku</div>
           <div><kbd>Välilyönti</kbd> hyppää</div>
           <div><kbd>Välilyönti</kbd> 2 × nopeasti: lennä</div>
@@ -128,12 +199,17 @@
           <div><kbd>R</kbd> käännä taikarakennusta</div>
           <div><kbd>M</kbd> kartta · <kbd>N</kbd> pikkukartta</div>
           <div><kbd>/</kbd> komennot (<kbd>/apua</kbd>)</div>
+          <div><kbd>Esc</kbd> tauko</div>
         </div>
-        <p id="pause-code" class="code-hint"></p>
-        <p id="village-hint" class="code-hint"></p>
-        <button id="open-mods" class="secondary">🧩 Modit</button>
-        <button id="switch-mode" class="secondary"></button>
-        <button id="to-menu" class="secondary">🏠 Valikkoon</button>
+      </div>
+    </section>
+
+    <!-- Trophies (from the pause menu) -->
+    <section id="trophies-screen" class="screen" hidden>
+      <div class="panel wide">
+        <h2>🏆 Pokaalit</h2>
+        <div id="trophy-list-game" class="trophy-list"></div>
+        <button id="trophies-close">✔️ Valmis</button>
       </div>
     </section>
 

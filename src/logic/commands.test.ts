@@ -14,7 +14,7 @@ describe('chat commands', () => {
     expect(parseCommand('/aika yö')).toEqual({ kind: 'time', value: 'night' });
     expect(parseCommand('/time set day')).toEqual({ kind: 'time', value: 'day' });
     expect(parseCommand('/tila luova')).toEqual({ kind: 'mode', value: 'creative' });
-    expect(parseCommand('/lennä')).toEqual({ kind: 'unknown', name: 'lennä' });
+    expect(parseCommand('/lennä nyt')).toEqual({ kind: 'unknown', name: 'lennä', args: 'nyt' });
   });
 
   it('hints commands while typing', () => {

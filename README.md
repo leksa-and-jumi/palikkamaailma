@@ -111,6 +111,19 @@ Repun välilehdillä **⚡ Punakivi** ja **🎆 Ilotulitteet** (Nikkaroija-tilas
 
 Taukovalikon **🧩 Modit**-napista voi kytkeä päälle esimerkiksi 🌙 Kuuhypyn, ⚡ Salamajalat, ⛏️ Superhakun, 🍗 Ei nälkää, 🕊️ Rauhallisen yön, ☀️ Ikuisen päivän, 📜 Helpot reseptit ja 🌈 Sateenkaarijäljen. Modit muuttavat vain pelin sääntöjä, eivät maailmaa, joten ne voi kytkeä pois milloin vain eikä mitään katoa. Kaverit samassa maailmassa saavat samat modit.
 
+### 🎃 Kauhu-Halloween
+
+Kytke modi päälle ja pelaa **selviytyjä-tilassa** yöllä, niin kuusi jännää päähahmoa tulee vuorotellen – jokainen tuo oman sään ja tunnelman:
+
+- 🎃 **Kurpitsakuningas** heittää kurpitsapommeja. Lyö pommi takaisin hänen päälleen!
+- 👻 **Usvaneito** tulee sakean sumun mukana. Lyö häntä ennen kuin hän katoaa – varo, ettei hän hiivi taaksesi!
+- 🦇 **Kreivi Lepakkola** lentää punaisen kuun alla ja syöksyy kimppuun. Lyö, kun hän lepää maassa.
+- ☠️ **Kapteeni Luukala** nousee myrskyssä miehistönsä kanssa. Kaada ensin luurankomerirosvot.
+- 🕷️ **Hämähäkkikuningatar** ampuu seittejä pimeästä. Lyö, kun hän laskeutuu maahan.
+- 🌑 **Hiljainen** vain katsoo kaukaa. Katso sitä suoraan, niin se katoaa… ja löydä se uudestaan.
+
+Jokaisesta saa oman **🏆 pokaalin**, ja kaikista kuudesta Halloweenin mestarin kruunun. `/kauhu` kutsuu hahmon heti ja `/kauhu lopeta` lopettaa.
+
 ## 🔥 Nether
 
 Rakenna **obsidiaanista** kehys (sisältä vähintään 2 leveä ja 3 korkea, kuten Minecraftissa) ja sytytä se **tuluksilla**. Seiso violetissa portaalissa hetki, niin pääset **Netheriin**: kuumia luolia, laavamereä, hehkukiveä, sielunhiekkaa ja kvartsia. Netherissä yksi palikka on 8 palikkaa kotimaailmassa, joten sen kautta pääsee nopeasti kauas! Takaisin pääsee samasta portaalista.

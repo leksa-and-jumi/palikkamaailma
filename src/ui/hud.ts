@@ -9,6 +9,9 @@ import type { RoomStatus } from '../net/room';
 import { fillSlot } from './slots';
 
 const CHAT_LINES = 10;
+/** Speech boxes type this fast and stay a while after. */
+const DIALOGUE_LETTER_MS = 28;
+const DIALOGUE_MIN_MS = 2500;
 /** Command hints shown under the chat box at most. */
 const CHAT_HINTS = 6;
 const CHAT_FADE_MS = 10_000;
@@ -258,6 +261,64 @@ export class Hud {
     if (text === null) return;
     $('sleep-text').textContent = text;
     $('wake').onclick = () => onWake?.();
+  }
+
+  // --- Mods: mood, flashes, boss bar and speech ----------------------------
+
+  private dialogueTimer: ReturnType<typeof setTimeout> | null = null;
+  private typing: ReturnType<typeof setInterval> | null = null;
+
+  /** A colour and dark edges over the screen (mods' mood). */
+  setAtmosphere(tint: string | null, vignette: number): void {
+    const layers: string[] = [];
+    if (vignette > 0) {
+      layers.push(
+        `radial-gradient(ellipse at center, transparent ${Math.round(60 - vignette * 40)}%, rgba(0,0,0,${0.5 + vignette * 0.45}))`,
+      );
+    }
+    if (tint) layers.push(`linear-gradient(${tint}, ${tint})`);
+    $('atmo').style.background = layers.join(', ');
+  }
+
+  /** A quick flash of colour that fades away. */
+  flash(color: string, seconds: number): void {
+    const el = $('screen-flash');
+    el.style.transition = 'none';
+    el.style.background = color;
+    el.style.opacity = '1';
+    requestAnimationFrame(() => {
+      el.style.transition = `opacity ${seconds}s ease-out`;
+      el.style.opacity = '0';
+    });
+  }
+
+  bossBar(name: string | null, health = 1): void {
+    $('boss-bar').hidden = name === null;
+    if (name === null) return;
+    $('boss-name').textContent = name;
+    $('boss-fill').style.width = `${Math.max(0, Math.min(1, health)) * 100}%`;
+  }
+
+  /** Someone talks: the text types itself out, then the box hides. */
+  say(face: string, name: string, color: string, text: string): void {
+    $('dialogue').hidden = false;
+    $('dialogue-face').textContent = face;
+    $('dialogue-name').textContent = name;
+    $('dialogue-name').style.color = color;
+    const el = $('dialogue-text');
+    el.textContent = '';
+    const letters = [...text];
+    let i = 0;
+    if (this.typing) clearInterval(this.typing);
+    this.typing = setInterval(() => {
+      el.textContent += letters[i++] ?? '';
+      if (i >= letters.length && this.typing) clearInterval(this.typing);
+    }, DIALOGUE_LETTER_MS);
+    if (this.dialogueTimer) clearTimeout(this.dialogueTimer);
+    this.dialogueTimer = setTimeout(
+      () => ($('dialogue').hidden = true),
+      DIALOGUE_MIN_MS + letters.length * DIALOGUE_LETTER_MS * 2,
+    );
   }
 
   /** The purple swirl while standing in a Nether portal (0–1). */

@@ -45,8 +45,203 @@ body {
   overflow-y: auto;
 }
 
-#menu {
-  background: linear-gradient(#8ecbff, #bfe6ff 60%, #7cc26b 60%, #5aa04a);
+/* --- Title screen (like Minecraft's, over a turning world) --------------- */
+
+.title-screen {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  padding: 4vh 16px 56px;
+  overflow-y: auto;
+  /* Darker towards the edges so the buttons stand out from the world. */
+  background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0.05), rgba(0, 0, 0, 0.45));
+}
+
+.title-top {
+  position: relative;
+  width: min(760px, 100%);
+}
+
+.title-logo {
+  width: 100%;
+  height: auto;
+  image-rendering: pixelated;
+  filter: drop-shadow(0 8px 0 rgba(0, 0, 0, 0.25));
+}
+
+.splash {
+  position: absolute;
+  right: 2%;
+  bottom: 6%;
+  color: #ffef3a;
+  font-weight: 900;
+  font-size: clamp(0.9rem, 2.4vw, 1.4rem);
+  text-shadow: 3px 3px 0 #3f3f00;
+  transform: rotate(-18deg);
+  animation: splash 0.9s ease-in-out infinite alternate;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+@keyframes splash {
+  from {
+    transform: rotate(-18deg) scale(0.92);
+  }
+  to {
+    transform: rotate(-18deg) scale(1.08);
+  }
+}
+
+.menu-page {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: min(460px, 100%);
+}
+
+.menu-page[hidden] {
+  display: none;
+}
+
+.mc-row {
+  display: flex;
+  gap: 10px;
+}
+
+.mc-row > * {
+  flex: 1;
+}
+
+/* Chunky buttons with a stone look and a bright edge when you point at them. */
+.mc-button {
+  font-size: 1.15rem;
+  padding: 14px 18px;
+  color: #fff;
+  text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.45);
+  background: linear-gradient(#8a8f96, #6c7179);
+  border: 3px solid #1d2026;
+  border-radius: 10px;
+  box-shadow:
+    inset 0 3px 0 rgba(255, 255, 255, 0.35),
+    inset 0 -4px 0 rgba(0, 0, 0, 0.3),
+    0 4px 0 rgba(0, 0, 0, 0.35);
+  transition:
+    transform 80ms,
+    filter 80ms;
+}
+
+.mc-button:hover {
+  filter: brightness(1.12);
+  border-color: #fff;
+}
+
+.mc-button:active {
+  transform: translateY(2px);
+}
+
+.mc-button.primary {
+  background: linear-gradient(#5cbf4a, #3f9b3a);
+}
+
+.mc-panel {
+  background: rgba(16, 18, 24, 0.72);
+  color: #f4f1ea;
+  border: 3px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  padding: 16px 18px;
+  backdrop-filter: blur(6px);
+  text-align: center;
+}
+
+.mc-panel h2,
+.mc-panel h3 {
+  color: #fff;
+  margin: 4px 0 10px;
+}
+
+.mc-panel .lead {
+  color: #d6d2c8;
+}
+
+.title-foot {
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  bottom: 8px;
+  display: flex;
+  justify-content: space-between;
+  color: #fff;
+  font-weight: 700;
+  text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+}
+
+.trophy-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+  margin: 10px 0;
+}
+
+.trophy {
+  border-radius: 12px;
+  padding: 10px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 2px solid rgba(255, 255, 255, 0.15);
+}
+
+.panel .trophy {
+  background: #f1ede3;
+  border-color: #d8d2c4;
+}
+
+.trophy.won {
+  border-color: #f0c040;
+  box-shadow: 0 0 14px rgba(240, 192, 64, 0.45);
+}
+
+.trophy .trophy-emoji {
+  font-size: 2.2rem;
+}
+
+.trophy:not(.won) .trophy-emoji {
+  filter: grayscale(1) brightness(0.5);
+}
+
+.trophy small {
+  display: block;
+  opacity: 0.8;
+}
+
+/* --- Pause menu like Minecraft's: buttons over the dimmed game ------------- */
+
+.pause-screen {
+  background: rgba(10, 12, 18, 0.55);
+}
+
+.pause-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: min(460px, 100%);
+  text-align: center;
+}
+
+.pause-menu h2 {
+  color: #fff;
+  text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.5);
+}
+
+.pause-menu .code-hint {
+  color: #fff;
+  text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.6);
+}
+
+.pause-menu .help {
+  text-align: left;
 }
 
 .panel {
@@ -956,4 +1151,87 @@ kbd {
 .mod-card.on .mod-switch {
   background: var(--accent);
   color: white;
+}
+
+.title-message {
+  color: #fff;
+  text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.6);
+}
+
+.title-message.error {
+  color: #ffb4a8;
+}
+
+.avatars button small {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+/* --- Mods: mood, flashes, boss bar and speech ------------------------------ */
+
+.atmo,
+.screen-flash {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.screen-flash {
+  opacity: 0;
+}
+
+.boss-bar {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(440px, 70vw);
+  text-align: center;
+  color: #fff;
+  font-weight: 800;
+  text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.6);
+}
+
+.boss-track {
+  height: 12px;
+  margin-top: 4px;
+  border: 2px solid #111;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.boss-fill {
+  height: 100%;
+  width: 100%;
+  background: linear-gradient(#d860ff, #8a20c0);
+  transition: width 0.25s;
+}
+
+.dialogue {
+  position: absolute;
+  left: 50%;
+  bottom: 120px;
+  transform: translateX(-50%);
+  width: min(560px, 90vw);
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 16px;
+  border-radius: 14px;
+  background: rgba(12, 10, 18, 0.82);
+  border: 2px solid rgba(255, 255, 255, 0.15);
+  color: #f2eefc;
+}
+
+.dialogue-face {
+  font-size: 2.6rem;
+}
+
+.dialogue-name {
+  font-weight: 800;
+}
+
+.dialogue-text {
+  font-size: 1.05rem;
+  line-height: 1.35;
 }

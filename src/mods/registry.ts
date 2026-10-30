@@ -4,9 +4,11 @@
 import { moonJump, superSpeed } from './builtin/movement';
 import { fastMining, neverHungry, noMonsters } from './builtin/survival';
 import { alwaysDay, easyRecipes, rainbowTrail } from './builtin/world';
-import type { Mod } from './types';
+import { halloween } from './halloween';
+import type { Mod, Trophy } from './types';
 
 export const MODS: readonly Mod[] = [
+  halloween,
   moonJump,
   superSpeed,
   fastMining,
@@ -21,4 +23,9 @@ const BY_ID = new Map(MODS.map((m) => [m.id, m]));
 
 export function modById(id: string): Mod | undefined {
   return BY_ID.get(id);
+}
+
+/** Every trophy any mod can give, in mod order. */
+export function allTrophies(): { mod: Mod; trophy: Trophy }[] {
+  return MODS.flatMap((mod) => (mod.trophies ?? []).map((trophy) => ({ mod, trophy })));
 }
