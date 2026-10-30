@@ -125,7 +125,7 @@ import { MOB_TYPES, PERSONALITY_NAMES } from './logic/mobs';
 import { HURT_REASONS, MobManager, villagerProfession } from './play/mobManager';
 import { MobRenderer } from './render/mobRenderer';
 import { ModManager } from './mods/manager';
-import type { ModApi } from './mods/types';
+import type { ModApi, ModEffects, ModPlayer } from './mods/types';
 import { ModActors } from './render/modActors';
 import { modById } from './mods/registry';
 import { MapScreen } from './ui/mapScreen';
@@ -225,6 +225,8 @@ export class Game {
   private moveIdle = 0;
   /** Position and look last sent to the room: x, y, z, yaw, pitch. */
   private lastSentMove: [number, number, number, number, number] | null = null;
+  /** Creative or dead: monsters and bosses leave you alone. */
+  private lastSentSafe = false;
   private running = true;
   private ready = false;
   private paused = true;
@@ -297,6 +299,8 @@ export class Game {
   private mapTimer = 0;
   /** Seconds until the next lightning in a mod's storm. */
   private lightningTimer = 0;
+  /** Short changes to how you move (from shared mods), until a time (ms). */
+  private tempEffects: { effects: ModEffects; until: number }[] = [];
   /** Seconds standing in a portal, and true after travelling until you step out. */
   private portalTime = 0;
   private portalCooldown = false;
@@ -327,7 +331,13 @@ export class Game {
     this.cartRenderer = new CartRenderer(renderer.scene);
     this.blockBits = new BlockBits(renderer.scene);
     this.modActors = new ModActors(renderer.scene);
-    this.mods = new ModManager(this.modApi());
+    this.mods = new ModManager(this.modApi(), {
+      isHost: () => this.isModHost(),
+      callHost: (call) => {
+        const host = this.modHostId();
+        if (host && host !== this.myId) this.room?.send({ t: 'modCall', to: host, ...call });
+      },
+    });
     this.mods.onTurnedOff = (id) => {
       // A mod turned off leaves nothing behind.
       this.modActors.removeAll(`${id}:`);
@@ -536,7 +546,6 @@ export class Game {
         Math.floor(this.player.z),
       );
       this.hud.setBiome(`${BIOME_NAMES[biome]} · ${dayLabel(this.time)}`);
-      this.sendMove(dt);
       this.playerSaveTimer += dt;
       if (this.playerSaveTimer >= PLAYER_SAVE_INTERVAL) {
         this.playerSaveTimer = 0;
@@ -563,10 +572,13 @@ export class Game {
     this.others.update(dt);
     if (this.ready && !this.dead) this.updateMobs(dt);
     if (this.ready && !this.dead) this.updateCarts(dt);
-    if (this.ready && !this.paused) {
+    this.modActors.update(dt);
+    // In multiplayer the host's pause must not freeze a boss for the others.
+    if (this.ready && (!this.paused || this.room)) {
       this.mods.tick(dt);
       this.updateModWeather(dt);
     }
+    if (this.ready) this.sendMove(dt);
     if (this.ready && !this.dead && !this.paused) this.updatePortal(dt);
     this.renderer.nether = isNether(this.player.x);
     if (this.ready) this.updateMaps(dt);
@@ -592,13 +604,13 @@ export class Game {
       return;
     }
     const wasOnGround = this.player.onGround;
-    const mod = this.mods.effects;
+    const rules = this.moveRules();
     const body = {
       ...PLAYER_BODY,
-      walkSpeed: PLAYER_BODY.walkSpeed * mod.walkSpeed,
-      sprintSpeed: PLAYER_BODY.sprintSpeed * mod.walkSpeed,
-      jumpSpeed: PLAYER_BODY.jumpSpeed * mod.jumpSpeed,
-      gravityScale: mod.gravity,
+      walkSpeed: PLAYER_BODY.walkSpeed * rules.walk,
+      sprintSpeed: PLAYER_BODY.sprintSpeed * rules.walk,
+      jumpSpeed: PLAYER_BODY.jumpSpeed * rules.jump,
+      gravityScale: this.mods.effects.gravity,
     };
     stepPlayer(
       blockQuery((x, y, z) => this.world.solidLook(x, y, z)),
@@ -1021,24 +1033,50 @@ export class Game {
 
   /** What mods may do: look, sound and play, never change the world's blocks. */
   private modApi(): ModApi {
-    const dir = () => this.lookDirection();
-    const player = () => this.player;
+    const look = (yaw: number, pitch: number): [number, number, number] => [
+      -Math.sin(yaw) * Math.cos(pitch),
+      Math.sin(pitch),
+      -Math.cos(yaw) * Math.cos(pitch),
+    ];
+    const me = (): ModPlayer => {
+      const p = this.player;
+      return {
+        id: this.myId,
+        x: p.x,
+        y: p.y,
+        z: p.z,
+        vx: p.vx,
+        vz: p.vz,
+        onGround: p.onGround,
+        yaw: p.yaw,
+        look: look(p.yaw, p.pitch),
+        safe: this.mode === 'creative',
+      };
+    };
+    const players = (): ModPlayer[] => [
+      me(),
+      ...this.others.positions().map((o) => ({
+        id: o.id,
+        x: o.x,
+        y: o.y,
+        z: o.z,
+        vx: o.vx,
+        vz: o.vz,
+        onGround: true,
+        yaw: o.yaw,
+        look: look(o.yaw, o.pitch),
+        safe: o.safe,
+      })),
+    ];
     const mode = () => this.mode;
     const night = () => isNight(this.time) || isNether(this.player.x);
     const dead = () => this.dead;
     return {
       get player() {
-        const p = player();
-        return {
-          x: p.x,
-          y: p.y,
-          z: p.z,
-          vx: p.vx,
-          vz: p.vz,
-          onGround: p.onGround,
-          yaw: p.yaw,
-          look: dir(),
-        };
+        return me();
+      },
+      get players() {
+        return players();
       },
       get mode() {
         return mode();
@@ -1047,7 +1085,7 @@ export class Game {
         return night();
       },
       get nether() {
-        return isNether(player().x);
+        return isNether(me().x);
       },
       get dead() {
         return dead();
@@ -1065,6 +1103,26 @@ export class Game {
       removeActor: (id) => this.modActors.remove(id),
       bossBar: (name, health) => this.hud.bossBar(name, health),
       hurt: (amount, reason) => this.takeDamage(amount, reason),
+      hurtPlayer: (id, amount, reason) => {
+        if (id === this.myId) this.takeDamage(amount, reason);
+        else
+          this.room?.send({ t: 'modCall', to: id, mod: '', call: 'hurt', damage: amount, reason });
+      },
+      effect: (effects, seconds) => this.addTempEffect(effects, seconds),
+      effectFor: (id, effects, seconds) => {
+        if (id === this.myId) this.addTempEffect(effects, seconds);
+        else {
+          this.room?.send({
+            t: 'modCall',
+            to: id,
+            mod: '',
+            call: 'effect',
+            walk: effects.walkSpeed ?? 1,
+            jump: effects.jumpSpeed ?? 1,
+            seconds,
+          });
+        }
+      },
       push: (vx, vy, vz) => {
         this.player.vx += vx;
         this.player.vy = Math.max(this.player.vy, vy);
@@ -1089,6 +1147,34 @@ export class Game {
         return nearY;
       },
     };
+  }
+
+  /** A short change to how you move (a web slows you down). */
+  private addTempEffect(effects: ModEffects, seconds: number): void {
+    this.tempEffects.push({ effects, until: performance.now() + seconds * 1000 });
+  }
+
+  /** Walking and jumping right now: mods' rules times short effects. */
+  private moveRules(): { walk: number; jump: number } {
+    const now = performance.now();
+    this.tempEffects = this.tempEffects.filter((t) => t.until > now);
+    let walk = this.mods.effects.walkSpeed;
+    let jump = this.mods.effects.jumpSpeed;
+    for (const { effects } of this.tempEffects) {
+      walk *= effects.walkSpeed ?? 1;
+      jump *= effects.jumpSpeed ?? 1;
+    }
+    return { walk, jump };
+  }
+
+  /** Multiplayer: the smallest id runs the shared mods (alone you do). */
+  private isModHost(): boolean {
+    return !this.room || this.others.positions().every((o) => o.id > this.myId);
+  }
+
+  private modHostId(): string | null {
+    const ids = [this.myId, ...this.others.positions().map((o) => o.id)].sort();
+    return ids[0] ?? null;
   }
 
   /** Lightning in a mod's storm: a white flash, then thunder. */
@@ -2274,15 +2360,23 @@ export class Game {
     this.moveIdle += dt;
     if (this.moveTimer > 0) return;
     this.moveTimer = 1 / NET.moveSendRate;
+    // Paused or dead you send only the host's boss fight (so it goes on for the others).
+    const playing = !this.paused && !this.dead;
     const p = this.player;
     // Your creatures travel in the same message, so they cost nothing extra.
     // When you stand still they are still sent, but less often.
     this.mobSyncTimer -= 1 / NET.moveSendRate;
-    const mobs = this.mobSyncTimer <= 0 ? this.mobs.netList(this.others.positions()) : [];
+    const mobs =
+      playing && this.mobSyncTimer <= 0 ? this.mobs.netList(this.others.positions()) : [];
     if (mobs.length > 0) this.mobSyncTimer = 1 / NET.mobSendRate;
-    const carts = this.carts.netList();
+    const carts = playing ? this.carts.netList() : [];
+    // The host's shared mods (a boss fight) travel along too.
+    const mod = this.mods.takeSync();
+    const safe = this.mode === 'creative' || this.dead;
+    const sameSafe = safe === this.lastSentSafe;
+    if (!playing && mod.length === 0 && sameSafe) return;
     const last = this.lastSentMove;
-    if (last && mobs.length === 0 && carts.length === 0) {
+    if (last && sameSafe && mobs.length === 0 && carts.length === 0 && mod.length === 0) {
       const moved = Math.hypot(p.x - last[0], p.y - last[1], p.z - last[2]);
       const turned = Math.abs(p.yaw - last[3]) + Math.abs(p.pitch - last[4]);
       const small = moved < NET.moveDeadZone && turned < NET.turnDeadZone;
@@ -2294,6 +2388,7 @@ export class Game {
     const pitch = round(p.pitch);
     this.lastSentMove = [p.x, p.y, p.z, p.yaw, p.pitch];
     this.moveIdle = 0;
+    this.lastSentSafe = safe;
     this.room.send({
       t: 'move',
       p: pos,
@@ -2301,7 +2396,8 @@ export class Game {
       pitch,
       ...(mobs.length > 0 ? { mobs } : {}),
       ...(carts.length > 0 ? { carts } : {}),
-      ...(this.mode === 'creative' ? { safe: true } : {}),
+      ...(mod.length > 0 ? { mod } : {}),
+      ...(safe ? { safe: true } : {}),
     });
   }
 
@@ -2362,12 +2458,28 @@ export class Game {
         this.others.move(msg.id, msg.p, msg.yaw, msg.pitch, msg.safe === true);
         if (msg.mobs) this.mobs.receive(msg.id, msg.mobs);
         if (msg.carts) this.carts.receiveMoving(msg.id, msg.carts, this.cartWorld());
+        if (msg.mod && msg.id === this.modHostId()) this.mods.receiveSync(msg.mod);
         return;
       case 'cart':
         this.carts.receive(msg.cart, this.cartWorld(), msg.by);
         return;
       case 'cartGone':
         this.carts.remove(msg.id);
+        return;
+      case 'modCall':
+        if (msg.call === 'hurt') this.takeDamage(msg.damage ?? 1, msg.reason ?? '');
+        else if (msg.call === 'effect') {
+          this.addTempEffect({ walkSpeed: msg.walk, jumpSpeed: msg.jump }, msg.seconds ?? 0);
+        } else {
+          this.mods.receiveCall({
+            mod: msg.mod,
+            call: msg.call,
+            actor: msg.actor,
+            damage: msg.damage,
+            name: msg.name,
+            args: msg.args,
+          });
+        }
         return;
       case 'mods':
         this.mods.set(msg.enabled);

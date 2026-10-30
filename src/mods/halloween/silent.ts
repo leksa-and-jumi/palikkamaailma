@@ -150,6 +150,9 @@ export function silentOne(): Encounter {
       burst(api, { ...at, y: at.y + 1.2 }, [0xffffff, 0x111111]);
       at = aroundPlayer(api, 3, Math.PI * (hits % 2 ? 0.6 : -0.6));
     },
+    where() {
+      return at;
+    },
     end(api) {
       api.removeActor('silent');
     },

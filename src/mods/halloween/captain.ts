@@ -127,6 +127,9 @@ export function captainLuukala(): Encounter {
       if (captain.hits < CAPTAIN_HITS)
         api.say(who, captain.hits === 1 ? 'Arrr! Hyvä isku!' : 'Kylkiluuni kolisevat!');
     },
+    where() {
+      return captain;
+    },
     end(api) {
       api.removeActor('captain');
       for (const s of crew) api.removeActor(s.id);

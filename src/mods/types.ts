@@ -59,6 +59,8 @@ export interface ActorPart {
 }
 
 export interface ActorSpec {
+  /** A name that is the same on every computer (shared mods send it). */
+  id?: string;
   parts: readonly ActorPart[];
   /** Size for hitting it. */
   width: number;
@@ -78,23 +80,31 @@ export interface ActorState {
   label?: string;
 }
 
+/** A player in the world as a mod sees them. */
+export interface ModPlayer {
+  id: string;
+  x: number;
+  y: number;
+  z: number;
+  vx: number;
+  vz: number;
+  onGround: boolean;
+  yaw: number;
+  /** Where they look (a unit vector). */
+  look: [number, number, number];
+  /** In creative: monsters (and mod characters) leave them alone. */
+  safe: boolean;
+}
+
 /**
  * What a mod's own code can do. Everything is about how the game looks,
  * sounds and plays right now: nothing a mod does is stored in the world.
  */
 export interface ModApi {
-  /** Where you are and how you move. */
-  readonly player: {
-    x: number;
-    y: number;
-    z: number;
-    vx: number;
-    vz: number;
-    onGround: boolean;
-    yaw: number;
-    /** Where you look (a unit vector). */
-    look: [number, number, number];
-  };
+  /** Where you are and how you move (in a shared mod: the player it is busy with). */
+  readonly player: ModPlayer;
+  /** Everyone in the world, you first. */
+  readonly players: readonly ModPlayer[];
   readonly mode: 'creative' | 'survival';
   /** It is night (or dark) right now. */
   readonly night: boolean;
@@ -117,6 +127,11 @@ export interface ModApi {
   bossBar(name: string | null, health?: number): void;
   /** Hurts you (only in survival). */
   hurt(amount: number, reason: string): void;
+  /** Hurts another player (they get it over the network). */
+  hurtPlayer(id: string, amount: number, reason: string): void;
+  /** Changes your rules for a while (a web slows you down). */
+  effect(effects: ModEffects, seconds: number): void;
+  effectFor(id: string, effects: ModEffects, seconds: number): void;
   /** Gives you a push. */
   push(vx: number, vy: number, vz: number): void;
   /** Gives a trophy (kept on this device). True the first time. */
@@ -159,6 +174,16 @@ export interface Trophy {
 export interface Mod {
   /** Saved in each world: never change it. Small letters, numbers and dashes. */
   id: string;
+  /**
+   * Shared in multiplayer: one player (the host, smallest id) runs the mod,
+   * and everyone sees its characters, mood and speech and can hit its
+   * characters. Its characters' specs need an `id`.
+   */
+  shared?: boolean;
+  /** Every character look the mod uses (shared mods find them by `id`). */
+  actorSpecs?: readonly ActorSpec[];
+  /** A trophy was won together with the host (shared mods, on the others' computers). */
+  onTrophy?(api: ModApi, id: string): void;
   emoji: string;
   /** Finnish name and a sentence for the kids. */
   name: string;

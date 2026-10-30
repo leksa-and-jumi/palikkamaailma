@@ -85,13 +85,27 @@ export class OtherPlayers {
   }
 
   /** Where the other players are (for creatures that follow or avoid them). */
-  positions(): { id: string; x: number; y: number; z: number; safe: boolean }[] {
+  positions(): {
+    id: string;
+    x: number;
+    y: number;
+    z: number;
+    safe: boolean;
+    yaw: number;
+    pitch: number;
+    vx: number;
+    vz: number;
+  }[] {
     return [...this.figures.entries()].map(([id, f]) => ({
       id,
       x: f.group.position.x,
       y: f.group.position.y,
       z: f.group.position.z,
       safe: f.safe,
+      yaw: f.targetYaw,
+      pitch: f.targetPitch,
+      vx: f.velocity.x,
+      vz: f.velocity.z,
     }));
   }
 

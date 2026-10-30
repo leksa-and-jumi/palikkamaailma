@@ -125,6 +125,9 @@ export function pumpkinKing(): Encounter {
         api.say(who, 'Hah! Haarniskani on liian kova. Mutta älä vain lyö pommejani takaisin…');
       }
     },
+    where() {
+      return king;
+    },
     end(api) {
       api.removeActor('king');
       for (const b of bombs) api.removeActor(b.id);

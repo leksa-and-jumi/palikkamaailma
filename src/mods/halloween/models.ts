@@ -18,6 +18,7 @@ const eyes = (y: number, z: number, color: number, gap = 0.12, size = 0.09): Act
 ];
 
 export const PUMPKIN_KING: ActorSpec = {
+  id: 'pumpkin-king',
   width: 0.9,
   height: 2.7,
   parts: [
@@ -36,6 +37,7 @@ export const PUMPKIN_KING: ActorSpec = {
 };
 
 export const PUMPKIN_BOMB: ActorSpec = {
+  id: 'pumpkin-bomb',
   width: 0.55,
   height: 0.55,
   parts: [
@@ -46,6 +48,7 @@ export const PUMPKIN_BOMB: ActorSpec = {
 };
 
 export const MIST_MAIDEN: ActorSpec = {
+  id: 'mist-maiden',
   width: 0.8,
   height: 2.3,
   parts: [
@@ -59,6 +62,7 @@ export const MIST_MAIDEN: ActorSpec = {
 };
 
 export const COUNT: ActorSpec = {
+  id: 'count',
   width: 0.8,
   height: 2.4,
   parts: [
@@ -109,6 +113,7 @@ export const DECKHAND: ActorSpec = {
 };
 
 export const SPIDER_QUEEN: ActorSpec = {
+  id: 'spider-queen',
   width: 2,
   height: 1.3,
   parts: [
@@ -125,6 +130,7 @@ export const SPIDER_QUEEN: ActorSpec = {
 };
 
 export const WEB_SHOT: ActorSpec = {
+  id: 'web-shot',
   width: 0.5,
   height: 0.5,
   parts: [
@@ -135,6 +141,7 @@ export const WEB_SHOT: ActorSpec = {
 };
 
 export const SILENT: ActorSpec = {
+  id: 'silent',
   width: 0.7,
   height: 2.5,
   parts: [
@@ -147,3 +154,16 @@ export const SILENT: ActorSpec = {
     ...eyes(2.22, -0.26, 0xffffff, 0.12, 0.1),
   ],
 };
+
+/** Every look, so the others' computers can find them by id. */
+export const ALL_SPECS: readonly ActorSpec[] = [
+  PUMPKIN_KING,
+  PUMPKIN_BOMB,
+  MIST_MAIDEN,
+  COUNT,
+  CAPTAIN,
+  DECKHAND,
+  SPIDER_QUEEN,
+  WEB_SHOT,
+  SILENT,
+];

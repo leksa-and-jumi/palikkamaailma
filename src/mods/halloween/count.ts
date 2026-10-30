@@ -122,6 +122,9 @@ export function countBatula(): Encounter {
       timer = CIRCLE_TIME;
       if (hits < HITS) api.say(who, hits === 1 ? 'Auh! Viittani!' : 'Nyt riittää leikit!');
     },
+    where() {
+      return at;
+    },
     end(api) {
       api.removeActor('count');
     },

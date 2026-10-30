@@ -4,6 +4,8 @@
 
 import { AVATAR_EMOJIS, CARTS, DAY, NET, NETHER } from '../config';
 import type { RequestKind } from './commands';
+import type { ModSync, SyncActor, SyncEvent } from '../mods/share';
+import type { Atmosphere } from '../mods/types';
 import { getBlockType, isValidBlockId } from './blocks';
 import { parseContainer, type Container } from './containers';
 import { isFireworkKind } from './fireworks';
@@ -69,6 +71,8 @@ export type ClientMessage =
       safe?: boolean;
       /** Minecarts this player is moving (not stored). */
       carts?: CartNet[];
+      /** The host's shared mods: what everyone should see (not stored). */
+      mod?: ModSync[];
     }
   | { t: 'set'; edits: Edit[] }
   | { t: 'chat'; text: string }
@@ -97,7 +101,9 @@ export type ClientMessage =
   /** A minecart was broken. */
   | { t: 'cartGone'; id: string }
   /** The mods that are on in this world now (the room remembers them). */
-  | { t: 'mods'; enabled: string[] };
+  | { t: 'mods'; enabled: string[] }
+  /** A shared mod's call to one player (only they hear it). */
+  | ({ t: 'modCall'; to: string } & ModCallNet);
 
 export type ServerMessage =
   | {
@@ -124,6 +130,7 @@ export type ServerMessage =
       mobs?: MobNet[];
       safe?: boolean;
       carts?: CartNet[];
+      mod?: ModSync[];
     }
   | { t: 'set'; edits: Edit[] }
   | { t: 'hitMob'; id: string; damage: number; from: [number, number]; by: string }
@@ -148,6 +155,7 @@ export type ServerMessage =
   | { t: 'cart'; cart: CartNet; by: string }
   | { t: 'cartGone'; id: string }
   | { t: 'mods'; enabled: string[]; avatar: string }
+  | ({ t: 'modCall'; from: string } & ModCallNet)
   /** How many are sleeping in beds now. */
   | { t: 'sleepers'; sleeping: number; total: number }
   | { t: 'full' };
@@ -209,7 +217,142 @@ const ID_PATTERN = /^[a-z0-9-]{1,40}$/;
 const MAX_MOB_HEALTH = 100;
 const MAX_HIT_DAMAGE = 50;
 
+/**
+ * Shared mods: a follower asks the host to hit a character or run a command,
+ * and the host hurts or slows a player.
+ */
+export interface ModCallNet {
+  mod: string;
+  call: 'hit' | 'command' | 'hurt' | 'effect';
+  actor?: string;
+  damage?: number;
+  name?: string;
+  args?: string;
+  reason?: string;
+  walk?: number;
+  jump?: number;
+  seconds?: number;
+}
+
 const MOD_ID = /^[a-z0-9-]{1,32}$/;
+const MOD_TEXT = 200;
+const MAX_SYNC_ACTORS = 48;
+const MAX_SYNC_EVENTS = 64;
+const shortText = (v: unknown, max = MOD_TEXT): v is string =>
+  typeof v === 'string' && v.length <= max;
+const num = (v: unknown, limit = POSITION_LIMIT): v is number => isFiniteNumber(v, limit);
+
+function parseAtmosphere(v: unknown): Atmosphere | null | undefined {
+  if (v === null) return null;
+  if (typeof v !== 'object' || v === undefined) return undefined;
+  const a = v as Record<string, unknown>;
+  const out: Atmosphere = {};
+  if (a.fogColor !== undefined) {
+    if (!num(a.fogColor, 0xffffff) || a.fogColor < 0) return undefined;
+    out.fogColor = a.fogColor;
+  }
+  for (const k of ['fogNear', 'fogFar', 'darkness', 'vignette'] as const) {
+    if (a[k] === undefined) continue;
+    if (!num(a[k], 1000)) return undefined;
+    out[k] = a[k] as number;
+  }
+  if (a.tint !== undefined) {
+    if (!shortText(a.tint, 40) || !/^[a-z0-9(),.#\s]+$/i.test(a.tint)) return undefined;
+    out.tint = a.tint;
+  }
+  if (a.rain !== undefined) out.rain = a.rain === true;
+  if (a.lightning !== undefined) out.lightning = a.lightning === true;
+  return out;
+}
+
+const SOUNDS = new Set([
+  'boom',
+  'pop',
+  'magic',
+  'click',
+  'break',
+  'thunder',
+  'whisper',
+  'laugh',
+  'bell',
+  'heartbeat',
+]);
+
+function parseSyncEvent(v: unknown): SyncEvent | null {
+  if (!Array.isArray(v) || !num(v[0], 1e12)) return null;
+  const [, kind] = v as unknown[];
+  switch (kind) {
+    case 'say':
+      return v.length === 6 && v.slice(2).every((t) => shortText(t)) ? (v as SyncEvent) : null;
+    case 'flash':
+      return v.length === 4 && shortText(v[2], 40) && num(v[3], 10) ? (v as SyncEvent) : null;
+    case 'sound':
+      return v.length === 3 && SOUNDS.has(v[2] as string) ? (v as SyncEvent) : null;
+    case 'toast':
+      return v.length === 3 && shortText(v[2]) ? (v as SyncEvent) : null;
+    case 'trophy':
+      return v.length === 3 && typeof v[2] === 'string' && MOD_ID.test(v[2])
+        ? (v as SyncEvent)
+        : null;
+    case 'sp':
+      return v.length === 6 && v.slice(2, 5).every((n) => num(n)) && num(v[5], 0xffffff)
+        ? (v as SyncEvent)
+        : null;
+    default:
+      return null;
+  }
+}
+
+/** What the host's shared mod shows (checked like everything from the network). */
+export function parseModSync(v: unknown): ModSync | null {
+  if (typeof v !== 'object' || v === null) return null;
+  const s = v as Record<string, unknown>;
+  if (typeof s.m !== 'string' || !MOD_ID.test(s.m)) return null;
+  if (!Array.isArray(s.a) || s.a.length > MAX_SYNC_ACTORS) return null;
+  if (!Array.isArray(s.e) || s.e.length > MAX_SYNC_EVENTS) return null;
+  const actors: SyncActor[] = [];
+  for (const a of s.a as unknown[]) {
+    if (!Array.isArray(a) || a.length !== 9) return null;
+    const [id, spec, x, y, z, yaw, visible, scale, label] = a as unknown[];
+    if (!shortText(id, 40) || !shortText(spec, 40) || !shortText(label, 40)) return null;
+    if (![x, y, z].every((n) => num(n)) || !num(yaw, 1e4) || !num(scale, 20)) return null;
+    if (visible !== 0 && visible !== 1) return null;
+    actors.push(a as SyncActor);
+  }
+  const at = parseAtmosphere(s.at);
+  if (at === undefined) return null;
+  let boss: [string, number] | null = null;
+  if (s.b !== null) {
+    if (!Array.isArray(s.b) || !shortText(s.b[0], 60) || !num(s.b[1], 2)) return null;
+    boss = [s.b[0], s.b[1]];
+  }
+  const events = (s.e as unknown[]).map(parseSyncEvent);
+  if (events.some((e) => e === null)) return null;
+  return { m: s.m, a: actors, at, b: boss, e: events as SyncEvent[] };
+}
+
+function parseModCall(msg: Record<string, unknown>): ModCallNet | null {
+  if (typeof msg.mod !== 'string' || (msg.mod !== '' && !MOD_ID.test(msg.mod))) return null;
+  const call = msg.call;
+  if (call === 'hit') {
+    if (!shortText(msg.actor, 40) || !num(msg.damage, 50)) return null;
+    return { mod: msg.mod, call, actor: msg.actor, damage: msg.damage };
+  }
+  if (call === 'command') {
+    if (!shortText(msg.name, 32) || !shortText(msg.args, MOD_TEXT)) return null;
+    return { mod: msg.mod, call, name: msg.name, args: msg.args };
+  }
+  if (call === 'hurt') {
+    if (!num(msg.damage, 20) || msg.damage <= 0 || !shortText(msg.reason, 80)) return null;
+    return { mod: msg.mod, call, damage: msg.damage, reason: msg.reason };
+  }
+  if (call === 'effect') {
+    if (!num(msg.walk, 5) || !num(msg.jump, 5) || !num(msg.seconds, 30)) return null;
+    if (msg.walk < 0 || msg.jump < 0 || msg.seconds < 0) return null;
+    return { mod: msg.mod, call, walk: msg.walk, jump: msg.jump, seconds: msg.seconds };
+  }
+  return null;
+}
 const MAX_MODS = 32;
 
 /** A list of mod ids (unknown ones are fine: a newer game may have more mods). */
@@ -279,6 +422,10 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       if (!p || !isFiniteNumber(msg.yaw, 1000) || !isFiniteNumber(msg.pitch, 10)) return null;
       const move: ClientMessage = { t: 'move', p, yaw: msg.yaw, pitch: msg.pitch };
       if (msg.safe === true) move.safe = true;
+      if (Array.isArray(msg.mod) && msg.mod.length <= MAX_MODS) {
+        const syncs = msg.mod.map(parseModSync);
+        if (syncs.every((x) => x !== null)) move.mod = syncs as ModSync[];
+      }
       if (Array.isArray(msg.carts) && msg.carts.length <= MAX_CARTS_PER_MOVE) {
         move.carts = msg.carts.map(parseCart).filter((c): c is CartNet => c !== null);
       }
@@ -371,6 +518,11 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
     case 'mods': {
       const ids = parseModList(msg.enabled);
       return ids ? { t: 'mods', enabled: ids } : null;
+    }
+    case 'modCall': {
+      if (typeof msg.to !== 'string' || !ID_PATTERN.test(msg.to)) return null;
+      const call = parseModCall(msg);
+      return call ? { t: 'modCall', to: msg.to, ...call } : null;
     }
     default:
       return null;

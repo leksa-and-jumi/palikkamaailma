@@ -110,6 +110,9 @@ export function mistMaiden(): Encounter {
             '…',
         );
     },
+    where() {
+      return at;
+    },
     end(api) {
       api.removeActor('maiden');
     },

@@ -89,6 +89,8 @@ interface Attachment {
   fireworkTimes?: number[];
   /** When this player's recent /tpa, /kutsu and /aika were sent (ms). */
   requestTimes?: number[];
+  /** When this player's recent shared mod calls were sent (ms). */
+  modCallTimes?: number[];
   /** When this player's recent minecart messages were sent (ms). */
   cartTimes?: number[];
   /** Lying in a bed, and how far the clock must jump to reach the morning. */
@@ -365,6 +367,7 @@ export class WorldRoom extends DurableObject<Env> {
             mobs: msg.mobs,
             safe: msg.safe,
             carts: msg.carts,
+            mod: msg.mod,
           },
           ws,
         );
@@ -483,6 +486,17 @@ export class WorldRoom extends DurableObject<Env> {
         this.broadcast({ t: 'cartGone', id: msg.id }, ws);
         return;
       }
+      case 'modCall': {
+        // A shared mod's hit, command, hurt or slow: only the player it is for hears it.
+        if (!me.player || !this.allowModCall(ws, me)) return;
+        const { t: _t, to, ...call } = msg;
+        void _t;
+        for (const other of this.ctx.getWebSockets()) {
+          const a = other.deserializeAttachment() as Attachment | null;
+          if (a?.id === to && a.player) this.send(other, { t: 'modCall', from: me.id, ...call });
+        }
+        return;
+      }
       case 'mods': {
         // Anyone in the world can turn mods on or off; the list is one meta row.
         if (!me.player || !this.allowRequest(ws, me)) return;
@@ -533,6 +547,16 @@ export class WorldRoom extends DurableObject<Env> {
     const recent = (me.cartTimes ?? []).filter((t) => now - t < NET.chatWindowMs);
     if (recent.length >= NET.cartRateLimit) return false;
     me.cartTimes = [...recent, now];
+    ws.serializeAttachment(me);
+    return true;
+  }
+
+  /** Shared mod calls (hits while fighting) have a roomy limit of their own. */
+  private allowModCall(ws: WebSocket, me: Attachment): boolean {
+    const now = Date.now();
+    const recent = (me.modCallTimes ?? []).filter((t) => now - t < NET.chatWindowMs);
+    if (recent.length >= NET.modCallRateLimit) return false;
+    me.modCallTimes = [...recent, now];
     ws.serializeAttachment(me);
     return true;
   }

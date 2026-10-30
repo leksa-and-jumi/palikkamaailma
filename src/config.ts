@@ -476,6 +476,8 @@ export const NET = {
   maxChatLength: 200,
   /** Chat messages per player in CHAT_WINDOW_MS (stops spamming). */
   chatRateLimit: 8,
+  /** Shared mod calls (hits on a boss, its hurts) per player in chatWindowMs. */
+  modCallRateLimit: 60,
   /** Minecart messages (place, ride, stop) per player in chatWindowMs. */
   cartRateLimit: 20,
   chatWindowMs: 10_000,
