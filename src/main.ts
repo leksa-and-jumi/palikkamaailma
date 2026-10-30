@@ -261,4 +261,4 @@ $('switch-mode').addEventListener('click', () => {
 showMenu();
 
 // Lets automated tests drive the game in development (pointer lock is not available there).
-if (import.meta.env.DEV) Object.assign(window, { __game: () => game });
+if (import.meta.env.DEV) Object.assign(window, { __game: () => game, __renderer: renderer, __panorama: panorama });
