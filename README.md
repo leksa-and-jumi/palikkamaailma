@@ -107,6 +107,10 @@ Repun välilehdillä **⚡ Punakivi** ja **🎆 Ilotulitteet** (Nikkaroija-tilas
 - **Sähköraide** vauhdittaa vaunua, kun siinä on virtaa (vipu, punakivisoihtu, punakivipalikka). Ilman virtaa se pysäyttää vaunun. Virta kulkee 8 sähköraidetta eteenpäin.
 - **Kaivosvaunu**: laita se raiteelle (oikea hiiri), hyppää kyytiin (oikea hiiri), `W` vauhdittaa ja `Shift` hyppää pois. Vaunua voi myös työntää kävelemällä sitä päin. Kaveri näkee, kun ajat!
 
+## 🧩 Modit
+
+Taukovalikon **🧩 Modit**-napista voi kytkeä päälle esimerkiksi 🌙 Kuuhypyn, ⚡ Salamajalat, ⛏️ Superhakun, 🍗 Ei nälkää, 🕊️ Rauhallisen yön, ☀️ Ikuisen päivän, 📜 Helpot reseptit ja 🌈 Sateenkaarijäljen. Modit muuttavat vain pelin sääntöjä, eivät maailmaa, joten ne voi kytkeä pois milloin vain eikä mitään katoa. Kaverit samassa maailmassa saavat samat modit.
+
 ## 🔥 Nether
 
 Rakenna **obsidiaanista** kehys (sisältä vähintään 2 leveä ja 3 korkea, kuten Minecraftissa) ja sytytä se **tuluksilla**. Seiso violetissa portaalissa hetki, niin pääset **Netheriin**: kuumia luolia, laavamereä, hehkukiveä, sielunhiekkaa ja kvartsia. Netherissä yksi palikka on 8 palikkaa kotimaailmassa, joten sen kautta pääsee nopeasti kauas! Takaisin pääsee samasta portaalista.

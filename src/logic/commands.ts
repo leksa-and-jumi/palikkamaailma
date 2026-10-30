@@ -18,6 +18,7 @@ export type Command =
   | { kind: 'where' }
   | { kind: 'time'; value: 'day' | 'night' | null }
   | { kind: 'mode'; value: 'creative' | 'survival' | null }
+  | { kind: 'mods' }
   | { kind: 'unknown'; name: string };
 
 interface CommandInfo {
@@ -86,6 +87,11 @@ export const COMMAND_LIST: readonly CommandInfo[] = [
           : null;
       return { kind: 'time', value };
     },
+  },
+  {
+    names: ['modit', 'mods'],
+    help: '/modit – mitkä modit ovat päällä (vaihda taukovalikosta)',
+    make: () => ({ kind: 'mods' }),
   },
   {
     names: ['tila', 'gamemode'],

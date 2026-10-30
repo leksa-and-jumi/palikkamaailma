@@ -19,6 +19,7 @@ import {
 } from '../src/logic/containers';
 import {
   parseClientMessage,
+  parseModList,
   type CartNet,
   type DroppedItem,
   type PlayerInfo,
@@ -344,6 +345,7 @@ export class WorldRoom extends DurableObject<Env> {
           items: this.items(),
           timeOffset: this.timeOffset(),
           carts: this.carts(),
+          mods: this.mods(),
         });
         this.sendAllEdits(ws);
         this.broadcast({ t: 'join', player: me.player }, ws);
@@ -481,6 +483,13 @@ export class WorldRoom extends DurableObject<Env> {
         this.broadcast({ t: 'cartGone', id: msg.id }, ws);
         return;
       }
+      case 'mods': {
+        // Anyone in the world can turn mods on or off; the list is one meta row.
+        if (!me.player || !this.allowRequest(ws, me)) return;
+        this.setMeta('mods', JSON.stringify(msg.enabled));
+        this.broadcast({ t: 'mods', enabled: msg.enabled, avatar: me.player.avatar }, ws);
+        return;
+      }
       case 'sleep': {
         if (!me.player) return;
         me.sleeping = msg.on;
@@ -526,6 +535,11 @@ export class WorldRoom extends DurableObject<Env> {
     me.cartTimes = [...recent, now];
     ws.serializeAttachment(me);
     return true;
+  }
+
+  /** Mods that are on in this world. */
+  private mods(): string[] {
+    return parseModList(JSON.parse(this.meta('mods') ?? '[]')) ?? [];
   }
 
   /** Minecarts in this world, in one meta row (like items on the ground). */

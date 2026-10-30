@@ -906,3 +906,54 @@ kbd {
   background: radial-gradient(circle, rgba(170, 60, 255, 0.35), rgba(90, 0, 160, 0.9));
   pointer-events: none;
 }
+
+.mods-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px;
+  margin: 16px 0;
+}
+
+.mod-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+  background: #f1ede3;
+  color: var(--ink);
+  box-shadow: 0 4px 0 #cfc8b6;
+  padding: 10px 12px;
+}
+
+.mod-card.on {
+  background: #dff3d6;
+  box-shadow: 0 4px 0 #9ccc8a;
+}
+
+.mod-emoji {
+  font-size: 1.8rem;
+}
+
+.mod-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+}
+
+.mod-text small {
+  font-weight: 500;
+  opacity: 0.8;
+}
+
+.mod-switch {
+  font-size: 0.85rem;
+  padding: 4px 8px;
+  border-radius: 10px;
+  background: #d8d2c4;
+}
+
+.mod-card.on .mod-switch {
+  background: var(--accent);
+  color: white;
+}

@@ -53,6 +53,8 @@ export interface Body {
   jumpSpeed: number;
   /** Steps this high are walked up without jumping (stairs, slabs). */
   stepHeight?: number;
+  /** Gravity multiplier (mods: below 1 floats like on the moon). */
+  gravityScale?: number;
 }
 
 export const PLAYER_BODY: Body = {
@@ -237,7 +239,7 @@ function step(world: BlockQuery, b: Body, s: PlayerState, input: MoveInput, dt: 
       s.vy = Math.max(s.vy, -PLAYER.maxSwimFallSpeed);
     } else {
       if (input.jump && s.onGround) s.vy = b.jumpSpeed;
-      s.vy = Math.max(s.vy - PLAYER.gravity * dt, -PLAYER.maxFallSpeed);
+      s.vy = Math.max(s.vy - PLAYER.gravity * (b.gravityScale ?? 1) * dt, -PLAYER.maxFallSpeed);
     }
   }
 

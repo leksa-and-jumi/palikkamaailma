@@ -18,6 +18,7 @@ import { createWorld, findWorld, type WorldInfo } from './net/convex';
 import { WorldRenderer } from './render/worldRenderer';
 import { Hud } from './ui/hud';
 import { InventoryScreen } from './ui/inventoryScreen';
+import { ModsScreen } from './ui/modsScreen';
 
 function $(id: string): HTMLElement {
   return document.getElementById(id)!;
@@ -191,7 +192,8 @@ let pauseShownAt = 0;
 document.addEventListener('keydown', (e) => {
   // The Esc that opened the pause menu must not close it again.
   const fresh = performance.now() - pauseShownAt < 400;
-  if (e.code === 'Escape' && !$('pause').hidden && game && !fresh) {
+  // The mods window closes first with its own Esc.
+  if (e.code === 'Escape' && !$('pause').hidden && game && !fresh && !modsScreen.isOpen) {
     e.preventDefault();
     $('pause').hidden = true;
     game.resume();
@@ -201,6 +203,10 @@ $('inventory').addEventListener('mousedown', (e) => {
   if (e.target === $('inventory')) inventoryScreen.close();
 });
 $('to-menu').addEventListener('click', () => showMenu());
+const modsScreen = new ModsScreen();
+$('open-mods').addEventListener('click', () => {
+  if (game) modsScreen.open(game.mods, (id) => game?.toggleMod(id));
+});
 $('switch-mode').addEventListener('click', () => {
   game?.toggleMode();
   updateModeButton();

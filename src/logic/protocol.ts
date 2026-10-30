@@ -95,7 +95,9 @@ export type ClientMessage =
   /** A minecart was placed, got a rider or came to rest (the room stores it). */
   | { t: 'cart'; cart: CartNet }
   /** A minecart was broken. */
-  | { t: 'cartGone'; id: string };
+  | { t: 'cartGone'; id: string }
+  /** The mods that are on in this world now (the room remembers them). */
+  | { t: 'mods'; enabled: string[] };
 
 export type ServerMessage =
   | {
@@ -106,6 +108,8 @@ export type ServerMessage =
       /** How far the world's clock has been moved (sleeping, /aika), ms. */
       timeOffset?: number;
       carts?: CartNet[];
+      /** Mods that are on in this world. */
+      mods?: string[];
     }
   /** Changed blocks, sent in pages after welcome. `done` is true on the last page. */
   | { t: 'edits'; edits: Edit[]; done: boolean }
@@ -143,6 +147,7 @@ export type ServerMessage =
   | { t: 'time'; offset: number; avatar?: string; slept?: boolean }
   | { t: 'cart'; cart: CartNet; by: string }
   | { t: 'cartGone'; id: string }
+  | { t: 'mods'; enabled: string[]; avatar: string }
   /** How many are sleeping in beds now. */
   | { t: 'sleepers'; sleeping: number; total: number }
   | { t: 'full' };
@@ -203,6 +208,16 @@ export function parseEdits(v: unknown): Edit[] | null {
 const ID_PATTERN = /^[a-z0-9-]{1,40}$/;
 const MAX_MOB_HEALTH = 100;
 const MAX_HIT_DAMAGE = 50;
+
+const MOD_ID = /^[a-z0-9-]{1,32}$/;
+const MAX_MODS = 32;
+
+/** A list of mod ids (unknown ones are fine: a newer game may have more mods). */
+export function parseModList(v: unknown): string[] | null {
+  if (!Array.isArray(v) || v.length > MAX_MODS) return null;
+  if (!v.every((id) => typeof id === 'string' && MOD_ID.test(id))) return null;
+  return [...new Set(v as string[])];
+}
 
 export function parseCart(v: unknown): CartNet | null {
   if (!Array.isArray(v) || v.length !== 7) return null;
@@ -353,6 +368,10 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       return typeof msg.id === 'string' && ID_PATTERN.test(msg.id)
         ? { t: 'cartGone', id: msg.id }
         : null;
+    case 'mods': {
+      const ids = parseModList(msg.enabled);
+      return ids ? { t: 'mods', enabled: ids } : null;
+    }
     default:
       return null;
   }

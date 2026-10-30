@@ -110,4 +110,11 @@ describe('protocol', () => {
     const move = { t: 'move', p: [1, 60, 2], yaw: 0, pitch: 0, carts: [cart] };
     expect(parseClientMessage(JSON.stringify(move))).toEqual(move);
   });
+
+  it('checks the list of mods', () => {
+    const msg = { t: 'mods', enabled: ['moon-jump', 'future-mod'] };
+    expect(parseClientMessage(JSON.stringify(msg))).toEqual(msg);
+    expect(parseClientMessage(JSON.stringify({ t: 'mods', enabled: ['Bad Id!'] }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ t: 'mods', enabled: 'moon-jump' }))).toBeNull();
+  });
 });

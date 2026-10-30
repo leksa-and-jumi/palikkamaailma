@@ -27,9 +27,11 @@ import { sounds } from './audio/sounds';
 import {
   loadLocalCarts,
   loadLocalEdits,
+  loadLocalMods,
   loadPlayer,
   saveLocalCarts,
   saveLocalEdits,
+  saveLocalMods,
   savePlayer,
 } from './data/storage';
 import {
@@ -56,7 +58,13 @@ import { randomKind } from './logic/fireworks';
 import { HOTBAR_SIZE, Inventory, stackLimit, type ItemStack } from './logic/inventory';
 import { getItem, itemId } from './logic/items';
 import { blockDrops, breakTime, wearsWhenMining } from './logic/mining';
-import { createPlayer, overlapsBlock, stepPlayer, type PlayerState } from './logic/physics';
+import {
+  PLAYER_BODY,
+  createPlayer,
+  overlapsBlock,
+  stepPlayer,
+  type PlayerState,
+} from './logic/physics';
 import { cleanChatText, parseCart, type DroppedItem, type ServerMessage } from './logic/protocol';
 import { raycast, type RayHit } from './logic/raycast';
 import { nearSideOffset, planPlacement } from './logic/placement';
@@ -114,6 +122,8 @@ import { PROFESSION_NAMES } from './logic/villages';
 import { MOB_TYPES, PERSONALITY_NAMES } from './logic/mobs';
 import { HURT_REASONS, MobManager, villagerProfession } from './play/mobManager';
 import { MobRenderer } from './render/mobRenderer';
+import { ModManager } from './mods/manager';
+import { modById } from './mods/registry';
 import { MapScreen } from './ui/mapScreen';
 import { CartManager, type Cart } from './play/carts';
 import { CartRenderer } from './render/cartRenderer';
@@ -273,6 +283,8 @@ export class Game {
   private readonly mapTiles: MapTiles;
   readonly carts: CartManager;
   private readonly cartRenderer: CartRenderer;
+  /** Mods that are on in this world (the same for everyone in it). */
+  readonly mods: ModManager;
   private readonly blockBits: BlockBits;
   /** The minecart under the crosshair (closer than any block), if any. */
   private targetCart: Cart | null = null;
@@ -307,6 +319,14 @@ export class Game {
     this.mapTiles = new MapTiles(this.world);
     this.cartRenderer = new CartRenderer(renderer.scene);
     this.blockBits = new BlockBits(renderer.scene);
+    const player = () => this.player;
+    this.mods = new ModManager({
+      get player() {
+        return player();
+      },
+      toast: (text) => hud.toast(text),
+      sparkle: (x, y, z, color) => this.effects.sparkle(x, y, z, color),
+    });
     this.carts = new CartManager({
       save: (cart) => {
         if (this.room) this.room.send({ t: 'cart', cart });
@@ -391,6 +411,7 @@ export class Game {
     if (options.solo || !ROOM_URL) {
       hud.setStatus('solo');
       this.world.applyEdits(loadLocalEdits(options.code));
+      this.mods.set(loadLocalMods(options.code));
       for (const raw of loadLocalCarts(options.code)) {
         const cart = parseCart(raw);
         if (cart) this.carts.receive(cart, this.cartWorld(), null);
@@ -435,6 +456,7 @@ export class Game {
     this.dropRenderer.clear();
     this.cartRenderer.clear();
     this.blockBits.clear();
+    this.mods.stop();
     this.effects.clear();
     this.world.onChange = null;
     this.hud.show(false);
@@ -442,7 +464,7 @@ export class Game {
 
   /** Time of day, the same for everyone in this world. */
   get time(): number {
-    return timeOfDay(this.clock, this.world.seed);
+    return this.mods.effects.timeOfDay ?? timeOfDay(this.clock, this.world.seed);
   }
 
   /** The world's clock (ms): the real clock plus nights slept and /aika. */
@@ -529,6 +551,7 @@ export class Game {
     this.others.update(dt);
     if (this.ready && !this.dead) this.updateMobs(dt);
     if (this.ready && !this.dead) this.updateCarts(dt);
+    if (this.ready && !this.paused) this.mods.tick(dt);
     if (this.ready && !this.dead && !this.paused) this.updatePortal(dt);
     this.renderer.nether = isNether(this.player.x);
     if (this.ready) this.updateMaps(dt);
@@ -554,6 +577,14 @@ export class Game {
       return;
     }
     const wasOnGround = this.player.onGround;
+    const mod = this.mods.effects;
+    const body = {
+      ...PLAYER_BODY,
+      walkSpeed: PLAYER_BODY.walkSpeed * mod.walkSpeed,
+      sprintSpeed: PLAYER_BODY.sprintSpeed * mod.walkSpeed,
+      jumpSpeed: PLAYER_BODY.jumpSpeed * mod.jumpSpeed,
+      gravityScale: mod.gravity,
+    };
     stepPlayer(
       blockQuery((x, y, z) => this.world.solidLook(x, y, z)),
       this.player,
@@ -566,16 +597,22 @@ export class Game {
         sneak: shift,
       },
       dt,
+      body,
     );
     if (this.mode === 'survival') {
       const moved = Math.hypot(this.player.x - this.lastX, this.player.z - this.lastZ);
       if (shift && !this.player.inWater) {
-        addExhaustion(this.vitals, moved * SURVIVAL.exhaustion.sprintPerBlock);
+        this.exhaust(moved * SURVIVAL.exhaustion.sprintPerBlock);
       }
-      if (wasOnGround && this.player.vy > 0) addExhaustion(this.vitals, SURVIVAL.exhaustion.jump);
+      if (wasOnGround && this.player.vy > 0) this.exhaust(SURVIVAL.exhaustion.jump);
     }
     this.lastX = this.player.x;
     this.lastZ = this.player.z;
+  }
+
+  /** Getting hungry (mods can slow it down or stop it). */
+  private exhaust(amount: number): void {
+    addExhaustion(this.vitals, amount * this.mods.effects.hunger);
   }
 
   /** In survival you need food to sprint (like Minecraft). */
@@ -750,7 +787,8 @@ export class Game {
     const block = this.world.getBlock(t.x, t.y, t.z);
     const stack = this.selectedStack();
     const tool = stack ? getItem(stack.id) : undefined;
-    const time = breakTime(block, tool, stack?.enchants?.efficiency ?? 0);
+    const time =
+      breakTime(block, tool, stack?.enchants?.efficiency ?? 0) / this.mods.effects.miningSpeed;
     this.mining.progress += time === 0 ? 1 : dt / time;
     if (this.mining.progress >= 1) {
       this.breakTarget();
@@ -797,7 +835,7 @@ export class Game {
     for (const drop of drops) {
       this.spawnDrop({ id: drop.id, count: drop.count }, [t.x + 0.5, t.y + 0.5, t.z + 0.5], true);
     }
-    addExhaustion(this.vitals, SURVIVAL.exhaustion.mine);
+    this.exhaust(SURVIVAL.exhaustion.mine);
     if (stack && wearsWhenMining(tool) && breakTime(block, tool) > 0) {
       this.wearSelected();
     }
@@ -963,6 +1001,18 @@ export class Game {
 
   // --- Creatures --------------------------------------------------------
 
+  // --- Mods ----------------------------------------------------------------
+
+  /** Turns a mod on or off for everyone in this world. Nothing in the world changes. */
+  toggleMod(id: string): void {
+    const mod = modById(id);
+    if (!mod) return;
+    const ids = this.mods.toggle(id);
+    if (this.room) this.room.send({ t: 'mods', enabled: ids });
+    else saveLocalMods(this.options.code, ids);
+    this.hud.toast(`${mod.emoji} ${mod.name} ${this.mods.isOn(id) ? 'päällä' : 'pois päältä'}`);
+  }
+
   // --- Nether portals -------------------------------------------------------
 
   private updatePortal(dt: number): void {
@@ -1101,6 +1151,7 @@ export class Game {
       dt,
       difficulty: this.options.difficulty,
       day: daylight(this.time) > 0.5,
+      noMonsters: this.mods.effects.noMonsters,
     });
     this.mobRenderer.syncArrows(this.mobs.arrows);
     this.attackCooldown -= dt;
@@ -1203,7 +1254,7 @@ export class Game {
     if (!this.mobs.hit(id, damage, [this.player.x, this.player.z])) return;
     sounds.break();
     if (this.mode === 'survival') {
-      addExhaustion(this.vitals, SURVIVAL.exhaustion.attack);
+      this.exhaust(SURVIVAL.exhaustion.attack);
       if (item?.tool) this.wearSelected();
     }
   }
@@ -1386,7 +1437,9 @@ export class Game {
       this.fallStart = Math.max(this.fallStart ?? p.y, p.y);
     } else if (this.fallStart !== null) {
       const featherFalling = this.inventory.armor[3]?.enchants?.feather_falling ?? 0;
-      const damage = fallDamage(this.fallStart - p.y) * Math.max(0, 1 - featherFalling * 0.12);
+      // Landing on the moon (a mod) is softer.
+      const fall = (this.fallStart - p.y) * Math.min(1, this.mods.effects.gravity);
+      const damage = fallDamage(fall) * Math.max(0, 1 - featherFalling * 0.12);
       this.fallStart = null;
       if (damage > 0) this.takeDamage(damage, 'Putosit liian korkealta.');
     }
@@ -1948,6 +2001,15 @@ export class Game {
         if (c.value && c.value !== this.mode) this.toggleMode();
         else if (!c.value) this.say('🛠️ Kirjoita /tila luova tai /tila selviytyjä');
         return;
+      case 'mods': {
+        const on = this.mods.active;
+        this.say(
+          on.length > 0
+            ? `🧩 Päällä: ${on.map((m) => `${m.emoji} ${m.name}`).join(', ')}`
+            : '🧩 Yhtään modia ei ole päällä. Kytke niitä taukovalikon 🧩 Modit-napista.',
+        );
+        return;
+      }
       case 'unknown':
         this.say(`❓ En tunne komentoa /${c.name}. Kirjoita /apua`);
         return;
@@ -2138,6 +2200,7 @@ export class Game {
       case 'welcome':
         this.myId = msg.you;
         this.timeOffset = msg.timeOffset ?? 0;
+        this.mods.set(msg.mods ?? []);
         this.mobs.myId = msg.you;
         this.carts.myId = msg.you;
         this.carts.carts.clear();
@@ -2186,6 +2249,10 @@ export class Game {
         return;
       case 'cartGone':
         this.carts.remove(msg.id);
+        return;
+      case 'mods':
+        this.mods.set(msg.enabled);
+        this.hud.toast(`🧩 ${msg.avatar} vaihtoi modeja`);
         return;
       case 'hitMob':
         this.mobs.receiveHit(msg.id, msg.damage, msg.from);

@@ -125,6 +125,8 @@ export interface MobContext {
   difficulty: Difficulty;
   /** Bright daytime: monsters burn, spiders are calm, none spawn on the surface. */
   day: boolean;
+  /** A mod keeps new monsters away. */
+  noMonsters?: boolean;
 }
 
 function bodyFor(m: Mob): Body {
@@ -350,7 +352,7 @@ export class MobManager {
 
   /** Monsters appear in the dark: at night on the surface, any time in caves, never near torches. */
   private trySpawnMonsters(ctx: MobContext): void {
-    if (this.monsterCount() >= MONSTERS.max[ctx.difficulty]) return;
+    if (ctx.noMonsters || this.monsterCount() >= MONSTERS.max[ctx.difficulty]) return;
     const { world } = ctx;
     // The Nether has its own creatures, and they don't mind light.
     const nether = world.terrain.biomeAt(Math.floor(ctx.me.x), Math.floor(ctx.me.z)) === 'nether';

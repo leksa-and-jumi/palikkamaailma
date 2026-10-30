@@ -61,6 +61,15 @@ Tämä repo kuuluu Julius (7 v) ja Leo (10 v) -veljesten pelistudioon (GitHub-or
 - Yhteinen kello: huone tallentaa `timeOffset`-meta-rivin (nukkuminen, `/aika`), `welcome` ja `time`-viesti kertovat sen. Nukkuminen: `sleep`-viesti, ja kun kaikki nukkuvat, huone siirtää kelloa aamuun. Yksinpelissä offset tallentuu laitteelle.
 - Ilotulitteet (`src/logic/fireworks.ts`, `src/render/effects.ts`): raketti = laji + siemen. Käsiraketti lähetetään `firework`-viestinä (ei tallenneta, nopeusraja `FIREWORKS.rateLimit`); laukaisimen raketit lasketaan joka koneella.
 
+## Modit
+
+Modit (`src/mods/`) kytketään päälle ja pois taukovalikon **🧩 Modit**-ikkunasta. Sääntö: **modi ei koskaan muuta maailman palikoita, ei lisää palikoita eikä esineitä eikä tallenna mitään maailmaan**. Se muuttaa vain pelin toimintaa niin kauan kuin se on päällä, joten pois kytkeminen jättää maailman täsmälleen ennalleen.
+
+- `types.ts`: `Mod` = `id` (tallennetaan, älä muuta), `emoji`, `name`, `description` + `effects` (kertoimet: `walkSpeed`, `jumpSpeed`, `gravity`, `miningSpeed`, `hunger`; `timeOfDay`, `noMonsters`, `recipes`) ja halutessa `tick`/`onEnable`/`onDisable`, jotka saavat `ModApi`n (pelaajan sijainti, `toast`, `sparkle` – vain asioita, jotka katoavat itsestään).
+- `effects.ts` yhdistää päällä olevat modit (`combineEffects`), `manager.ts` (`ModManager`) pitää listaa ja asettaa modien reseptit (`setExtraRecipes`: pelin omat reseptit voittavat aina).
+- Uusi modi: tee se `src/mods/builtin/`-kansioon ja lisää `registry.ts`:n `MODS`-listaan. Pelin kytkentäkohdat ovat `game.ts`:ssä (`this.mods.effects`).
+- Moninpelissä maailman modit ovat kaikilla samat: `mods`-viesti, huone tallentaa listan `meta`-riviin `mods` ja kertoo sen `welcome`-viestissä (nopeusraja `COMMANDS.rateLimit`). Yksinpelissä lista tallentuu laitteelle. Tuntemattomat id:t säilytetään (uudemman pelin modit eivät katoa). `/modit` kertoo, mitkä ovat päällä.
+
 ## Cloudflare-kiintiö (tärkeä)
 
 Ilmaisessa Durable Objects -tasossa on päiväkiintiöt (mm. 5 milj. luettua ja 100 000 kirjoitettua SQLite-riviä, 100 000 pyyntöä; WebSocket-viestit lasketaan pyynnöiksi). 2026-10-22 kiintiö täyttyi, koska jokainen palikan muutos teki `SELECT COUNT(*)` -kyselyn koko muutostauluun (11,8 milj. riviä tunnissa). Siksi:
