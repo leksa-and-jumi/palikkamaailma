@@ -1,7 +1,7 @@
 // 🕷️ The Spider Queen hides up in the dark and shoots sticky webs that slow
 // you down. When she drops down to bite, she stays on the ground a moment.
 
-import type { ModApi, ModEffects } from '../types';
+import type { ModApi } from '../types';
 import { SPIDER_QUEEN, WEB_SHOT } from './models';
 import {
   burst,
@@ -36,7 +36,6 @@ export function spiderQueen(): Encounter {
   let drop = DROP_EVERY;
   let timer = 0;
   let hits = 0;
-  let stuck = 0;
   let webs: Web[] = [];
   let counter = 0;
   let beat = 0;
@@ -80,7 +79,6 @@ export function spiderQueen(): Encounter {
       if (hits >= HITS) return 'won';
       const p = me(api);
       if (distance(at, p) > 45) return 'fled';
-      stuck = Math.max(0, stuck - dt);
       beat -= dt;
       if (beat <= 0) {
         beat = 2.5;
@@ -115,7 +113,7 @@ export function spiderQueen(): Encounter {
         w.age += dt;
         if (moveTowards(w, target, WEB_SPEED * dt)) {
           w.age = 99;
-          stuck = STUCK_TIME;
+          api.effect({ walkSpeed: 0.35, jumpSpeed: 0.6 }, STUCK_TIME);
           api.toast('🕸️ Jäit seittiin!');
         }
         if (w.age > 6) api.removeActor(w.id);
@@ -144,14 +142,13 @@ export function spiderQueen(): Encounter {
       if (hits < HITS)
         api.say(who, ['Auts!', 'Kiiiks! Jalkani!', 'Viimeinen varoitus…'][hits - 1] ?? '…');
     },
+    where() {
+      return at;
+    },
     end(api) {
       api.removeActor('queen');
       for (const w of webs) api.removeActor(w.id);
       webs = [];
-      stuck = 0;
-    },
-    effects(): ModEffects | null {
-      return stuck > 0 ? { walkSpeed: 0.35, jumpSpeed: 0.6 } : null;
     },
   };
 }

@@ -5,6 +5,7 @@
 import { setExtraRecipes } from '../logic/recipes';
 import { combineEffects, NO_EFFECTS, type CombinedEffects } from './effects';
 import { MODS, modById } from './registry';
+import { ModFollower, ModRecorder, type ModCall, type ModSync } from './share';
 import type { ActorSpec, ActorState, Mod, ModApi } from './types';
 
 export class ModManager {
@@ -16,8 +17,40 @@ export class ModManager {
   onTurnedOff: ((id: string) => void) | null = null;
 
   private readonly apis = new Map<string, ModApi>();
+  private readonly recorders = new Map<string, { recorder: ModRecorder; api: ModApi }>();
+  private readonly followers = new Map<string, ModFollower>();
+  private wasHost = true;
 
-  constructor(private readonly base: ModApi) {}
+  constructor(
+    private readonly base: ModApi,
+    /** Multiplayer: am I the host, and how to ask the host. Alone you are always the host. */
+    private readonly net: { isHost(): boolean; callHost(call: ModCall): void } = {
+      isHost: () => true,
+      callHost: () => undefined,
+    },
+  ) {}
+
+  /** The api a shared mod runs with on the host: what it shows is recorded for the others. */
+  private hostApi(mod: Mod): ModApi {
+    if (!mod.shared) return this.apiFor(mod);
+    let r = this.recorders.get(mod.id);
+    if (!r) {
+      const recorder = new ModRecorder(mod.id);
+      r = { recorder, api: recorder.wrap(this.apiFor(mod)) };
+      this.recorders.set(mod.id, r);
+    }
+    return r.api;
+  }
+
+  private follower(mod: Mod): ModFollower {
+    let f = this.followers.get(mod.id);
+    if (!f) {
+      const specs = new Map((mod.actorSpecs ?? []).map((s) => [s.id ?? '', s]));
+      f = new ModFollower(specs, (api, id) => mod.onTrophy?.(api, id));
+      this.followers.set(mod.id, f);
+    }
+    return f;
+  }
 
   /**
    * The api one mod gets: the same as everyone's, but its characters are
@@ -65,12 +98,13 @@ export class ModManager {
     for (const id of this.enabled) {
       const mod = modById(id);
       if (next.includes(id)) continue;
-      if (mod) mod.onDisable?.(this.apiFor(mod));
+      if (mod) mod.onDisable?.(this.hostApi(mod));
+      if (mod) this.followers.get(id)?.clear(this.apiFor(mod));
       this.onTurnedOff?.(id);
     }
     for (const id of next) {
       const mod = modById(id);
-      if (mod && !this.enabled.includes(id)) mod.onEnable?.(this.apiFor(mod));
+      if (mod && !this.enabled.includes(id)) mod.onEnable?.(this.hostApi(mod));
     }
     this.enabled = next;
     this.combined = combineEffects(this.active);
@@ -85,7 +119,18 @@ export class ModManager {
 
   tick(dt: number): void {
     const active = this.active;
-    for (const mod of active) mod.tick?.(this.apiFor(mod), dt);
+    const host = this.net.isHost();
+    for (const mod of active) {
+      if (!mod.shared || host) {
+        // Someone with a smaller id came: they run the shared mods now.
+        if (mod.shared && !this.wasHost) this.follower(mod).clear(this.apiFor(mod));
+        mod.tick?.(this.hostApi(mod), dt);
+      } else {
+        if (this.wasHost) mod.onDisable?.(this.hostApi(mod));
+        this.follower(mod).tick(this.apiFor(mod), dt);
+      }
+    }
+    this.wasHost = host;
     // Rules that change all the time (a web slows you) join the fixed ones.
     if (active.some((m) => m.liveEffects)) {
       const live = active.map((m) => ({ ...m, effects: { ...m.effects, ...m.liveEffects?.() } }));
@@ -98,7 +143,46 @@ export class ModManager {
     const [modId, id] = splitActorId(fullId);
     const mod = modById(modId);
     if (!mod || !this.isOn(modId)) return;
-    mod.onHitActor?.(this.apiFor(mod), id, damage);
+    if (mod.shared && !this.net.isHost()) {
+      this.net.callHost({ mod: modId, call: 'hit', actor: id, damage });
+      return;
+    }
+    mod.onHitActor?.(this.hostApi(mod), id, damage);
+  }
+
+  /** On the host: a follower hit a character or used a command. */
+  receiveCall(call: ModCall): void {
+    const mod = modById(call.mod);
+    if (!mod?.shared || !this.isOn(mod.id) || !this.net.isHost()) return;
+    if (call.call === 'hit' && call.actor) {
+      mod.onHitActor?.(this.hostApi(mod), call.actor, call.damage ?? 1);
+    }
+    if (call.call === 'command' && call.name) {
+      mod.commands
+        ?.find((c) => c.names.includes(call.name!))
+        ?.run(this.hostApi(mod), call.args ?? '');
+    }
+  }
+
+  /** On the host: what the shared mods show, for the position message. */
+  takeSync(): ModSync[] {
+    if (!this.net.isHost()) return [];
+    const out: ModSync[] = [];
+    for (const mod of this.active) {
+      const sync = mod.shared ? this.recorders.get(mod.id)?.recorder.take() : null;
+      if (sync) out.push(sync);
+    }
+    return out;
+  }
+
+  /** On the others: what the host's shared mods show. */
+  receiveSync(syncs: readonly ModSync[]): void {
+    if (this.net.isHost()) return;
+    for (const sync of syncs) {
+      const mod = modById(sync.m);
+      if (!mod?.shared || !this.isOn(mod.id)) continue;
+      this.follower(mod).apply(sync, this.apiFor(mod));
+    }
   }
 
   /** Runs a mod's chat command. False if no mod that is on knows it. */
@@ -106,7 +190,9 @@ export class ModManager {
     for (const mod of this.active) {
       const command = mod.commands?.find((c) => c.names.includes(name));
       if (!command) continue;
-      command.run(this.apiFor(mod), args);
+      if (mod.shared && !this.net.isHost()) {
+        this.net.callHost({ mod: mod.id, call: 'command', name, args });
+      } else command.run(this.hostApi(mod), args);
       return true;
     }
     return false;

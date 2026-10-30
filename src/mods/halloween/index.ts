@@ -1,9 +1,12 @@
 // 🎃 Kauhu-Halloween: six spooky main characters, each with its own story,
-// weather and way to beat it. They only come in survival, one at a time at
-// night (or with /kauhu), and only you see yours. Beat one for its trophy.
+// weather and way to beat it. They only come for players in survival, one
+// at a time at night (or with /kauhu). In multiplayer the host runs them and
+// everyone near sees the same character and fights it together; it goes
+// after the nearest player. Beat one for its trophy (everyone near gets it).
 // Nothing is ever stored in the world: turn the mod off and it is all gone.
 
-import type { Mod, ModApi, ModEffects, Trophy } from '../types';
+import type { Mod, ModApi, ModEffects, ModPlayer, Trophy } from '../types';
+import { ALL_SPECS } from './models';
 import { captainLuukala } from './captain';
 import { countBatula } from './count';
 import type { Encounter } from './encounter';
@@ -45,6 +48,38 @@ let wait = FIRST_WAIT;
 let next = 0;
 let lines: string[] = [];
 let lineTimer = 0;
+
+/** Players the characters may come for: in survival (not creative), not dead. */
+function hunted(api: ModApi): ModPlayer[] {
+  return api.players.filter(
+    (p, i) => !p.safe && !(i === 0 && (api.dead || api.mode !== 'survival')),
+  );
+}
+
+/**
+ * The api for the character, as if the nearest hunted player were "you":
+ * it looks at, hurts and slows that player, wherever they are.
+ */
+function focus(api: ModApi): ModApi | null {
+  const list = hunted(api);
+  if (list.length === 0) return null;
+  const at = current?.where();
+  const target = at
+    ? list.reduce((a, b) =>
+        Math.hypot(a.x - at.x, a.z - at.z) <= Math.hypot(b.x - at.x, b.z - at.z) ? a : b,
+      )
+    : list[Math.floor(Math.random() * list.length)]!;
+  // Defined, not assigned: in the game player, mode and dead are getters.
+  return Object.create(api, {
+    player: { value: target },
+    mode: { value: 'survival' },
+    dead: { value: false },
+    hurt: { value: (amount: number, reason: string) => api.hurtPlayer(target.id, amount, reason) },
+    effect: {
+      value: (effects: ModEffects, seconds: number) => api.effectFor(target.id, effects, seconds),
+    },
+  }) as ModApi;
+}
 
 function stop(api: ModApi): void {
   current?.end(api);
@@ -89,6 +124,8 @@ function finish(api: ModApi, outcome: 'won' | 'fled'): void {
 
 export const halloween: Mod = {
   id: 'halloween',
+  shared: true,
+  actorSpecs: ALL_SPECS,
   emoji: '🎃',
   name: 'Kauhu-Halloween',
   description:
@@ -107,7 +144,8 @@ export const halloween: Mod = {
           wait = WAIT_AFTER_ESCAPE;
           return;
         }
-        if (api.mode !== 'survival') {
+        const f = focus(api);
+        if (!f) {
           api.toast('🛠️ Kauhuhahmot tulevat vain selviytyjä-tilassa.');
           return;
         }
@@ -115,7 +153,7 @@ export const halloween: Mod = {
           api.toast(`${current.who.emoji} ${current.who.name} on jo täällä!`);
           return;
         }
-        begin(api, (id) => api.hasTrophy(id));
+        begin(f, (id) => api.hasTrophy(id));
       },
     },
   ],
@@ -127,30 +165,35 @@ export const halloween: Mod = {
     stop(api);
   },
   onHitActor(api, id, damage) {
-    current?.hit(api, id, damage);
+    const f = focus(api);
+    if (current && f) current.hit(f, id, damage);
   },
-  liveEffects(): ModEffects | null {
-    return current?.effects?.() ?? null;
+  onTrophy(api) {
+    // Fought together on someone else's computer: the crown when all six are won.
+    if (CAST.every((make) => api.hasTrophy(make().trophy.id)) && api.trophy(MASTER.id)) {
+      api.toast(`🏆 ${MASTER.emoji} ${MASTER.name}! Voitit kaikki!`);
+    }
   },
   tick(api, dt) {
-    if (api.mode !== 'survival' || api.dead) {
-      // Creative is safe, and after dying the character leaves.
+    const f = focus(api);
+    if (!f) {
+      // Creative is safe, and when nobody can be hunted the character leaves.
       if (current) stop(api);
       return;
     }
     if (current) {
       lineTimer -= dt;
       if (lines.length > 0 && lineTimer <= 0) {
-        api.say(current.who, lines.shift()!);
+        f.say(current.who, lines.shift()!);
         lineTimer = LINE_GAP;
       }
-      const outcome = current.update(api, dt);
-      if (outcome !== 'fight') finish(api, outcome);
+      const outcome = current.update(f, dt);
+      if (outcome !== 'fight') finish(f, outcome);
       return;
     }
     if (!api.night) return;
     wait -= dt;
-    if (wait <= 0) begin(api, (id) => api.hasTrophy(id));
+    if (wait <= 0) begin(f, (id) => api.hasTrophy(id));
   },
 };
 

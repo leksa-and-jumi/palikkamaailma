@@ -1,7 +1,7 @@
 // The shared parts of a Halloween character's visit: who it is, its trophy,
 // how the world looks while it is here, and helpers for moving around you.
 
-import type { Atmosphere, ModApi, ModEffects, Speaker, Trophy } from '../types';
+import type { Atmosphere, ModApi, Speaker, Trophy } from '../types';
 
 export type Outcome = 'fight' | 'won' | 'fled';
 
@@ -20,8 +20,8 @@ export interface Encounter {
   hit(api: ModApi, id: string, damage: number): void;
   /** Takes its characters away. */
   end(api: ModApi): void;
-  /** Rules it changes right now (a web slows you down). */
-  effects?(): ModEffects | null;
+  /** Where it is now (the nearest player gets its attention). */
+  where(): Vec;
 }
 
 export type Vec = { x: number; y: number; z: number };

@@ -1,6 +1,6 @@
 // For tests: a pretend game that records what a mod does.
 
-import type { ActorState, Atmosphere, ModApi } from './types';
+import type { ActorState, Atmosphere, ModApi, ModPlayer } from './types';
 
 /** A pretend game for mods: records what they do. */
 export function fakeApi() {
@@ -17,7 +17,17 @@ export function fakeApi() {
     night: true,
     nether: false,
     dead: false,
+    /** Other players (multiplayer tests). */
+    others: [] as ModPlayer[],
+    /** Hurts sent to other players: [id, amount]. */
+    hurtOthers: [] as [string, number][],
+    slowed: 0,
+    get players(): ModPlayer[] {
+      return [state.player, ...state.others];
+    },
     player: {
+      id: 'me',
+      safe: false,
       x: 0,
       y: 50,
       z: 0,
@@ -52,6 +62,16 @@ export function fakeApi() {
     hurt() {
       state.hurts++;
     },
+    hurtPlayer(id: string, amount: number) {
+      if (id === 'me') state.hurts++;
+      else state.hurtOthers.push([id, amount]);
+    },
+    effect() {
+      state.slowed++;
+    },
+    effectFor(id: string) {
+      if (id === 'me') state.slowed++;
+    },
     push() {},
     trophy(id: string) {
       if (state.trophies.includes(id)) return false;
@@ -66,4 +86,13 @@ export function fakeApi() {
     groundY: () => 50,
   };
   return state satisfies ModApi;
+}
+
+/** Like the game's api: player, mode and dead can only be read. */
+export function readOnlyApi(api: ModApi): ModApi {
+  return Object.create(api, {
+    player: { get: () => api.player },
+    mode: { get: () => api.mode },
+    dead: { get: () => api.dead },
+  }) as ModApi;
 }

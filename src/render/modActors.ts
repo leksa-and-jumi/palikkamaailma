@@ -6,8 +6,13 @@ import * as THREE from 'three';
 import type { ActorSpec, ActorState } from '../mods/types';
 import { shadowMesh } from './mobRenderer';
 
+const SMOOTHING = 14;
+const SNAP = 4;
+
 interface Actor {
   group: THREE.Group;
+  /** Where it should be (it glides there: updates from the host come 5 times a second). */
+  target: THREE.Vector3;
   spec: ActorSpec;
   state: ActorState;
   label: THREE.Sprite | null;
@@ -55,11 +60,21 @@ export class ModActors {
       }
       group.add(shadowMesh(spec.width));
       this.scene.add(group);
-      a = { group, spec, state, label: null, labelText: '' };
+      a = {
+        group,
+        target: new THREE.Vector3(state.x, state.y, state.z),
+        spec,
+        state,
+        label: null,
+        labelText: '',
+      };
+      group.position.copy(a.target);
       this.actors.set(id, a);
     }
     a.state = state;
-    a.group.position.set(state.x, state.y, state.z);
+    a.target.set(state.x, state.y, state.z);
+    // Far jumps (appearing somewhere else) happen at once.
+    if (a.group.position.distanceTo(a.target) > SNAP) a.group.position.copy(a.target);
     a.group.rotation.y = state.yaw;
     a.group.visible = state.visible ?? true;
     a.group.scale.setScalar(state.scale ?? 1);
@@ -73,6 +88,12 @@ export class ModActors {
       }
       a.labelText = text;
     }
+  }
+
+  /** Every frame: characters glide to where they should be. */
+  update(dt: number): void {
+    const t = 1 - Math.exp(-SMOOTHING * dt);
+    for (const a of this.actors.values()) a.group.position.lerp(a.target, t);
   }
 
   remove(id: string): void {
