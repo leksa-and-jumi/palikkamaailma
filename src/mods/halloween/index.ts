@@ -5,7 +5,8 @@
 // after the nearest player. Beat one for its trophy (everyone near gets it).
 // Nothing is ever stored in the world: turn the mod off and it is all gone.
 
-import type { Mod, ModApi, ModEffects, ModPlayer, Trophy } from '../types';
+import { speechSeconds } from '../reading';
+import type { Mod, ModApi, ModEffects, ModPlayer, ModSound, Trophy } from '../types';
 import { ALL_SPECS } from './models';
 import { captainLuukala } from './captain';
 import { countBatula } from './count';
@@ -30,8 +31,12 @@ const CAST: readonly (() => Encounter)[] = [
 const FIRST_WAIT = 40;
 const WAIT_AFTER_WIN = 240;
 const WAIT_AFTER_ESCAPE = 120;
-/** Seconds between the lines a character says when it arrives. */
-const LINE_GAP = 3.2;
+/** Now and then a far-away sound, to make you jump (seconds between, at night / with a character). */
+const SCARE_EVERY: [number, number] = [50, 110];
+const SCARE_EVERY_VISIT: [number, number] = [22, 45];
+const SCARES: readonly ModSound[] = ['creak', 'howl', 'drip', 'wind', 'whisper'];
+/** A short breath between the lines a character says when it arrives. */
+const LINE_PAUSE = 0.6;
 const CONFETTI = [0xff9a2e, 0xffe040, 0xd860ff, 0x60ffd0, 0xffffff];
 
 const MASTER: Trophy = {
@@ -48,6 +53,7 @@ let wait = FIRST_WAIT;
 let next = 0;
 let lines: string[] = [];
 let lineTimer = 0;
+let scareTimer = SCARE_EVERY[0];
 
 /** Players the characters may come for: in survival (not creative), not dead. */
 function hunted(api: ModApi): ModPlayer[] {
@@ -181,11 +187,21 @@ export const halloween: Mod = {
       if (current) stop(api);
       return;
     }
+    // Rare, quiet sounds far away: more often while a character visits.
+    if (current || api.night) {
+      scareTimer -= dt;
+      if (scareTimer <= 0) {
+        const [a, b] = current ? SCARE_EVERY_VISIT : SCARE_EVERY;
+        scareTimer = a + Math.random() * (b - a);
+        f.sound(SCARES[Math.floor(Math.random() * SCARES.length)]!);
+      }
+    }
     if (current) {
       lineTimer -= dt;
       if (lines.length > 0 && lineTimer <= 0) {
-        f.say(current.who, lines.shift()!);
-        lineTimer = LINE_GAP;
+        const line = lines.shift()!;
+        f.say(current.who, line);
+        lineTimer = speechSeconds(line) + LINE_PAUSE;
       }
       const outcome = current.update(f, dt);
       if (outcome !== 'fight') finish(f, outcome);
@@ -201,6 +217,7 @@ export const halloween: Mod = {
 export function resetHalloween(): void {
   current = null;
   wait = FIRST_WAIT;
+  scareTimer = SCARE_EVERY[0];
   next = 0;
   lines = [];
 }

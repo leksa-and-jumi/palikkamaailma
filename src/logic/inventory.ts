@@ -192,6 +192,31 @@ export class Inventory {
     return broke;
   }
 
+  /**
+   * Puts on the armor piece in this backpack slot (like right-clicking it in
+   * Minecraft). What was worn there before goes back into the same slot.
+   */
+  equip(index: number): boolean {
+    const stack = this.slots[index];
+    const armor = stack ? getItem(stack.id)?.armor : undefined;
+    if (!stack || !armor) return false;
+    const i = ARMOR_SLOTS.indexOf(armor.slot);
+    this.slots[index] = this.armor[i] ?? null;
+    this.armor[i] = stack;
+    this.onChange();
+    return true;
+  }
+
+  /** Takes an armor piece off into the backpack (false if the backpack is full). */
+  unequip(i: number): boolean {
+    const stack = this.armor[i];
+    if (!stack || !this.hasRoomFor(stack)) return false;
+    this.armor[i] = null;
+    this.add(stack);
+    this.onChange();
+    return true;
+  }
+
   /** Total armor points worn. */
   armorPoints(): number {
     return this.armor.reduce((n, s) => n + (s ? (getItem(s.id)?.armor?.points ?? 0) : 0), 0);

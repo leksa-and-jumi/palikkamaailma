@@ -46,6 +46,48 @@ export interface Atmosphere {
   rain?: boolean;
   /** Lightning flashes and thunder now and then. */
   lightning?: boolean;
+  /** A music track (public/music/<id>.m4a) that plays quietly while this mood lasts. */
+  music?: string;
+}
+
+/**
+ * How a part moves:
+ * - legA/legB, armA/armB swing when the character walks (A and B take turns);
+ * - head turns to look at you and nods while talking;
+ * - sway (capes, dresses, hair) waves gently and trails behind when walking;
+ * - wingL/wingR flap (faster when attacking);
+ * - jaw opens and shuts while the character talks;
+ * - spin turns around all the time, pulse breathes in and out;
+ * - crawlL/crawlR are spider legs that scuttle (use `phase` to take turns);
+ * - attack swings forward when the character attacks (an arm with a sword).
+ */
+export type PartMove =
+  | 'legA'
+  | 'legB'
+  | 'armA'
+  | 'armB'
+  | 'head'
+  | 'sway'
+  | 'wingL'
+  | 'wingR'
+  | 'jaw'
+  | 'spin'
+  | 'pulse'
+  | 'crawlL'
+  | 'crawlR'
+  | 'attack';
+
+/** Expressions a face can have. */
+export type FaceMood = 'normal' | 'blink' | 'angry' | 'hurt' | 'talk';
+
+/**
+ * A pixel face drawn on the front (-z) of a part, as rows of letters
+ * ("." or space = the part's own colour). Letters in `glow` shine in the dark.
+ */
+export interface FaceSpec {
+  colors: Readonly<Record<string, string>>;
+  glow?: string;
+  rows: Readonly<Partial<Record<FaceMood, readonly string[]>>> & { normal: readonly string[] };
 }
 
 /** One box of a mod character (like the creatures' boxes). */
@@ -56,6 +98,32 @@ export interface ActorPart {
   color: number;
   /** Shines in the dark (eyes, lanterns). */
   glow?: boolean;
+  /** Glowing parts that flicker like a candle. */
+  flicker?: boolean;
+  /** See-through (ghosts), 0–1. */
+  alpha?: number;
+  face?: FaceSpec;
+  move?: PartMove;
+  /** Where it turns around (default: the top for limbs, the bottom for heads). */
+  pivot?: [number, number, number];
+  /** A head start in the swing (spider legs take turns). */
+  phase?: number;
+  /** Tilts it a little (radians around x, z), e.g. arms held forward. */
+  tilt?: [number, number];
+}
+
+/** How the whole character moves. */
+export interface ActorMotion {
+  /** Hovers this high and bobs up and down (ghosts). */
+  float?: number;
+  /** Steps per second at walking speed. */
+  gait?: number;
+  /** How far legs and arms swing (radians). */
+  swing?: number;
+  /** Jerky, stop-and-go walking (skeletons). */
+  jerky?: boolean;
+  /** Bounces along instead of walking (pumpkin bombs). */
+  bounce?: boolean;
 }
 
 export interface ActorSpec {
@@ -65,7 +133,13 @@ export interface ActorSpec {
   /** Size for hitting it. */
   width: number;
   height: number;
+  motion?: ActorMotion;
+  /** This character's mouth moves when its mod talks. */
+  speaker?: boolean;
 }
+
+/** Something a character does once (shown to everyone). */
+export type ActorAct = 'attack' | 'hurt' | 'cast';
 
 /** Where a mod character is now. */
 export interface ActorState {
@@ -123,6 +197,8 @@ export interface ModApi {
   /** Shows or moves one of the mod's own characters (only on this computer). */
   actor(id: string, spec: ActorSpec, state: ActorState): void;
   removeActor(id: string): void;
+  /** A character attacks, gets hurt or casts a spell (a short animation). */
+  animate(id: string, act: ActorAct): void;
   /** The boss bar at the top of the screen (null hides it). */
   bossBar(name: string | null, health?: number): void;
   /** Hurts you (only in survival). */
@@ -153,7 +229,11 @@ export type ModSound =
   | 'whisper'
   | 'laugh'
   | 'bell'
-  | 'heartbeat';
+  | 'heartbeat'
+  | 'creak'
+  | 'howl'
+  | 'drip'
+  | 'wind';
 
 /** A chat command a mod adds (like /kauhu). */
 export interface ModCommand {

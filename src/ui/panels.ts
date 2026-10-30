@@ -6,6 +6,15 @@ import { advanceFurnace, type ChestState, type FurnaceState } from '../logic/con
 import { canStack, clickSlot, stackLimit, type ItemStack, type Slot } from '../logic/inventory';
 import { getItem, itemId } from '../logic/items';
 import { canAfford, makeTrade, type Trade } from '../logic/trades';
+import {
+  ENCHANTMENTS,
+  applyBook,
+  applyEnchant,
+  enchantName,
+  offersFor,
+  stackName,
+  type Offer,
+} from '../logic/enchanting';
 import { fillSlot } from './slots';
 import { consumeIngredients, findRecipe, recipeResult } from '../logic/recipes';
 import type { ExtraPanel, InventoryScreen } from './inventoryScreen';
@@ -252,4 +261,131 @@ function tradeSlot(stack: ItemStack): HTMLElement {
   el.className = 'slot';
   fillSlot(el, stack);
   return el;
+}
+
+/** What the enchanting table needs from the game: your levels, and paying them. */
+export interface EnchantingPlayer {
+  level(): number;
+  pay(levels: number): void;
+  /** Creative: enchanting is free. */
+  free: boolean;
+  enchanted(): void;
+}
+
+/**
+ * The enchanting table (like Minecraft): put a tool, weapon or armor piece on
+ * the left and lapis lazuli on the right, then pick one of three enchantments.
+ * They cost 1–3 experience levels and as much lapis. An enchanted book on the
+ * right puts its enchantment on the item for free.
+ */
+export class EnchantPanel implements ExtraPanel {
+  readonly hideArmor = true;
+  private item: Slot = null;
+  private extra: Slot = null;
+  private seed = Math.floor(Math.random() * 1e9);
+
+  constructor(private readonly player: EnchantingPlayer) {}
+
+  render(el: HTMLElement, screen: InventoryScreen): void {
+    const LAPIS = itemId('lapis_lazuli');
+    const BOOK = itemId('enchanted_book');
+    const itemEl = screen.slotElement(this.item, '⚔️', (button) => {
+      const r = clickSlot(screen.cursor, this.item, button);
+      if (r.slot && r.slot.count > 1) return;
+      screen.cursor = r.cursor;
+      this.item = r.slot;
+    });
+    const extraEl = screen.slotElement(this.extra, '🔷', (button) => {
+      const c = screen.cursor;
+      if (c && c.id !== LAPIS && c.id !== BOOK) return;
+      const r = clickSlot(c, this.extra, button);
+      screen.cursor = r.cursor;
+      this.extra = r.slot;
+    });
+    const help = label(
+      'Laita vasemmalle työkalu, ase tai haarniska ja oikealle lasuuria (tai lumottu kirja).',
+      'enchant-help',
+    );
+    const list = document.createElement('div');
+    list.className = 'enchant-offers';
+    const level = this.player.level();
+    const item = this.item;
+    if (item && this.extra?.id === BOOK) {
+      const done = applyBook(item, this.extra);
+      list.append(
+        this.button(
+          done
+            ? `📖 Siirrä kirjan lumous: ${stackName(done).replace(/^[^(]*/, '')}`
+            : '📖 Kirjan lumous ei sovi tähän',
+          !done,
+          () => {
+            this.item = done;
+            this.extra = null;
+          },
+          screen,
+        ),
+      );
+    } else if (item) {
+      const offers = offersFor(item, this.seed);
+      if (offers.length === 0) list.append(label('Tätä ei voi lumota.', 'enchant-help'));
+      const lapis = this.extra?.id === LAPIS ? this.extra.count : 0;
+      for (const o of offers) {
+        const info = ENCHANTMENTS[o.enchant];
+        const can = this.player.free || (level >= o.cost && lapis >= o.cost);
+        this.appendOffer(list, o, info.help, can, screen);
+      }
+    }
+    const levelEl = label(`✨ Tasosi: ${level}`, 'enchant-level');
+    el.append(label('📖 Lumouspöytä', 'villager-title'), row(itemEl, extraEl), help, list, levelEl);
+  }
+
+  private appendOffer(
+    list: HTMLElement,
+    o: Offer,
+    help: string,
+    can: boolean,
+    screen: InventoryScreen,
+  ): void {
+    const cost = this.player.free
+      ? ''
+      : ` · ${o.cost} ${o.cost === 1 ? 'taso' : 'tasoa'} + ${o.cost} 🔷`;
+    list.append(
+      this.button(
+        `${enchantName(o.enchant, o.level)} – ${help}${cost}`,
+        !can,
+        () => {
+          this.item = applyEnchant(this.item!, o.enchant, o.level);
+          if (!this.player.free) {
+            this.player.pay(o.cost);
+            const left = (this.extra?.count ?? 0) - o.cost;
+            this.extra = left > 0 && this.extra ? { ...this.extra, count: left } : null;
+          }
+          this.seed++;
+        },
+        screen,
+      ),
+    );
+  }
+
+  private button(text: string, disabled: boolean, onClick: () => void, screen: InventoryScreen) {
+    const button = document.createElement('button');
+    button.className = 'enchant-offer';
+    button.textContent = text;
+    button.disabled = disabled;
+    button.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      if (button.disabled) return;
+      onClick();
+      this.player.enchanted();
+      screen.refresh();
+    });
+    return button;
+  }
+
+  close(screen: InventoryScreen): void {
+    screen.giveBack(this.item);
+    screen.giveBack(this.extra);
+    this.item = null;
+    this.extra = null;
+  }
 }

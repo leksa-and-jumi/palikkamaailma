@@ -41,6 +41,7 @@ export function captainLuukala(): Encounter {
       s.y = api.groundY(s.x, s.z, s.y);
     } else if (s.cooldown <= 0) {
       s.cooldown = HIT_EVERY;
+      api.animate(s.id, 'attack');
       api.hurt(damage, reason);
     }
   };
@@ -65,6 +66,7 @@ export function captainLuukala(): Encounter {
       description: 'Kaadoit kummitusmiehistön ja Kapteeni Luukalan myrskyssä.',
     },
     mood: {
+      music: 'halloween-captain',
       fogColor: 0x1a2230,
       fogNear: 6,
       fogFar: 45,
@@ -104,6 +106,7 @@ export function captainLuukala(): Encounter {
       const sailor = crew.find((s) => s.id === id);
       if (sailor) {
         sailor.hits++;
+        api.animate(sailor.id, 'hurt');
         api.sound('break');
         if (sailor.hits >= CREW_HITS) {
           burst(api, { ...sailor, y: sailor.y + 1 }, [0xffffff, 0xdedbd0]);
@@ -122,6 +125,7 @@ export function captainLuukala(): Encounter {
         return;
       }
       captain.hits++;
+      api.animate('captain', 'hurt');
       api.sound('break');
       burst(api, { ...captain, y: captain.y + 1.5 }, [0xff8a5a, 0xffffff], 12);
       if (captain.hits < CAPTAIN_HITS)

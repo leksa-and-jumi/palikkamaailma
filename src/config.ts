@@ -602,4 +602,6 @@ export const STORAGE = {
   soloSettings: 'palikkamaailma.solo.settings',
   /** Chests and furnaces when playing alone. */
   containers: 'palikkamaailma.containers',
+  /** Music and sounds on or off (this device only). */
+  audio: 'palikkamaailma.audio',
 } as const;

@@ -141,3 +141,17 @@ export function winTrophy(id: string): boolean {
   write(`${STORAGE.player}.trophies`, trophies);
   return true;
 }
+
+export interface AudioSettings {
+  music: boolean;
+  sounds: boolean;
+}
+
+export function loadAudio(): AudioSettings {
+  const saved = read<Partial<AudioSettings>>(STORAGE.audio, {});
+  return { music: saved.music !== false, sounds: saved.sounds !== false };
+}
+
+export function saveAudio(settings: AudioSettings): void {
+  write(STORAGE.audio, settings);
+}

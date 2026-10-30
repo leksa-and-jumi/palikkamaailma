@@ -730,6 +730,41 @@ kbd {
   justify-content: space-between;
 }
 
+/* The green experience bar with your level, like in Minecraft. */
+.xp-row {
+  position: relative;
+  height: 10px;
+  margin-top: 2px;
+}
+
+.xp-track {
+  height: 6px;
+  margin-top: 2px;
+  background: #1a1a1a;
+  border: 1px solid #000;
+}
+
+.xp-fill {
+  height: 100%;
+  width: 0;
+  background: linear-gradient(#b8ff5a, #5ec21e);
+}
+
+.xp-level {
+  position: absolute;
+  left: 50%;
+  top: -10px;
+  transform: translateX(-50%);
+  color: #8cff3a;
+  font-weight: 800;
+  font-size: 0.95rem;
+  text-shadow:
+    1px 1px 0 #000,
+    -1px -1px 0 #000,
+    1px -1px 0 #000,
+    -1px 1px 0 #000;
+}
+
 .bar {
   display: flex;
   gap: 1px;
@@ -854,6 +889,34 @@ kbd {
   display: flex;
   flex-direction: column;
   gap: 4px;
+}
+
+.armor-box {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.armor-doll {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 10px;
+  background: #1c1c1c;
+  border: 3px solid;
+  border-color: #555 #fff #fff #555;
+  border-radius: 4px;
+}
+
+.armor-doll canvas {
+  image-rendering: pixelated;
+}
+
+.armor-points {
+  color: #fff;
+  font-size: 0.85rem;
+  white-space: nowrap;
 }
 
 .tabs {
@@ -1234,4 +1297,47 @@ kbd {
 .dialogue-text {
   font-size: 1.05rem;
   line-height: 1.35;
+}
+
+/* --- Enchanting table --- */
+
+.enchant-help {
+  max-width: 360px;
+  margin: 6px 0;
+  font-size: 0.85rem;
+  text-align: center;
+  opacity: 0.85;
+}
+
+.enchant-offers {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: min(420px, 90vw);
+}
+
+.enchant-offer {
+  padding: 8px 10px;
+  text-align: left;
+  font-weight: 700;
+  color: #f3e6ff;
+  background: linear-gradient(#4a2a6a, #2e1a46);
+  border: 2px solid #8a5ac8;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.enchant-offer:hover:not(:disabled) {
+  background: linear-gradient(#5e3688, #3a2058);
+}
+
+.enchant-offer:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.enchant-level {
+  margin-top: 8px;
+  color: #8cff3a;
+  font-weight: 800;
 }

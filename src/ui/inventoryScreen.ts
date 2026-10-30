@@ -47,6 +47,8 @@ import {
   type Slot,
 } from '../logic/inventory';
 import { ITEMS, getItem, itemId, type ItemType } from '../logic/items';
+import { sounds } from '../audio/sounds';
+import { drawDoll } from './armorDoll';
 import { fillSlot } from './slots';
 
 function $(id: string): HTMLElement {
@@ -172,6 +174,8 @@ export class InventoryScreen {
   cursor: Slot = null;
   inventory: Inventory = new EmptyInventory();
   private mode: GameMode = 'survival';
+  /** Your animal, for the figure next to the armor slots. */
+  face = '🦊';
   private category = 'blocks';
   private onClose: () => void = () => undefined;
   private extra: ExtraPanel | null = null;
@@ -242,17 +246,28 @@ export class InventoryScreen {
     const creative = this.mode === 'creative' && !this.extra?.hideCatalog;
     $('creative-tabs').hidden = !creative;
     $('creative-grid').hidden = !creative;
-    $('armor-slots').hidden = creative || !!this.extra?.hideArmor;
+    $('armor-box').hidden = creative || !!this.extra?.hideArmor;
+    drawDoll($('armor-doll') as HTMLCanvasElement, this.inventory.armor, this.face);
+    const points = this.inventory.armorPoints();
+    $('armor-points').textContent = `🛡️ ${points}/20`;
+    $('armor-points').title =
+      'Pue haarniska: oikea hiiren nappi, kun se on kädessä, tai Shift + klikkaus repussa.';
     if (creative) this.renderCatalog();
 
     const armor = $('armor-slots');
     armor.replaceChildren(
       ...ARMOR_SLOTS.map((slotName, i) =>
-        this.slotElement(this.inventory.armor[i] ?? null, ARMOR_HINTS[i], (button) => {
+        this.slotElement(this.inventory.armor[i] ?? null, ARMOR_HINTS[i], (button, shift) => {
           const cursor = this.cursor;
+          // Shift-click takes it off into the backpack.
+          if (shift && !cursor) {
+            this.inventory.unequip(i);
+            return;
+          }
           if (cursor && getItem(cursor.id)?.armor?.slot !== slotName) return;
           const result = clickSlot(cursor, this.inventory.armor[i] ?? null, button);
           this.cursor = result.cursor;
+          if (result.slot && result.slot !== this.inventory.armor[i]) sounds.equip();
           this.inventory.armor[i] = result.slot;
         }),
       ),
@@ -296,6 +311,13 @@ export class InventoryScreen {
   private inventorySlot(index: number): HTMLElement {
     return this.slotElement(this.inventory.slots[index] ?? null, undefined, (button, shift) => {
       const slot = this.inventory.slots[index] ?? null;
+      // Shift-click on armor puts it on (if that armor slot is free).
+      const armor = slot ? getItem(slot.id)?.armor : undefined;
+      if (shift && slot && armor && !this.inventory.armor[ARMOR_SLOTS.indexOf(armor.slot)]) {
+        this.inventory.equip(index);
+        sounds.equip();
+        return;
+      }
       if (shift && slot) {
         // Shift-click moves the stack between the hotbar and the backpack.
         this.inventory.slots[index] = null;
