@@ -66,8 +66,8 @@ export class HeldItem {
     const swing = Math.sin(t * Math.PI);
     const swap = this.swapTime / SWAP_TIME;
     this.hand.position.set(
-      0.42 + bobX - swing * 0.22 - this.bowPull * 0.3,
-      -0.38 + bobY + swing * 0.08 - swap * 0.4,
+      0.3 + bobX - swing * 0.2 - this.bowPull * 0.25,
+      -0.3 + bobY + swing * 0.08 - swap * 0.4,
       -0.62 - swing * 0.1,
     );
     this.hand.rotation.set(
@@ -141,7 +141,7 @@ function spriteModel(itemId: number): THREE.Object3D | null {
   const ctx = canvas.getContext('2d')!;
   const { width, height } = canvas;
   const data = ctx.getImageData(0, 0, width, height).data;
-  const size = 0.42 / Math.max(width, height);
+  const size = 0.3 / Math.max(width, height);
   const parts: THREE.BufferGeometry[] = [];
   const color = new THREE.Color();
   for (let y = 0; y < height; y++) {
@@ -166,8 +166,8 @@ function spriteModel(itemId: number): THREE.Object3D | null {
   for (const p of parts) p.dispose();
   const mesh = new THREE.Mesh(geometry, new THREE.MeshLambertMaterial({ vertexColors: true }));
   // Held like a sword: the handle in your hand, the tip up and forward.
-  mesh.rotation.set(0, -Math.PI / 2 + 0.2, -0.15);
-  mesh.position.set(0, 0.08, 0);
+  mesh.rotation.set(0, 2.3, 0.1);
+  mesh.position.set(-0.02, 0.1, 0);
   const group = new THREE.Group();
   group.add(mesh);
   return group;

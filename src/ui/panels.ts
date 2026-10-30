@@ -336,7 +336,7 @@ export class EnchantPanel implements ExtraPanel {
       }
     }
     const levelEl = label(`✨ Tasosi: ${level}`, 'enchant-level');
-    el.append(label('📖 Lumouspöytä', 'villager-title'), row(itemEl, extraEl), help, list, levelEl);
+    el.append(row(itemEl, extraEl), help, list, levelEl);
   }
 
   private appendOffer(

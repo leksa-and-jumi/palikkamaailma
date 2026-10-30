@@ -1,6 +1,9 @@
 // Start menu: choose your animal and how to play, then make a world, join
 // one with a code or play alone.
 
+import '@fontsource/pixelify-sans/latin-600.css';
+import '@fontsource/pixelify-sans/latin-700.css';
+import '@fontsource-variable/nunito';
 import './style.css';
 import { AVATARS, DIFFICULTIES, GAME_MODES, type Difficulty, type GameMode } from './config';
 import { Game, modeButtonText } from './game';
@@ -22,7 +25,8 @@ import { ModsScreen } from './ui/modsScreen';
 import { Panorama } from './render/panorama';
 import { music } from './audio/music';
 import { audioSettings, setAudio } from './audio/settings';
-import { drawTitleLogo, randomSplash } from './ui/titleLogo';
+import { randomSplash } from './ui/titleLogo';
+import { Logo3D } from './render/logo3d';
 import { renderTrophies } from './ui/trophyList';
 
 function $(id: string): HTMLElement {
@@ -39,7 +43,7 @@ let settings: WorldSettings = loadSettings();
 let game: Game | null = null;
 
 const panorama = new Panorama(renderer);
-drawTitleLogo($('title-logo') as HTMLCanvasElement);
+const logo = new Logo3D($('title-logo') as HTMLCanvasElement);
 
 /** Shows one page of the title screen (main, singleplayer, multiplayer…). */
 function showPage(id: string): void {
@@ -62,6 +66,8 @@ function showMenu(message = '', isError = false, page = 'page-main'): void {
   $('menu').hidden = false;
   $('splash').textContent = randomSplash();
   panorama.start();
+  logo.rebuild();
+  logo.start();
   const el = $('menu-message');
   el.textContent = message;
   el.classList.toggle('error', isError);
@@ -141,6 +147,7 @@ function renderWorlds(): void {
 
 function start(world: WorldInfo, solo: boolean): void {
   panorama.stop();
+  logo.stop();
   $('menu').hidden = true;
   $('loading').hidden = false;
   $('loading-text').textContent = 'Rakennetaan maailmaa…';
@@ -289,4 +296,9 @@ requestAnimationFrame(musicFrame);
 
 // Lets automated tests drive the game in development (pointer lock is not available there).
 if (import.meta.env.DEV)
-  Object.assign(window, { __game: () => game, __renderer: renderer, __panorama: panorama });
+  Object.assign(window, {
+    __game: () => game,
+    __renderer: renderer,
+    __panorama: panorama,
+    __logo: logo,
+  });
