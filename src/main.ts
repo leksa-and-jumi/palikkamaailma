@@ -2,7 +2,7 @@
 // one with a code or play alone.
 
 import './style.css';
-import { AVATAR_EMOJIS, DIFFICULTIES, GAME_MODES, type Difficulty, type GameMode } from './config';
+import { AVATARS, DIFFICULTIES, GAME_MODES, type Difficulty, type GameMode } from './config';
 import { Game, modeButtonText } from './game';
 import { SOLO_CODE, normalizeWorldCode } from './logic/codes';
 import {
@@ -19,6 +19,9 @@ import { WorldRenderer } from './render/worldRenderer';
 import { Hud } from './ui/hud';
 import { InventoryScreen } from './ui/inventoryScreen';
 import { ModsScreen } from './ui/modsScreen';
+import { Panorama } from './render/panorama';
+import { drawTitleLogo, randomSplash } from './ui/titleLogo';
+import { renderTrophies } from './ui/trophyList';
 
 function $(id: string): HTMLElement {
   return document.getElementById(id)!;
@@ -33,25 +36,46 @@ let avatar = loadAvatar();
 let settings: WorldSettings = loadSettings();
 let game: Game | null = null;
 
-function showMenu(message = '', isError = false): void {
+const panorama = new Panorama(renderer);
+drawTitleLogo($('title-logo') as HTMLCanvasElement);
+
+/** Shows one page of the title screen (main, singleplayer, multiplayer…). */
+function showPage(id: string): void {
+  for (const page of document.querySelectorAll<HTMLElement>('.menu-page')) {
+    page.hidden = page.id !== id;
+  }
+  if (id === 'page-trophies') renderTrophies($('trophy-list'));
+}
+
+document.querySelectorAll<HTMLButtonElement>('[data-page]').forEach((button) => {
+  button.addEventListener('click', () => showPage(button.dataset.page!));
+});
+
+function showMenu(message = '', isError = false, page = 'page-main'): void {
   game?.stop();
   game = null;
   inventoryScreen.close();
   for (const id of ['loading', 'pause', 'builder', 'death']) $(id).hidden = true;
+  hud.show(false);
   $('menu').hidden = false;
+  $('splash').textContent = randomSplash();
+  panorama.start();
   const el = $('menu-message');
   el.textContent = message;
   el.classList.toggle('error', isError);
   renderAvatars();
   renderSettings();
   renderWorlds();
+  // Problems come from joining a world, so show the multiplayer page with them.
+  showPage(message && page === 'page-main' ? 'page-multi' : page);
 }
 
 function renderAvatars(): void {
+  $('avatar-now').textContent = avatar;
   $('avatars').replaceChildren(
-    ...AVATAR_EMOJIS.map((emoji) => {
+    ...AVATARS.map(({ emoji, name }) => {
       const button = document.createElement('button');
-      button.textContent = emoji;
+      button.innerHTML = `${emoji}<small>${name}</small>`;
       button.className = emoji === avatar ? 'selected' : '';
       button.addEventListener('click', () => {
         avatar = emoji;
@@ -87,10 +111,16 @@ function renderSettings(): void {
     saveSettings(settings);
     renderSettings();
   };
-  choiceButtons($('mode-choice'), GAME_MODES, settings.mode, (mode: GameMode) => update({ mode }));
-  choiceButtons($('difficulty-choice'), DIFFICULTIES, settings.difficulty, (d: Difficulty) =>
-    update({ difficulty: d }),
-  );
+  // The same choices on the singleplayer and the multiplayer page.
+  for (const [mode, difficulty] of [
+    ['mode-choice', 'difficulty-choice'],
+    ['multi-mode-choice', 'multi-difficulty-choice'],
+  ] as const) {
+    choiceButtons($(mode), GAME_MODES, settings.mode, (m: GameMode) => update({ mode: m }));
+    choiceButtons($(difficulty), DIFFICULTIES, settings.difficulty, (d: Difficulty) =>
+      update({ difficulty: d }),
+    );
+  }
 }
 
 function renderWorlds(): void {
@@ -108,6 +138,7 @@ function renderWorlds(): void {
 }
 
 function start(world: WorldInfo, solo: boolean): void {
+  panorama.stop();
   $('menu').hidden = true;
   $('loading').hidden = false;
   $('loading-text').textContent = 'Rakennetaan maailmaa…';
@@ -193,6 +224,11 @@ document.addEventListener('keydown', (e) => {
   // The Esc that opened the pause menu must not close it again.
   const fresh = performance.now() - pauseShownAt < 400;
   // The mods window closes first with its own Esc.
+  if (e.code === 'Escape' && !$('trophies-screen').hidden) {
+    e.preventDefault();
+    $('trophies-screen').hidden = true;
+    return;
+  }
   if (e.code === 'Escape' && !$('pause').hidden && game && !fresh && !modsScreen.isOpen) {
     e.preventDefault();
     $('pause').hidden = true;
@@ -204,6 +240,16 @@ $('inventory').addEventListener('mousedown', (e) => {
 });
 $('to-menu').addEventListener('click', () => showMenu());
 const modsScreen = new ModsScreen();
+$('open-trophies').addEventListener('click', () => {
+  renderTrophies($('trophy-list-game'));
+  $('trophies-screen').hidden = false;
+});
+const closeTrophies = () => ($('trophies-screen').hidden = true);
+$('trophies-close').addEventListener('click', closeTrophies);
+$('trophies-screen').addEventListener('mousedown', (e) => {
+  if (e.target === $('trophies-screen')) closeTrophies();
+});
+$('open-help').addEventListener('click', () => ($('help').hidden = !$('help').hidden));
 $('open-mods').addEventListener('click', () => {
   if (game) modsScreen.open(game.mods, (id) => game?.toggleMod(id));
 });

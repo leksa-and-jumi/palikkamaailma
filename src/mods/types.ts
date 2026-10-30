@@ -34,6 +34,15 @@ export interface ModApi {
   sparkle(x: number, y: number, z: number, color: number): void;
 }
 
+/** A prize for beating something a mod brings (kept on this device). */
+export interface Trophy {
+  /** Saved: never change it. */
+  id: string;
+  emoji: string;
+  name: string;
+  description: string;
+}
+
 export interface Mod {
   /** Saved in each world: never change it. Small letters, numbers and dashes. */
   id: string;
@@ -42,6 +51,8 @@ export interface Mod {
   name: string;
   description: string;
   effects?: ModEffects;
+  /** Trophies you can win with this mod (shown in the trophy cabinet). */
+  trophies?: readonly Trophy[];
   /** Called every frame while the mod is on. */
   tick?(api: ModApi, dt: number): void;
   onEnable?(api: ModApi): void;

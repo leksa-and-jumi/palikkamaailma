@@ -126,3 +126,18 @@ export function loadLocalMods(code: string): string[] {
 export function saveLocalMods(code: string, ids: string[]): void {
   write(`${STORAGE.soloEdits}.mods.${code}`, ids);
 }
+
+/** Trophies won on this device: id → when (ms). They belong to the player, not a world. */
+export function loadTrophies(): Record<string, number> {
+  const saved = read<Record<string, number>>(`${STORAGE.player}.trophies`, {});
+  return typeof saved === 'object' && saved !== null ? saved : {};
+}
+
+/** Saves a trophy. Returns false if it was already won. */
+export function winTrophy(id: string): boolean {
+  const trophies = loadTrophies();
+  if (trophies[id]) return false;
+  trophies[id] = Date.now();
+  write(`${STORAGE.player}.trophies`, trophies);
+  return true;
+}
