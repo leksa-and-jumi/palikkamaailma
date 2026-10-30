@@ -123,6 +123,13 @@
           <div id="health-bar" class="bar"></div>
           <div id="hunger-bar" class="bar right"></div>
         </div>
+        <div
+          class="xp-row"
+          title="Kokemus: voita otuksia. Tasoilla lumoat esineitä lumouspöydässä."
+        >
+          <div class="xp-track"><div id="xp-fill" class="xp-fill"></div></div>
+          <span id="xp-level" class="xp-level"></span>
+        </div>
       </div>
       <div id="hotbar" class="hotbar"></div>
       <div id="hurt-flash" class="hurt-flash"></div>
@@ -179,6 +186,10 @@
         <div class="mc-row">
           <button id="switch-mode" class="mc-button"></button>
           <button id="open-help" class="mc-button">❓ Näppäimet</button>
+        </div>
+        <div class="mc-row">
+          <button id="toggle-music" class="mc-button"></button>
+          <button id="toggle-sounds" class="mc-button"></button>
         </div>
         <button id="to-menu" class="mc-button">💾 Tallenna ja lopeta</button>
         <p id="pause-code" class="code-hint"></p>
@@ -256,7 +267,13 @@
         <div id="creative-tabs" class="tabs"></div>
         <div id="creative-grid" class="slot-grid catalog"></div>
         <div class="inventory-top">
-          <div id="armor-slots" class="armor-slots"></div>
+          <div id="armor-box" class="armor-box">
+            <div class="armor-doll">
+              <canvas id="armor-doll" aria-label="Hahmosi haarniska"></canvas>
+              <div id="armor-points" class="armor-points"></div>
+            </div>
+            <div id="armor-slots" class="armor-slots"></div>
+          </div>
           <div id="crafting-area" class="crafting-area"></div>
         </div>
         <div id="inventory-main" class="slot-grid"></div>

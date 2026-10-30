@@ -3,15 +3,13 @@
 
 import { SURVIVAL } from '../config';
 import { HOTBAR_SIZE, type Inventory } from '../logic/inventory';
-import { getItem } from '../logic/items';
+import { levelOf, stackName } from '../logic/enchanting';
 import type { Vitals } from '../logic/survival';
+import { LETTER_SECONDS, readingSeconds } from '../mods/reading';
 import type { RoomStatus } from '../net/room';
 import { fillSlot } from './slots';
 
 const CHAT_LINES = 10;
-/** Speech boxes type this fast and stay a while after. */
-const DIALOGUE_LETTER_MS = 28;
-const DIALOGUE_MIN_MS = 2500;
 /** Command hints shown under the chat box at most. */
 const CHAT_HINTS = 6;
 const CHAT_FADE_MS = 10_000;
@@ -136,6 +134,13 @@ export class Hud {
     else $('air-bar').replaceChildren();
   }
 
+  /** The experience bar: your level and how far to the next. */
+  setXp(points: number): void {
+    const { level, progress } = levelOf(points);
+    $('xp-fill').style.width = `${Math.round(progress * 100)}%`;
+    $('xp-level').textContent = level > 0 ? String(level) : '';
+  }
+
   flashHurt(): void {
     const el = $('hurt-flash');
     el.classList.add('on');
@@ -159,7 +164,7 @@ export class Hud {
   private flashItemName(): void {
     const el = $('block-name');
     const stack = this.inventory?.slots[this.selected];
-    el.textContent = stack ? (getItem(stack.id)?.name ?? '') : '';
+    el.textContent = stack ? stackName(stack) : '';
     el.style.opacity = '1';
     if (this.nameTimer) clearTimeout(this.nameTimer);
     this.nameTimer = setTimeout(() => (el.style.opacity = '0'), ITEM_NAME_MS);
@@ -300,7 +305,7 @@ export class Hud {
   }
 
   /** Someone talks: the text types itself out, then the box hides. */
-  say(face: string, name: string, color: string, text: string): void {
+  say(face: string, name: string, color: string, text: string, minSeconds = 0): void {
     $('dialogue').hidden = false;
     $('dialogue-face').textContent = face;
     $('dialogue-name').textContent = name;
@@ -313,11 +318,12 @@ export class Hud {
     this.typing = setInterval(() => {
       el.textContent += letters[i++] ?? '';
       if (i >= letters.length && this.typing) clearInterval(this.typing);
-    }, DIALOGUE_LETTER_MS);
+    }, LETTER_SECONDS * 1000);
     if (this.dialogueTimer) clearTimeout(this.dialogueTimer);
+    // Long enough to read (or to hear the voice to the end).
     this.dialogueTimer = setTimeout(
       () => ($('dialogue').hidden = true),
-      DIALOGUE_MIN_MS + letters.length * DIALOGUE_LETTER_MS * 2,
+      Math.max(readingSeconds(text), minSeconds) * 1000,
     );
   }
 

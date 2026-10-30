@@ -60,6 +60,7 @@ export function mistMaiden(): Encounter {
       description: 'Löysit Usvaneidon sumun keskeltä viisi kertaa.',
     },
     mood: {
+      music: 'halloween-maiden',
       fogColor: 0xc8d4e0,
       fogNear: 2,
       fogFar: 22,
@@ -86,6 +87,7 @@ export function mistMaiden(): Encounter {
         if (visible && sneaking) {
           api.flash('rgba(255,255,255,0.9)', 0.6);
           api.say(who, 'BUU!');
+          api.animate('maiden', 'attack');
           api.hurt(2, 'Usvaneito säikäytti!');
         }
         if (visible) {
@@ -99,6 +101,7 @@ export function mistMaiden(): Encounter {
     hit(api) {
       if (!visible) return;
       hits++;
+      api.animate('maiden', 'hurt');
       visible = false;
       timer = HIDDEN;
       burst(api, at, [0xffffff, 0xbfe4ff]);

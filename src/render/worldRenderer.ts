@@ -4,6 +4,7 @@
 import * as THREE from 'three';
 import { CHUNK_SIZE, DAY, LIGHT, NETHER, RENDER } from '../config';
 import { daylight } from '../logic/daytime';
+import type { HeldItem } from './heldItem';
 import type { BlockBox } from '../logic/blocks';
 import { buildChunkMesh, type MeshData } from '../logic/mesher';
 import { chunkKey, type VoxelWorld } from '../logic/world';
@@ -160,6 +161,7 @@ export class WorldRenderer {
 
   resize(): void {
     this.camera.aspect = window.innerWidth / window.innerHeight;
+    this.held?.resize(this.camera.aspect);
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(window.innerWidth, window.innerHeight);
   }
@@ -301,6 +303,20 @@ export class WorldRenderer {
   render(): void {
     this.updateSky();
     this.renderer.render(this.scene, this.camera);
+    // What you hold is drawn last, on top of everything (it never sinks into walls).
+    if (this.held) {
+      this.renderer.autoClear = false;
+      this.renderer.clearDepth();
+      this.renderer.render(this.held.scene, this.held.camera);
+      this.renderer.autoClear = true;
+    }
+  }
+
+  /** The item in your hand, while you play (null on the title screen). */
+  held: HeldItem | null = null;
+  /** How bright it is around you now (0–1), for what you hold. */
+  get brightness(): number {
+    return this.lightUniforms.uDaylight.value;
   }
 
   private buildChunk(cx: number, cz: number): void {

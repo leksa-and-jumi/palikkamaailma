@@ -81,4 +81,21 @@ describe('inventory', () => {
     expect(copy.slots[0]).toEqual({ id: DIRT, count: 3 });
     expect(copy.armorPoints()).toBe(2);
   });
+
+  it('puts armor on from the hand and swaps what was worn', () => {
+    const inv = new Inventory();
+    inv.slots[0] = { id: itemId('iron_helmet'), count: 1 };
+    expect(inv.equip(0)).toBe(true);
+    expect(inv.armor[0]?.id).toBe(itemId('iron_helmet'));
+    expect(inv.slots[0]).toBeNull();
+    inv.slots[3] = { id: itemId('diamond_helmet'), count: 1 };
+    inv.equip(3);
+    expect(inv.armor[0]?.id).toBe(itemId('diamond_helmet'));
+    expect(inv.slots[3]?.id).toBe(itemId('iron_helmet'));
+    inv.slots[4] = { id: DIRT, count: 1 };
+    expect(inv.equip(4)).toBe(false);
+    expect(inv.unequip(0)).toBe(true);
+    expect(inv.armor[0]).toBeNull();
+    expect(inv.count(itemId('diamond_helmet'))).toBe(1);
+  });
 });

@@ -262,6 +262,10 @@ function parseAtmosphere(v: unknown): Atmosphere | null | undefined {
   }
   if (a.rain !== undefined) out.rain = a.rain === true;
   if (a.lightning !== undefined) out.lightning = a.lightning === true;
+  if (a.music !== undefined) {
+    if (typeof a.music !== 'string' || !MOD_ID.test(a.music)) return undefined;
+    out.music = a.music;
+  }
   return out;
 }
 
@@ -276,7 +280,13 @@ const SOUNDS = new Set([
   'laugh',
   'bell',
   'heartbeat',
+  'creak',
+  'howl',
+  'drip',
+  'wind',
 ]);
+
+const ACTS = new Set(['attack', 'hurt', 'cast']);
 
 function parseSyncEvent(v: unknown): SyncEvent | null {
   if (!Array.isArray(v) || !num(v[0], 1e12)) return null;
@@ -296,6 +306,10 @@ function parseSyncEvent(v: unknown): SyncEvent | null {
         : null;
     case 'sp':
       return v.length === 6 && v.slice(2, 5).every((n) => num(n)) && num(v[5], 0xffffff)
+        ? (v as SyncEvent)
+        : null;
+    case 'an':
+      return v.length === 4 && shortText(v[2], 40) && ACTS.has(v[3] as string)
         ? (v as SyncEvent)
         : null;
     default:

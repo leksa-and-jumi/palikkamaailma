@@ -4,7 +4,7 @@
 // travels in the host's position messages; the others play it back, so the
 // brothers see the same boss and fight it together. Nothing is stored.
 
-import type { ActorSpec, ActorState, Atmosphere, ModApi, ModSound } from './types';
+import type { ActorAct, ActorSpec, ActorState, Atmosphere, ModApi, ModSound } from './types';
 
 /** One character: id, spec id, x, y, z, yaw, visible (1/0), scale, label. */
 export type SyncActor = [string, string, number, number, number, number, number, number, string];
@@ -16,7 +16,8 @@ export type SyncEvent =
   | [number, 'sound', ModSound]
   | [number, 'toast', string]
   | [number, 'trophy', string]
-  | [number, 'sp', number, number, number, number];
+  | [number, 'sp', number, number, number, number]
+  | [number, 'an', string, ActorAct];
 
 /** What the host sends about one shared mod. */
 export interface ModSync {
@@ -106,6 +107,10 @@ export class ModRecorder {
       trophy: (id: string) => {
         this.event(['trophy', id]);
         return api.trophy(id);
+      },
+      animate: (id: string, act: ActorAct) => {
+        api.animate(id, act);
+        this.event(['an', id, act]);
       },
       sparkle: (x: number, y: number, z: number, color: number) => {
         api.sparkle(x, y, z, color);
@@ -202,6 +207,9 @@ export class ModFollower {
           break;
         case 'sp':
           api.sparkle(e[2], e[3], e[4], e[5]);
+          break;
+        case 'an':
+          api.animate(e[2], e[3]);
           break;
       }
     }

@@ -56,6 +56,7 @@ export function spiderQueen(): Encounter {
       description: 'Pääsit Hämähäkkikuningattaren seiteistä ja voitit hänet pimeässä.',
     },
     mood: {
+      music: 'halloween-spider',
       fogColor: 0x0a0812,
       fogNear: 4,
       fogFar: 30,
@@ -90,11 +91,13 @@ export function spiderQueen(): Encounter {
         drop -= dt;
         if (shoot <= 0) {
           shoot = SHOOT_EVERY;
+          api.animate('queen', 'cast');
           webs.push({ id: `web${counter++}`, x: at.x, y: at.y, z: at.z, age: 0 });
         }
         if (drop <= 0) phase = 'drop';
       } else if (phase === 'drop') {
         if (moveTowards(at, { x: p.x + 1.4, y: p.y, z: p.z }, 9 * dt)) {
+          api.animate('queen', 'attack');
           api.hurt(3, 'Hämähäkkikuningatar puri!');
           api.flash('rgba(80,0,100,0.5)', 0.5);
           phase = 'ground';
@@ -136,6 +139,7 @@ export function spiderQueen(): Encounter {
         return;
       }
       hits++;
+      api.animate('queen', 'hurt');
       api.sound('pop');
       burst(api, { ...at, y: at.y + 1 }, [0xd0a8ff, 0x2a1030]);
       phase = 'climb';

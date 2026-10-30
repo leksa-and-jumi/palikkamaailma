@@ -49,6 +49,7 @@ export function pumpkinKing(): Encounter {
       description: 'Löit Kurpitsakuninkaan omilla pommeillaan.',
     },
     mood: {
+      music: 'halloween-king',
       fogColor: 0x3a1c08,
       fogNear: 8,
       fogFar: 55,
@@ -75,6 +76,7 @@ export function pumpkinKing(): Encounter {
       hintTimer -= dt;
       if (timer <= 0) {
         timer = THROW_EVERY;
+        api.animate('king', 'attack');
         bombs.push({
           id: `bomb${counter++}`,
           x: king.x,
@@ -94,6 +96,7 @@ export function pumpkinKing(): Encounter {
           : moveTowards(b, target, BOMB_SPEED * dt);
         if (arrived && b.back) {
           hits++;
+          api.animate('king', 'hurt');
           b.age = 99;
           api.sound('boom');
           burst(api, kingTop, [0xff9a2e, 0xffe040]);

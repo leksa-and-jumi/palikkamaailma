@@ -1,6 +1,9 @@
 // Start menu: choose your animal and how to play, then make a world, join
 // one with a code or play alone.
 
+import '@fontsource/pixelify-sans/latin-600.css';
+import '@fontsource/pixelify-sans/latin-700.css';
+import '@fontsource-variable/nunito';
 import './style.css';
 import { AVATARS, DIFFICULTIES, GAME_MODES, type Difficulty, type GameMode } from './config';
 import { Game, modeButtonText } from './game';
@@ -20,7 +23,10 @@ import { Hud } from './ui/hud';
 import { InventoryScreen } from './ui/inventoryScreen';
 import { ModsScreen } from './ui/modsScreen';
 import { Panorama } from './render/panorama';
-import { drawTitleLogo, randomSplash } from './ui/titleLogo';
+import { music } from './audio/music';
+import { audioSettings, setAudio } from './audio/settings';
+import { randomSplash } from './ui/titleLogo';
+import { Logo3D } from './render/logo3d';
 import { renderTrophies } from './ui/trophyList';
 
 function $(id: string): HTMLElement {
@@ -37,7 +43,7 @@ let settings: WorldSettings = loadSettings();
 let game: Game | null = null;
 
 const panorama = new Panorama(renderer);
-drawTitleLogo($('title-logo') as HTMLCanvasElement);
+const logo = new Logo3D($('title-logo') as HTMLCanvasElement);
 
 /** Shows one page of the title screen (main, singleplayer, multiplayer…). */
 function showPage(id: string): void {
@@ -60,6 +66,8 @@ function showMenu(message = '', isError = false, page = 'page-main'): void {
   $('menu').hidden = false;
   $('splash').textContent = randomSplash();
   panorama.start();
+  logo.rebuild();
+  logo.start();
   const el = $('menu-message');
   el.textContent = message;
   el.classList.toggle('error', isError);
@@ -139,10 +147,12 @@ function renderWorlds(): void {
 
 function start(world: WorldInfo, solo: boolean): void {
   panorama.stop();
+  logo.stop();
   $('menu').hidden = true;
   $('loading').hidden = false;
   $('loading-text').textContent = 'Rakennetaan maailmaa…';
   if (!solo) rememberWorld(world);
+  inventoryScreen.face = avatar;
   game = new Game({ ...world, avatar, solo }, renderer, hud, inventoryScreen, {
     onReady: () => {
       $('loading').hidden = true;
@@ -253,6 +263,20 @@ $('open-help').addEventListener('click', () => ($('help').hidden = !$('help').hi
 $('open-mods').addEventListener('click', () => {
   if (game) modsScreen.open(game.mods, (id) => game?.toggleMod(id));
 });
+const updateAudioButtons = () => {
+  $('toggle-music').textContent = audioSettings.music ? '🎵 Musiikki: päällä' : '🔇 Musiikki: pois';
+  $('toggle-sounds').textContent = audioSettings.sounds ? '🔊 Äänet: päällä' : '🔈 Äänet: pois';
+};
+updateAudioButtons();
+$('toggle-music').addEventListener('click', () => {
+  setAudio({ music: !audioSettings.music });
+  updateAudioButtons();
+});
+$('toggle-sounds').addEventListener('click', () => {
+  setAudio({ sounds: !audioSettings.sounds });
+  updateAudioButtons();
+});
+
 $('switch-mode').addEventListener('click', () => {
   game?.toggleMode();
   updateModeButton();
@@ -260,6 +284,21 @@ $('switch-mode').addEventListener('click', () => {
 
 showMenu();
 
+// Music plays on the title screen and in the game (src/audio/music.ts).
+let musicTime = performance.now();
+const musicFrame = () => {
+  const now = performance.now();
+  music.update(Math.min(0.5, (now - musicTime) / 1000), game?.musicPlace() ?? 'menu');
+  musicTime = now;
+  requestAnimationFrame(musicFrame);
+};
+requestAnimationFrame(musicFrame);
+
 // Lets automated tests drive the game in development (pointer lock is not available there).
 if (import.meta.env.DEV)
-  Object.assign(window, { __game: () => game, __renderer: renderer, __panorama: panorama });
+  Object.assign(window, {
+    __game: () => game,
+    __renderer: renderer,
+    __panorama: panorama,
+    __logo: logo,
+  });

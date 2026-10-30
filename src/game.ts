@@ -42,6 +42,7 @@ import {
   CHEST,
   CHEST_OPEN,
   CRAFTING_TABLE,
+  ENCHANTING_TABLE,
   DEFAULT_HOTBAR,
   FURNACE,
   LAVA,
@@ -118,15 +119,23 @@ import type { Hud } from './ui/hud';
 import { BuilderScreen, type BuildResult } from './ui/builderScreen';
 import { Input } from './ui/input';
 import type { ExtraPanel, InventoryScreen } from './ui/inventoryScreen';
-import { ChestPanel, CraftingPanel, FurnacePanel, TradePanel } from './ui/panels';
+import { ChestPanel, CraftingPanel, EnchantPanel, FurnacePanel, TradePanel } from './ui/panels';
 import { greeting, thanks, tradesFor } from './logic/trades';
 import { PROFESSION_NAMES } from './logic/villages';
 import { MOB_TYPES, PERSONALITY_NAMES } from './logic/mobs';
 import { HURT_REASONS, MobManager, villagerProfession } from './play/mobManager';
 import { MobRenderer } from './render/mobRenderer';
 import { ModManager } from './mods/manager';
+import { LETTER_SECONDS } from './mods/reading';
+import { speak } from './audio/voices';
+import { materialOf } from './audio/materials';
+import { music, type Place } from './audio/music';
 import type { ModApi, ModEffects, ModPlayer } from './mods/types';
 import { ModActors } from './render/modActors';
+import { HeldItem } from './render/heldItem';
+import { levelOf, protectionFactor, spendLevels } from './logic/enchanting';
+import type { MobView } from './render/mobRenderer';
+import { Arrows, BOW_DRAW_TIME, bowPower } from './play/arrows';
 import { modById } from './mods/registry';
 import { MapScreen } from './ui/mapScreen';
 import { CartManager, type Cart } from './play/carts';
@@ -153,6 +162,14 @@ const SPAWN_READY_RADIUS = 2;
 const ROOM_WAIT_MS = 6000;
 const SAVE_DELAY_MS = 1500;
 const PLAYER_SAVE_INTERVAL = 5;
+/** Critical hits do half again as much; a sword sweep hits neighbours a little. */
+const CRIT_DAMAGE = 1.5;
+const SWEEP_RANGE = 1.6;
+const SWEEP_DAMAGE = 1;
+/** Blocks walked between footstep sounds. */
+const STEP_LENGTH = 1.9;
+const HUM_EVERY: [number, number] = [9, 22];
+const HUM_NEAR = 14;
 const MAX_PITCH = Math.PI / 2 - 0.01;
 /** Holding the right mouse button places again this often (seconds). */
 const PLACE_REPEAT = 0.25;
@@ -227,6 +244,10 @@ export class Game {
   private lastSentMove: [number, number, number, number, number] | null = null;
   /** Creative or dead: monsters and bosses leave you alone. */
   private lastSentSafe = false;
+  private stepDistance = 0;
+  private wasInWater = false;
+  /** Villagers nearby hum now and then. */
+  private humTimer = 6;
   private running = true;
   private ready = false;
   private paused = true;
@@ -292,6 +313,9 @@ export class Game {
   /** Mods that are on in this world (the same for everyone in it). */
   readonly mods: ModManager;
   private readonly modActors: ModActors;
+  /** What you hold, at the bottom right of the screen. */
+  private readonly held = new HeldItem();
+  private readonly arrows: Arrows;
   private readonly blockBits: BlockBits;
   /** The minecart under the crosshair (closer than any block), if any. */
   private targetCart: Cart | null = null;
@@ -331,6 +355,9 @@ export class Game {
     this.cartRenderer = new CartRenderer(renderer.scene);
     this.blockBits = new BlockBits(renderer.scene);
     this.modActors = new ModActors(renderer.scene);
+    renderer.held = this.held;
+    this.arrows = new Arrows(renderer.scene);
+    this.held.resize(renderer.camera.aspect);
     this.mods = new ModManager(this.modApi(), {
       isHost: () => this.isModHost(),
       callHost: (call) => {
@@ -383,6 +410,7 @@ export class Game {
     this.mode = saved.mode === 'creative' || saved.mode === 'survival' ? saved.mode : options.mode;
     this.vitals = loadVitals(saved.vitals);
     this.xp = typeof saved.xp === 'number' && saved.xp >= 0 ? Math.floor(saved.xp) : 0;
+    this.hud.setXp(this.xp);
     this.bedSpawn = isPosition(saved.bed) ? saved.bed : null;
     this.home = isPosition(saved.home) ? saved.home : null;
     if (options.solo && typeof saved.timeOffset === 'number' && saved.timeOffset >= 0) {
@@ -392,8 +420,14 @@ export class Game {
     this.mobs = new MobManager({
       drop: (stack, p) => this.spawnDrop(stack, p, true),
       xp: (amount) => {
+        const before = levelOf(this.xp).level;
         this.xp += amount;
-        this.hud.toast(`✨ +${amount} kokemusta`);
+        this.hud.setXp(this.xp);
+        const after = levelOf(this.xp).level;
+        if (after > before) {
+          sounds.levelUp();
+          this.hud.toast(`✨ Taso ${after}! Lumoa esineitä lumouspöydässä.`);
+        } else sounds.pickup();
       },
       sendHit: (id, damage, from) => this.room?.send({ t: 'hitMob', id, damage, from }),
       toast: (text) => this.hud.toast(text),
@@ -476,6 +510,8 @@ export class Game {
     this.blockBits.clear();
     this.mods.stop();
     this.modActors.removeAll();
+    this.arrows.clear();
+    this.renderer.held = null;
     this.renderer.atmosphere = null;
     this.hud.setAtmosphere(null, 0);
     this.hud.bossBar(null);
@@ -571,8 +607,10 @@ export class Game {
     this.updateTarget();
     this.others.update(dt);
     if (this.ready && !this.dead) this.updateMobs(dt);
+    if (this.ready) this.updateArrows(dt);
+    if (this.ready && !this.paused) this.villagerHum(dt);
     if (this.ready && !this.dead) this.updateCarts(dt);
-    this.modActors.update(dt);
+    this.modActors.update(dt, this.player.x, this.player.y + PLAYER.eyeHeight, this.player.z);
     // In multiplayer the host's pause must not freeze a boss for the others.
     if (this.ready && (!this.paused || this.room)) {
       this.mods.tick(dt);
@@ -586,6 +624,15 @@ export class Game {
       this.request = null;
       this.hud.showRequest(null);
     }
+    const stack = this.selectedStack();
+    const speed = Math.hypot(this.player.vx, this.player.vz) * (this.player.onGround ? 1 : 0.3);
+    this.held.update(
+      dt,
+      stack?.id ?? null,
+      speed,
+      Math.max(0.35, this.renderer.brightness),
+      this.bowPull(),
+    );
     this.renderer.render();
   }
 
@@ -626,6 +673,7 @@ export class Game {
       dt,
       body,
     );
+    this.footsteps(Math.hypot(this.player.x - this.lastX, this.player.z - this.lastZ));
     if (this.mode === 'survival') {
       const moved = Math.hypot(this.player.x - this.lastX, this.player.z - this.lastZ);
       if (shift && !this.player.inWater) {
@@ -635,6 +683,32 @@ export class Game {
     }
     this.lastX = this.player.x;
     this.lastZ = this.player.z;
+  }
+
+  /** A villager nearby says "hmm" now and then (quietly). */
+  private villagerHum(dt: number): void {
+    this.humTimer -= dt;
+    if (this.humTimer > 0) return;
+    this.humTimer = HUM_EVERY[0] + Math.random() * (HUM_EVERY[1] - HUM_EVERY[0]);
+    let nearest = Infinity;
+    for (const v of this.mobs.views()) {
+      if (v.kind !== 'villager') continue;
+      nearest = Math.min(nearest, this.distanceTo(v.x, v.y, v.z));
+    }
+    if (nearest < HUM_NEAR) sounds.villager('hmm', nearest);
+  }
+
+  /** Steps sound like the ground you walk on; jumping in water splashes. */
+  private footsteps(moved: number): void {
+    const p = this.player;
+    if (p.inWater && !this.wasInWater && p.vy < -2) sounds.splash();
+    this.wasInWater = p.inWater;
+    if (!p.onGround || p.flying || p.inWater || moved <= 0) return;
+    this.stepDistance += moved;
+    if (this.stepDistance < STEP_LENGTH) return;
+    this.stepDistance = 0;
+    const below = this.world.getBlock(Math.floor(p.x), Math.floor(p.y - 0.1), Math.floor(p.z));
+    if (below !== AIR) sounds.step(materialOf(below));
   }
 
   /** Getting hungry (mods can slow it down or stop it). */
@@ -714,6 +788,16 @@ export class Game {
 
   // --- Maps ---------------------------------------------------------------
 
+  /** Which calm music fits where you are (the title screen has its own). */
+  musicPlace(): Place {
+    if (!this.ready) return 'menu';
+    const p = this.player;
+    if (isNether(p.x)) return 'nether';
+    const ground = this.world.terrain.heightAt(Math.floor(p.x), Math.floor(p.z));
+    if (p.y < ground - 8) return 'cave';
+    return isNight(this.time) ? 'night' : 'day';
+  }
+
   private updateMaps(dt: number): void {
     const { x, z } = this.player;
     const big = this.mapScreen.isOpen;
@@ -755,7 +839,85 @@ export class Game {
     return this.inventory.slots[this.hud.selected] ?? null;
   }
 
+  /** Seconds the bow has been drawn (0 = not drawing). */
+  private bowDrawn = 0;
+
+  /** How far the bow is pulled back (0–1), for what you hold. */
+  private bowPull(): number {
+    return Math.min(1, this.bowDrawn / BOW_DRAW_TIME);
+  }
+
+  /**
+   * Holding the right mouse button with a bow draws it; letting go shoots.
+   * True while you hold a bow (then right-click does nothing else).
+   */
+  private updateBow(dt: number): boolean {
+    const stack = this.selectedStack();
+    if (!stack || getItem(stack.id)?.special !== 'bow') {
+      this.bowDrawn = 0;
+      return false;
+    }
+    const arrows = this.mode === 'creative' || this.inventory.count(itemId('arrow')) > 0;
+    if (this.input.isMouseDown(2)) {
+      if (!arrows) {
+        if (this.bowDrawn === 0) this.hud.toast('🏹 Tarvitset nuolia! (risu + piikivi + sulka)');
+        this.bowDrawn = 0.001;
+        return true;
+      }
+      this.bowDrawn += dt;
+      return true;
+    }
+    const power = arrows ? bowPower(this.bowDrawn) : 0;
+    this.bowDrawn = 0;
+    if (power <= 0) return true;
+    const p = this.player;
+    const dir = this.lookDirection();
+    const eye: [number, number, number] = [
+      p.x + dir[0] * 0.4,
+      p.y + PLAYER.eyeHeight - 0.1 + dir[1] * 0.4,
+      p.z + dir[2] * 0.4,
+    ];
+    this.arrows.shoot(eye, dir, power, stack.enchants?.power ?? 0);
+    sounds.bow(power);
+    this.held.swing();
+    if (this.mode === 'survival') {
+      this.inventory.removeItems(itemId('arrow'), 1);
+      this.wearSelected();
+    }
+    return true;
+  }
+
+  /** Arrows fly and hit creatures and mod characters. */
+  private updateArrows(dt: number): void {
+    const mobBox = (v: MobView) => {
+      const b = MOB_TYPES[v.kind].body;
+      const s = v.baby ? 0.55 : 1;
+      return {
+        id: v.id,
+        min: [v.x - (b.width * s) / 2, v.y, v.z - (b.width * s) / 2] as [number, number, number],
+        max: [v.x + (b.width * s) / 2, v.y + b.height * s, v.z + (b.width * s) / 2] as [
+          number,
+          number,
+          number,
+        ],
+      };
+    };
+    this.arrows.update(dt, {
+      solid: (x, y, z) => isSolid(this.world.getBlock(Math.floor(x), Math.floor(y), Math.floor(z))),
+      targets: () => [
+        ...[...this.mobs.views()].filter((v) => v.kind !== 'villager').map(mobBox),
+        ...this.modActors.boxes().map((b) => ({ ...b, id: `mod|${b.id}` })),
+      ],
+      hit: (target, damage, from) => {
+        if (target.id.startsWith('mod|')) this.mods.hitActor(target.id.slice(4), damage);
+        else this.mobs.hit(target.id, damage, [from[0], from[2]]);
+        sounds.hit(true);
+      },
+    });
+  }
+
   private onBreakPressed(): void {
+    this.held.swing();
     if (this.placing) {
       this.finishPlacing();
       this.breakCooldown = SURVIVAL.creativeBreakDelay;
@@ -795,6 +957,7 @@ export class Game {
       this.mining = null;
       return;
     }
+    if (this.updateBow(dt)) return;
     if (this.input.isMouseDown(2) && this.placeCooldown <= 0) this.useItem(true);
 
     const t = this.target;
@@ -817,7 +980,13 @@ export class Game {
     const tool = stack ? getItem(stack.id) : undefined;
     const time =
       breakTime(block, tool, stack?.enchants?.efficiency ?? 0) / this.mods.effects.miningSpeed;
+    const before = this.mining.progress;
     this.mining.progress += time === 0 ? 1 : dt / time;
+    // Tap, tap, tap while digging (like Minecraft).
+    if (Math.floor(before * 4) !== Math.floor(this.mining.progress * 4)) {
+      sounds.dig(materialOf(block));
+      this.held.swing();
+    }
     if (this.mining.progress >= 1) {
       this.breakTarget();
       this.mining = null;
@@ -835,7 +1004,7 @@ export class Game {
       ([x, y, z]): Edit => [x, y, z, this.world.getBlock(x, y, z)],
     );
     this.change([[t.x, t.y, t.z, AIR], ...fallen.map(([x, y, z]): Edit => [x, y, z, AIR])]);
-    sounds.break();
+    sounds.breakBlock(materialOf(block));
     this.blockBits.burst(t.x, t.y, t.z, getBlockType(block).tiles.side);
     // Alone, the chest's items fall out here (the room server does it in multiplayer).
     if (!this.room && isContainerBlock(block)) {
@@ -875,7 +1044,7 @@ export class Game {
     const unbreaking = stack?.enchants?.unbreaking ?? 0;
     if (unbreaking > 0 && Math.random() > 1 / (unbreaking + 1)) return;
     if (this.inventory.wear('slots', this.hud.selected)) {
-      sounds.break();
+      sounds.toolBreak();
       this.hud.toast('💥 Työkalu meni rikki!');
     }
   }
@@ -916,6 +1085,13 @@ export class Game {
       return;
     }
     if (this.target && !sneaking && this.interact(this.target)) return;
+    // Armor in your hand: right-click puts it on (like Minecraft).
+    if (item?.armor && !repeat) {
+      this.inventory.equip(this.hud.selected);
+      sounds.equip();
+      this.hud.toast(`🛡️ Puit päälle: ${item.name}. Suojaus ${this.inventory.armorPoints()}/20`);
+      return;
+    }
 
     const t0 = this.target;
     if (t0 && !repeat && !sneaking) {
@@ -971,7 +1147,8 @@ export class Game {
     if (item?.food && this.mode === 'survival') {
       if (eat(this.vitals, item.food.hunger, item.food.saturation)) {
         this.inventory.takeOne(this.hud.selected);
-        sounds.place();
+        sounds.eat();
+        sounds.burp();
       }
       return;
     }
@@ -998,7 +1175,8 @@ export class Game {
     if (edits.some(([x, y, z, id]) => isSolid(id) && overlapsBlock(this.player, x, y, z))) return;
     if (this.change(edits).length === 0) return;
     if (this.mode === 'survival') this.inventory.takeOne(this.hud.selected);
-    sounds.place();
+    sounds.placeBlock(materialOf(edits[0]![3]));
+    this.held.swing();
   }
 
   /** Opens or closes a door, trapdoor or gate (both halves of a door). */
@@ -1092,15 +1270,22 @@ export class Game {
       },
       toast: (text) => this.hud.toast(text),
       sparkle: (x, y, z, color) => this.effects.sparkle(x, y, z, color),
-      say: (who, text) => this.hud.say(who.emoji, who.name, who.color ?? '#ffd66b', text),
+      say: (who, text) => {
+        const voice = speak(text);
+        this.hud.say(who.emoji, who.name, who.color ?? '#ffd66b', text, voice + 1);
+        // The speaking character's mouth moves while it talks (or the words type out).
+        this.modActors.talk(voice || [...text].length * LETTER_SECONDS + 0.4);
+      },
       atmosphere: (a) => {
         this.renderer.atmosphere = a;
         this.hud.setAtmosphere(a?.tint ?? null, a?.vignette ?? 0);
         this.lightningTimer = a?.lightning ? 2 : 0;
+        music.setModTrack(a?.music ?? null);
       },
       flash: (color, seconds) => this.hud.flash(color, seconds),
       actor: (id, spec, state) => this.modActors.set(id, spec, state),
       removeActor: (id) => this.modActors.remove(id),
+      animate: (id, act) => this.modActors.animate(id, act),
       bossBar: (name, health) => this.hud.bossBar(name, health),
       hurt: (amount, reason) => this.takeDamage(amount, reason),
       hurtPlayer: (id, amount, reason) => {
@@ -1412,6 +1597,7 @@ export class Game {
     const v = [...this.mobs.views()].find((m) => m.id === id);
     if (!v) return;
     const profession = villagerProfession(id);
+    sounds.villager('hmm');
     const title = `${MOB_TYPES.villager.emoji} ${v.name} · ${PERSONALITY_NAMES[v.personality]} ${PROFESSION_NAMES[profession]}`;
     const night = daylight(this.time) < 0.5;
     const panel = new TradePanel(
@@ -1419,7 +1605,7 @@ export class Game {
       greeting(v.personality, profession, night),
       tradesFor(profession, v.personality),
       () => {
-        sounds.place();
+        sounds.villager('yes');
         return thanks(v.personality);
       },
     );
@@ -1452,10 +1638,36 @@ export class Game {
     const stack = this.selectedStack();
     const item = stack ? getItem(stack.id) : undefined;
     const sharpness = stack?.enchants?.sharpness ?? 0;
+    const p = this.player;
+    // A critical hit (like Minecraft): hit while falling after a jump.
+    const critical = !p.onGround && p.vy < -0.5 && !p.inWater && !p.flying && !p.onLadder;
     const damage =
-      (item?.tool?.damage ?? MOBS.fistDamage) + (sharpness > 0 ? 0.5 * sharpness + 0.5 : 0);
-    if (!this.mobs.hit(id, damage, [this.player.x, this.player.z])) return;
-    sounds.break();
+      ((item?.tool?.damage ?? MOBS.fistDamage) + (sharpness > 0 ? 0.5 * sharpness + 0.5 : 0)) *
+      (critical ? CRIT_DAMAGE : 1);
+    this.held.swing();
+    const target = [...this.mobs.views()].find((v) => v.id === id);
+    if (!this.mobs.hit(id, damage, [p.x, p.z])) return;
+    const sword = item?.tool?.kind === 'sword';
+    sounds.hit(sword || critical);
+    if (critical && target) {
+      for (let i = 0; i < 10; i++) {
+        this.effects.sparkle(
+          target.x + (Math.random() - 0.5) * 0.8,
+          target.y + 0.6 + Math.random() * 0.8,
+          target.z + (Math.random() - 0.5) * 0.8,
+          0xfff2a0,
+        );
+      }
+    }
+    // A sword sweep also hits the creatures right next to it.
+    if (sword && !critical && target) {
+      for (const v of this.mobs.views()) {
+        if (v.id === id || v.kind === 'villager') continue;
+        if (Math.hypot(v.x - target.x, v.z - target.z) > SWEEP_RANGE) continue;
+        if (this.distanceTo(v.x, v.y, v.z) > MOBS.attackReach + 1) continue;
+        this.mobs.hit(v.id, SWEEP_DAMAGE, [p.x, p.z]);
+      }
+    }
     if (this.mode === 'survival') {
       this.exhaust(SURVIVAL.exhaustion.attack);
       if (item?.tool) this.wearSelected();
@@ -1467,6 +1679,19 @@ export class Game {
     const block = this.world.getBlock(t.x, t.y, t.z);
     if (block === CRAFTING_TABLE) {
       this.openScreen(new CraftingPanel(3), '🪚 Työpöytä');
+      return true;
+    }
+    if (block === ENCHANTING_TABLE) {
+      const panel = new EnchantPanel({
+        level: () => levelOf(this.xp).level,
+        pay: (levels) => {
+          this.xp = spendLevels(this.xp, levels);
+          this.hud.setXp(this.xp);
+        },
+        free: this.mode === 'creative',
+        enchanted: () => sounds.enchant(),
+      });
+      this.openScreen(panel, '📖 Lumouspöytä');
       return true;
     }
     if (block !== FURNACE && block !== CHEST) return false;
@@ -1661,12 +1886,14 @@ export class Game {
   /** Hurts the player (monsters will use this too). */
   takeDamage(amount: number, reason: string): void {
     if (this.mode !== 'survival' || this.dead) return;
-    if (hurt(this.vitals, amount, this.inventory.armorPoints()) > 0) this.afterDamage(reason);
+    // Protection on armor takes some off before the armor points do.
+    const after = amount * protectionFactor(this.inventory.armor);
+    if (hurt(this.vitals, after, this.inventory.armorPoints()) > 0) this.afterDamage(reason);
   }
 
   private afterDamage(reason: string): void {
     this.hud.flashHurt();
-    sounds.break();
+    sounds.hurt();
     // Armor wears a little with every hit.
     for (let i = 0; i < this.inventory.armor.length; i++) {
       if (this.inventory.armor[i]) this.inventory.wear('armor', i);
@@ -1774,7 +2001,7 @@ export class Game {
   private collect(item: ItemStack): void {
     const left = this.inventory.add(item);
     if (left > 0) this.dropStack({ ...item, count: left });
-    sounds.place();
+    sounds.pickup();
   }
 
   // --- Redstone, TNT and fireworks ----------------------------------------

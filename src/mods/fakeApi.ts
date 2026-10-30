@@ -56,6 +56,10 @@ export function fakeApi() {
     removeActor(id: string) {
       state.actors.delete(id);
     },
+    acts: [] as [string, string][],
+    animate(id: string, act: string) {
+      state.acts.push([id, act]);
+    },
     bossBar(name: string | null) {
       state.boss = name;
     },

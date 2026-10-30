@@ -58,6 +58,7 @@ export function silentOne(): Encounter {
       description: 'Löysit Hiljaisen neljä kertaa ja voitit sen.',
     },
     mood: {
+      music: 'halloween-silent',
       fogColor: 0x5a5a60,
       fogNear: 6,
       fogFar: 42,
@@ -117,6 +118,7 @@ export function silentOne(): Encounter {
             const d = distance(at, p);
             if (d < 4) {
               api.flash('rgba(0,0,0,0.85)', 0.8);
+              api.animate('silent', 'attack');
               api.hurt(2, 'Hiljainen kosketti sinua.');
               place(api, 18);
             } else {
@@ -136,6 +138,7 @@ export function silentOne(): Encounter {
         else if (touch <= 0) {
           touch = TOUCH_EVERY;
           api.flash('rgba(0,0,0,0.7)', 0.5);
+          api.animate('silent', 'attack');
           api.hurt(2, 'Hiljainen kosketti sinua.');
         }
         at.y = api.groundY(at.x, at.z, at.y);
@@ -146,6 +149,7 @@ export function silentOne(): Encounter {
     hit(api) {
       if (phase !== 'final') return;
       hits++;
+      api.animate('silent', 'hurt');
       api.sound('break');
       burst(api, { ...at, y: at.y + 1.2 }, [0xffffff, 0x111111]);
       at = aroundPlayer(api, 3, Math.PI * (hits % 2 ? 0.6 : -0.6));

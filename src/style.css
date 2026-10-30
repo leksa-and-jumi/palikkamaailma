@@ -7,8 +7,20 @@
   --muted: #6b7280;
   --slot: rgba(20, 24, 32, 0.55);
   --radius: 18px;
-  font-family: ui-rounded, 'SF Pro Rounded', 'Segoe UI', system-ui, sans-serif;
+  /* Easy-to-read text, and a pixel font for buttons and headings. */
+  --font-text: 'Nunito Variable', ui-rounded, 'SF Pro Rounded', 'Segoe UI', system-ui, sans-serif;
+  --font-pixel: 'Pixelify Sans', 'Nunito Variable', system-ui, sans-serif;
+  font-family: var(--font-text);
   color: var(--ink);
+}
+
+h1,
+h2,
+h3,
+.villager-title {
+  font-family: var(--font-pixel);
+  font-weight: 700;
+  letter-spacing: 0.02em;
 }
 
 * {
@@ -66,10 +78,11 @@ body {
 }
 
 .title-logo {
+  display: block;
   width: 100%;
-  height: auto;
-  image-rendering: pixelated;
-  filter: drop-shadow(0 8px 0 rgba(0, 0, 0, 0.25));
+  aspect-ratio: 960 / 200;
+  cursor: pointer;
+  filter: drop-shadow(0 10px 12px rgba(0, 0, 0, 0.35));
 }
 
 .splash {
@@ -115,35 +128,70 @@ body {
   flex: 1;
 }
 
-/* Chunky buttons with a stone look and a bright edge when you point at them. */
+/*
+ * Minecraft-style buttons, made sharper: a stone-like face with fine
+ * noise, a pixel bevel (light top-left, dark bottom-right), a black frame,
+ * yellow text when you point at one, and a real press.
+ */
 .mc-button {
-  font-size: 1.15rem;
-  padding: 14px 18px;
-  color: #fff;
-  text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.45);
-  background: linear-gradient(#8a8f96, #6c7179);
-  border: 3px solid #1d2026;
-  border-radius: 10px;
+  --face: #7b7f86;
+  --face-top: #8e939b;
+  --light: rgba(255, 255, 255, 0.42);
+  --dark: rgba(0, 0, 0, 0.42);
+  position: relative;
+  font-family: var(--font-pixel);
+  font-weight: 600;
+  font-size: 1.2rem;
+  letter-spacing: 0.03em;
+  padding: 13px 18px 15px;
+  color: #f4f4f4;
+  text-shadow: 2px 2px 0 #3a3a3a;
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.16 0'/%3E%3C/filter%3E%3Crect width='64' height='64' filter='url(%23n)'/%3E%3C/svg%3E"),
+    linear-gradient(var(--face-top), var(--face));
+  border: 2px solid #111316;
+  border-radius: 3px;
   box-shadow:
-    inset 0 3px 0 rgba(255, 255, 255, 0.35),
-    inset 0 -4px 0 rgba(0, 0, 0, 0.3),
-    0 4px 0 rgba(0, 0, 0, 0.35);
+    inset 3px 3px 0 var(--light),
+    inset -3px -4px 0 var(--dark),
+    0 3px 0 rgba(0, 0, 0, 0.35);
+  cursor: pointer;
   transition:
-    transform 80ms,
-    filter 80ms;
+    transform 60ms,
+    box-shadow 60ms,
+    filter 120ms;
 }
 
 .mc-button:hover {
-  filter: brightness(1.12);
+  color: #ffff8a;
+  filter: brightness(1.1) saturate(1.1);
   border-color: #fff;
+}
+
+.mc-button:focus-visible {
+  outline: 3px solid #ffff8a;
+  outline-offset: 2px;
 }
 
 .mc-button:active {
   transform: translateY(2px);
+  box-shadow:
+    inset 3px 4px 0 var(--dark),
+    inset -2px -2px 0 var(--light),
+    0 1px 0 rgba(0, 0, 0, 0.35);
+}
+
+.mc-button:disabled {
+  color: #b8b8b8;
+  filter: grayscale(0.6) brightness(0.8);
+  cursor: default;
+  transform: none;
 }
 
 .mc-button.primary {
-  background: linear-gradient(#5cbf4a, #3f9b3a);
+  --face: #3f9a37;
+  --face-top: #57b84a;
+  text-shadow: 2px 2px 0 #1f4f1a;
 }
 
 .mc-panel {
@@ -276,22 +324,42 @@ h2 {
   color: var(--muted);
 }
 
+/* Smaller buttons in panels share the same pixel bevel. */
 button {
   font: inherit;
-  font-weight: 700;
-  border: none;
-  border-radius: 14px;
-  padding: 10px 18px;
-  background: var(--accent);
+  font-family: var(--font-pixel);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  border: 2px solid rgba(0, 0, 0, 0.55);
+  border-radius: 4px;
+  padding: 9px 16px 11px;
+  background: linear-gradient(#4cab43, var(--accent));
   color: white;
+  text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.4);
   cursor: pointer;
-  box-shadow: 0 4px 0 var(--accent-dark);
-  transition: transform 0.05s;
+  box-shadow:
+    inset 2px 2px 0 rgba(255, 255, 255, 0.35),
+    inset -2px -3px 0 rgba(0, 0, 0, 0.3),
+    0 3px 0 var(--accent-dark);
+  transition:
+    transform 60ms,
+    filter 120ms;
+}
+
+button:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+button:focus-visible {
+  outline: 3px solid #ffd84a;
+  outline-offset: 2px;
 }
 
 button:active {
-  transform: translateY(3px);
-  box-shadow: 0 1px 0 var(--accent-dark);
+  transform: translateY(2px);
+  box-shadow:
+    inset 2px 3px 0 rgba(0, 0, 0, 0.3),
+    0 1px 0 var(--accent-dark);
 }
 
 button.big {
@@ -300,9 +368,13 @@ button.big {
 }
 
 button.secondary {
-  background: #e7e2d6;
+  background: linear-gradient(#f2eee4, #e2dccd);
   color: var(--ink);
-  box-shadow: 0 4px 0 #c4bdab;
+  text-shadow: none;
+  box-shadow:
+    inset 2px 2px 0 rgba(255, 255, 255, 0.8),
+    inset -2px -3px 0 rgba(0, 0, 0, 0.12),
+    0 3px 0 #b9b19d;
 }
 
 button:disabled {
@@ -730,6 +802,41 @@ kbd {
   justify-content: space-between;
 }
 
+/* The green experience bar with your level, like in Minecraft. */
+.xp-row {
+  position: relative;
+  height: 10px;
+  margin-top: 2px;
+}
+
+.xp-track {
+  height: 6px;
+  margin-top: 2px;
+  background: #1a1a1a;
+  border: 1px solid #000;
+}
+
+.xp-fill {
+  height: 100%;
+  width: 0;
+  background: linear-gradient(#b8ff5a, #5ec21e);
+}
+
+.xp-level {
+  position: absolute;
+  left: 50%;
+  top: -10px;
+  transform: translateX(-50%);
+  color: #8cff3a;
+  font-weight: 800;
+  font-size: 0.95rem;
+  text-shadow:
+    1px 1px 0 #000,
+    -1px -1px 0 #000,
+    1px -1px 0 #000,
+    -1px 1px 0 #000;
+}
+
 .bar {
   display: flex;
   gap: 1px;
@@ -854,6 +961,34 @@ kbd {
   display: flex;
   flex-direction: column;
   gap: 4px;
+}
+
+.armor-box {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.armor-doll {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 10px;
+  background: #1c1c1c;
+  border: 3px solid;
+  border-color: #555 #fff #fff #555;
+  border-radius: 4px;
+}
+
+.armor-doll canvas {
+  image-rendering: pixelated;
+}
+
+.armor-points {
+  color: #fff;
+  font-size: 0.85rem;
+  white-space: nowrap;
 }
 
 .tabs {
@@ -1234,4 +1369,47 @@ kbd {
 .dialogue-text {
   font-size: 1.05rem;
   line-height: 1.35;
+}
+
+/* --- Enchanting table --- */
+
+.enchant-help {
+  max-width: 360px;
+  margin: 6px 0;
+  font-size: 0.85rem;
+  text-align: center;
+  opacity: 0.85;
+}
+
+.enchant-offers {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: min(420px, 90vw);
+}
+
+.enchant-offer {
+  padding: 8px 10px;
+  text-align: left;
+  font-weight: 700;
+  color: #f3e6ff;
+  background: linear-gradient(#4a2a6a, #2e1a46);
+  border: 2px solid #8a5ac8;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.enchant-offer:hover:not(:disabled) {
+  background: linear-gradient(#5e3688, #3a2058);
+}
+
+.enchant-offer:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.enchant-level {
+  margin-top: 8px;
+  color: #8cff3a;
+  font-weight: 800;
 }

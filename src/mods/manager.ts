@@ -6,7 +6,7 @@ import { setExtraRecipes } from '../logic/recipes';
 import { combineEffects, NO_EFFECTS, type CombinedEffects } from './effects';
 import { MODS, modById } from './registry';
 import { ModFollower, ModRecorder, type ModCall, type ModSync } from './share';
-import type { ActorSpec, ActorState, Mod, ModApi } from './types';
+import type { ActorAct, ActorSpec, ActorState, Mod, ModApi } from './types';
 
 export class ModManager {
   private enabled: string[] = [];
@@ -64,6 +64,7 @@ export class ModManager {
         actor: (id: string, spec: ActorSpec, state: ActorState) =>
           base.actor(`${mod.id}:${id}`, spec, state),
         removeActor: (id: string) => base.removeActor(`${mod.id}:${id}`),
+        animate: (id: string, act: ActorAct) => base.animate(`${mod.id}:${id}`, act),
       });
       this.apis.set(mod.id, api);
     }

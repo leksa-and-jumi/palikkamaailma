@@ -54,6 +54,7 @@ export function countBatula(): Encounter {
       description: 'Voitit Kreivi Lepakkolan punaisen kuun alla.',
     },
     mood: {
+      music: 'halloween-count',
       fogColor: 0x2a0508,
       fogNear: 10,
       fogFar: 60,
@@ -87,11 +88,13 @@ export function countBatula(): Encounter {
         );
         if (timer <= 0) {
           phase = 'dive';
+          api.animate('count', 'cast');
           api.sound('laugh');
         }
       } else if (phase === 'dive') {
         if (moveTowards(at, { ...p, y: p.y }, DIVE_SPEED * dt) || distance(at, p) < 1.2) {
           if (Math.abs(at.y - p.y) < 2) {
+            api.animate('count', 'attack');
             api.hurt(3, 'Kreivi Lepakkola puraisi!');
             api.flash('rgba(200,0,30,0.5)', 0.5);
           }
@@ -116,6 +119,7 @@ export function countBatula(): Encounter {
         return;
       }
       hits++;
+      api.animate('count', 'hurt');
       burst(api, { ...at, y: at.y + 1 }, [0xff2030, 0x222222]);
       api.sound('pop');
       phase = 'circle';
