@@ -72,6 +72,8 @@ describe('Ikiyö', () => {
     expect(wentQuiet).toBe(true);
     expect(api.lines.some((l) => /HHHAAA|KIIII|SINÄÄÄ|GRRRAAA/.test(l))).toBe(true);
     expect(api.acts).toContainEqual(['head', 'attack']);
+    // And faces flash on the screen.
+    expect(api.screamers).toBeGreaterThan(0);
     expect(api.hurts).toBeGreaterThan(0);
     // The neck is a chain of pieces.
     expect(api.actors.has('n0')).toBe(true);

@@ -141,6 +141,7 @@ import { music, type Place } from './audio/music';
 import type { ModApi, ModEffects, ModPlayer } from './mods/types';
 import { ModActors } from './render/modActors';
 import { HeldItem } from './render/heldItem';
+import { showScreamer } from './ui/screamer';
 import { levelOf, protectionFactor, spendLevels } from './logic/enchanting';
 import type { MobView } from './render/mobRenderer';
 import { Arrows, BOW_DRAW_TIME, bowPower } from './play/arrows';
@@ -1340,6 +1341,8 @@ export class Game {
       },
       flash: (color, seconds) => this.hud.flash(color, seconds),
       shake: (amount, seconds) => this.shakeScreen(amount, seconds),
+      screamer: (variant, seconds) =>
+        showScreamer(document.getElementById('screamer')!, variant, seconds),
       actor: (id, spec, state) => this.modActors.set(id, spec, state),
       removeActor: (id) => this.modActors.remove(id),
       animate: (id, act) => this.modActors.animate(id, act),

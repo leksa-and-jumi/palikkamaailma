@@ -377,6 +377,12 @@ export const sounds = {
       blip(90, 0.08, 'sine', 0.05, i * 0.6, 60);
     }
   },
+  /** A screaming shriek for the faces: harsh, high and loud for a moment. */
+  shriek: () => {
+    noise(0.7, 0.45, 7000, 1500, 0, 'bandpass', 2);
+    for (const f of [880, 932, 1245, 1661]) blip(f, 0.6, 'sawtooth', 0.04, 0, f * 0.7);
+    growl(70, 45, 0.7, 0.16, 0, 0.02);
+  },
   /** Teeth snapping shut. */
   bite: () => {
     noise(0.06, 0.4, 5000, 1500, 0, 'highpass', 2);
