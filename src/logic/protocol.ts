@@ -310,6 +310,8 @@ const SOUNDS = new Set([
   'bite',
   'stretch',
   'giggle',
+  'knock',
+  'steps',
 ]);
 
 const ACTS = new Set(['attack', 'hurt', 'cast']);

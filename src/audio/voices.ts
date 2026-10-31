@@ -9,19 +9,27 @@ import { voiceId } from './voiceId';
 import lines from './voiceLines.json';
 
 const VOLUME = 0.85;
-/** The monster voice is slowed down (lower) by this much; its ghost even more. */
-const MONSTER_RATE = 0.86;
+/** The ghost voice under the monster voice is slowed down this much. */
 const GHOST_RATE = 0.6;
 const recorded: Readonly<Record<string, number>> = lines;
 let playing: HTMLAudioElement | null = null;
 let playingNodes: AudioScheduledSourceNode[] = [];
 
-export type VoiceFx = 'monster';
+/** monster: Ikiyö (rough, deep ghost voice). narrator: the diary (a little lower, echoing). */
+export type VoiceFx = 'monster' | 'narrator';
+
+const FX: Record<
+  VoiceFx,
+  { rate: number; rough: number; ghost: number; echo: number; shake: number }
+> = {
+  monster: { rate: 0.86, rough: 14, ghost: 0.5, echo: 0.42, shake: 0.22 },
+  narrator: { rate: 0.95, rough: 0, ghost: 0, echo: 0.3, shake: 0 },
+};
 
 /** How long the recorded line lasts (0 when it has no voice). */
 export function voiceSeconds(text: string, fx?: VoiceFx): number {
   const s = recorded[voiceId(text)] ?? 0;
-  return fx === 'monster' && s > 0 ? s / MONSTER_RATE : s;
+  return fx && s > 0 ? s / FX[fx].rate : s;
 }
 
 function stopPlaying(): void {
@@ -43,8 +51,8 @@ export function speak(text: string, fx?: VoiceFx): number {
   if (seconds <= 0 || !audioSettings.sounds) return 0;
   stopPlaying();
   const url = `${import.meta.env.BASE_URL}voices/${voiceId(text)}.m4a`;
-  if (fx === 'monster') {
-    void playMonster(url);
+  if (fx) {
+    void playMonster(url, fx);
     return seconds;
   }
   const audio = new Audio(url);
@@ -97,7 +105,8 @@ function echoBuffer(a: AudioContext): AudioBuffer {
   return echo;
 }
 
-async function playMonster(url: string): Promise<void> {
+async function playMonster(url: string, fx: VoiceFx): Promise<void> {
+  const f = FX[fx];
   const a = context();
   if (!a) return;
   let pending = buffers.get(url);
@@ -124,14 +133,14 @@ async function playMonster(url: string): Promise<void> {
   const lfo = a.createOscillator();
   const depth = a.createGain();
   lfo.frequency.value = 5.5;
-  depth.gain.value = 0.22;
+  depth.gain.value = f.shake;
   lfo.connect(depth).connect(shake.gain);
   shake.connect(out);
   // The voice itself: lower and rough.
   const voice = a.createBufferSource();
   voice.buffer = buffer;
-  voice.playbackRate.value = MONSTER_RATE;
-  const rough = distortion(a, 14);
+  voice.playbackRate.value = f.rate;
+  const rough = distortion(a, f.rough);
   const voiceGain = a.createGain();
   voiceGain.gain.value = 0.75;
   voice.connect(rough).connect(voiceGain).connect(shake);
@@ -143,13 +152,13 @@ async function playMonster(url: string): Promise<void> {
   dark.type = 'lowpass';
   dark.frequency.value = 900;
   const ghostGain = a.createGain();
-  ghostGain.gain.value = 0.5;
+  ghostGain.gain.value = f.ghost;
   ghost.connect(dark).connect(ghostGain).connect(shake);
   // The long echo.
   const room = a.createConvolver();
   room.buffer = echoBuffer(a);
   const wet = a.createGain();
-  wet.gain.value = 0.42;
+  wet.gain.value = f.echo;
   voiceGain.connect(room);
   ghostGain.connect(room);
   room.connect(wet).connect(out);

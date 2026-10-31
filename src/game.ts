@@ -1323,7 +1323,9 @@ export class Game {
       sparkle: (x, y, z, color) => this.effects.sparkle(x, y, z, color),
       say: (who, text) => {
         // Ikiyö speaks through the monster filter; {tags} are not shown.
-        const voice = speak(text, who.name === 'Ikiyö' ? 'monster' : undefined);
+        const fx =
+          who.name === 'Ikiyö' ? 'monster' : who.name === 'Päiväkirja' ? 'narrator' : undefined;
+        const voice = speak(text, fx);
         this.hud.say(who.emoji, who.name, who.color ?? '#ffd66b', shownText(text), voice + 1);
         // The speaking character's mouth moves while it talks (or the words type out).
         this.modActors.talk(voice || [...text].length * LETTER_SECONDS + 0.4);

@@ -248,7 +248,9 @@ export type ModSound =
   | 'stinger'
   | 'bite'
   | 'stretch'
-  | 'giggle';
+  | 'giggle'
+  | 'knock'
+  | 'steps';
 
 /** A chat command a mod adds (like /kauhu). */
 export interface ModCommand {

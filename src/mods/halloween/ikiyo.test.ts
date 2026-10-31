@@ -19,7 +19,8 @@ function summon() {
   api.night = false;
   api.trophies.push(...ALL);
   halloween.onTag!(api, 'me', 'all-trophies');
-  for (let i = 0; i < 2000 && !api.actors.has('ikiyo'); i++) halloween.tick!(api, 0.05);
+  // First the story is told (about three minutes), then it rises.
+  for (let i = 0; i < 8000 && !api.actors.has('ikiyo'); i++) halloween.tick!(api, 0.05);
   return api;
 }
 
@@ -75,5 +76,25 @@ describe('Ikiyö', () => {
     // The neck is a chain of pieces.
     expect(api.actors.has('n0')).toBe(true);
     expect(api.actors.has('head')).toBe(true);
+  });
+
+  it('tells the diary story first, with strange things happening, then a short warning next time', () => {
+    const api = summon();
+    const diary = api.lines.filter((l) => !l.startsWith('{'));
+    expect(diary[0]).toContain('Tämä maailma ei ole ensimmäinen');
+    expect(diary.some((l) => l.includes('eri käsialalla'))).toBe(true);
+    expect(api.toasts).toContain('👤 ??? liittyi maailmaan.');
+    expect(api.lines).toContain('{whispers} Nyt… on… sinun… {screams} VUOROSI!');
+    // It leaves (unbeatable)… and when it comes back, only a short warning.
+    for (let i = 0; i < 400; i++) {
+      halloween.onHitActor!(api, 'ikiyo', 7);
+      halloween.tick!(api, 0.05);
+    }
+    for (let i = 0; i < 400 && api.actors.has('ikiyo'); i++) halloween.tick!(api, 0.05);
+    const before = api.lines.length;
+    for (let i = 0; i < 20 * 700 && !api.actors.has('ikiyo'); i++) halloween.tick!(api, 0.05);
+    const after = api.lines.slice(before);
+    expect(after).toContain('Se palasi. Ne palaavat aina.');
+    expect(after.some((l) => l.includes('Tämä maailma ei ole ensimmäinen'))).toBe(false);
   });
 });
