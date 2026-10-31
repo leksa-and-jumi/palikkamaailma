@@ -95,6 +95,10 @@ describe('Ikiyö', () => {
     expect(api.acts).toContainEqual(['head', 'attack']);
     expect(api.screamers).toBeGreaterThan(0);
     expect(api.hurts).toBeGreaterThan(0);
+    // Its bite and claws splatter blood on your screen, but not every hit does.
+    expect(api.blood.length).toBeGreaterThan(0);
+    expect(api.blood.length).toBeLessThanOrEqual(90 / 6 + 1);
+    expect(api.blood.every(([id, b]) => id === 'me' && b > 0 && b <= 1)).toBe(true);
     // The neck is a chain of pieces.
     expect(api.actors.has('n0')).toBe(true);
     expect(api.actors.has('head')).toBe(true);

@@ -140,6 +140,17 @@ describe('protocol', () => {
     expect(odd && ('pose' in odd || 'act' in odd)).toBe(false);
   });
 
+  it('passes blood on a mod hurt only as a small number', () => {
+    const base = { t: 'modCall', to: 'p1', mod: '', call: 'hurt', damage: 4, reason: 'Au' };
+    expect(parseClientMessage(JSON.stringify({ ...base, blood: 0.8 }))).toMatchObject({
+      blood: 0.8,
+    });
+    const odd = parseClientMessage(JSON.stringify({ ...base, blood: 'lots' }));
+    expect(odd && 'blood' in odd).toBe(false);
+    const huge = parseClientMessage(JSON.stringify({ ...base, blood: 50 }));
+    expect(huge && 'blood' in huge).toBe(false);
+  });
+
   it('lets a shared mod take and give back things, with nothing extra', () => {
     const strip = parseClientMessage(
       JSON.stringify({ t: 'modCall', to: 'p1', mod: '', call: 'strip', items: [1, 2] }),

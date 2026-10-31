@@ -251,10 +251,13 @@ export interface ModApi {
   animate(id: string, act: ActorAct): void;
   /** The boss bar at the top of the screen (null hides it). */
   bossBar(name: string | null, health?: number): void;
-  /** Hurts you (only in survival). */
-  hurt(amount: number, reason: string): void;
+  /**
+   * Hurts you (only in survival). `blood` (0–1) splatters blood on the
+   * screen of the one hurt: use it sparingly, only for the worst hits.
+   */
+  hurt(amount: number, reason: string, blood?: number): void;
   /** Hurts another player (they get it over the network). */
-  hurtPlayer(id: string, amount: number, reason: string): void;
+  hurtPlayer(id: string, amount: number, reason: string, blood?: number): void;
   /** Changes your rules for a while (a web slows you down). */
   effect(effects: ModEffects, seconds: number): void;
   effectFor(id: string, effects: ModEffects, seconds: number): void;

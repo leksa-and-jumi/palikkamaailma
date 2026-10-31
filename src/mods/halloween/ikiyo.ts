@@ -76,6 +76,11 @@ const LUNGE_SPEED = 34;
 const RETRACT_SPEED = 13;
 const BITE_DAMAGE = 4;
 const BITE_HOLD = 0.6;
+/** Blood on your screen (0–1): only its bite and its claws, and not too much. */
+const BITE_BLOOD = 0.8;
+const SLAM_BLOOD = 0.45;
+/** At least this long between two bloody hits (seconds). */
+const BLOOD_EVERY = 6;
 /** The jump scare: quiet first, then the face in yours. */
 const SCARE_EVERY: [number, number] = [24, 42];
 const SCARE_QUIET = 2.3;
@@ -317,6 +322,7 @@ export function ikiyo(options: IkiyoOptions = { dawn: () => false, visit: 0 }): 
   let stripped: string[] = [];
   let naked = false;
   let mercyIn = 0;
+  let bloodIn = 0;
   const speech = new Speech(0.5);
   const who = { emoji: '👁️', name: 'Ikiyö', color: '#ff3b2f' };
 
@@ -529,6 +535,12 @@ export function ikiyo(options: IkiyoOptions = { dawn: () => false, visit: 0 }): 
   };
 
   const say = (api: ModApi, text: string) => api.say(who, text);
+  /** Blood on the screen now and then, not with every hit. */
+  const bleed = (amount: number) => {
+    if (bloodIn > 0 || Math.random() < 0.3) return 0;
+    bloodIn = BLOOD_EVERY;
+    return amount;
+  };
 
   const goPhase = (api: ModApi, next: 2 | 3) => {
     phase = next;
@@ -676,7 +688,7 @@ export function ikiyo(options: IkiyoOptions = { dawn: () => false, visit: 0 }): 
           const mouth = { ...head, y: head.y + HEAD_MIDDLE };
           if (Math.hypot(mouth.x - e.x, mouth.y - e.y, mouth.z - e.z) < 3) {
             api.flash('rgba(160,0,0,0.75)', 0.6);
-            api.hurt(BITE_DAMAGE, 'Ikiyö puraisi!');
+            api.hurt(BITE_DAMAGE, 'Ikiyö puraisi!', bleed(BITE_BLOOD));
             gotYou(api);
           }
         }
@@ -1077,7 +1089,7 @@ export function ikiyo(options: IkiyoOptions = { dawn: () => false, visit: 0 }): 
         api.shake(0.95, 0.7);
         burst(api, { ...slam, y: slam.y + 0.2 }, [0x1a1a1a, 0x5a5a5a, 0xff3020], 24);
         if (distance(p, slam) < SLAM_RADIUS && Math.abs(p.y - slam.y) < 3) {
-          api.hurt(SLAM_DAMAGE, 'Ikiyön kynnet iskivät maahan!');
+          api.hurt(SLAM_DAMAGE, 'Ikiyön kynnet iskivät maahan!', bleed(SLAM_BLOOD));
           gotYou(api);
         }
         slam = null;
@@ -1167,6 +1179,7 @@ export function ikiyo(options: IkiyoOptions = { dawn: () => false, visit: 0 }): 
       rise += dt / 3;
       hitLineIn -= dt;
       mercyIn -= dt;
+      bloodIn -= dt;
       ambience(api, dt);
       if (mode !== 'calm') api.atmosphere(mood(api));
       switch (mode) {

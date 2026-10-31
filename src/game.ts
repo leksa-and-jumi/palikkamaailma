@@ -146,6 +146,7 @@ import type { ModApi, ModEffects, ModPlayer } from './mods/types';
 import { ModActors } from './render/modActors';
 import { HeldItem } from './render/heldItem';
 import { showScreamer } from './ui/screamer';
+import { BloodScreen } from './ui/bloodSplat';
 import { levelOf, protectionFactor, spendLevels } from './logic/enchanting';
 import type { MobView } from './render/mobRenderer';
 import { Arrows, BOW_DRAW_TIME, bowPower } from './play/arrows';
@@ -338,6 +339,8 @@ export class Game {
   /** Mods that are on in this world (the same for everyone in it). */
   readonly mods: ModManager;
   private readonly modActors: ModActors;
+  /** Blood on the screen after a mod's worst hits. */
+  private readonly blood = new BloodScreen(document.getElementById('blood') as HTMLCanvasElement);
   /** What you hold, at the bottom right of the screen. */
   private readonly held = new HeldItem();
   private readonly arrows: Arrows;
@@ -1360,11 +1363,20 @@ export class Game {
       bossBar: (name, health) => this.hud.bossBar(name, health),
       mark: (text, level) => this.hud.setModMark(text, level ?? 0),
       corner: (icon, title) => this.hud.setModCorner(icon, title),
-      hurt: (amount, reason) => this.takeDamage(amount, reason),
-      hurtPlayer: (id, amount, reason) => {
-        if (id === this.myId) this.takeDamage(amount, reason);
-        else
-          this.room?.send({ t: 'modCall', to: id, mod: '', call: 'hurt', damage: amount, reason });
+      hurt: (amount, reason, blood) => this.takeModDamage(amount, reason, blood),
+      hurtPlayer: (id, amount, reason, blood) => {
+        if (id === this.myId) this.takeModDamage(amount, reason, blood);
+        else {
+          this.room?.send({
+            t: 'modCall',
+            to: id,
+            mod: '',
+            call: 'hurt',
+            damage: amount,
+            reason,
+            ...(blood ? { blood } : {}),
+          });
+        }
       },
       effect: (effects, seconds) => this.addTempEffect(effects, seconds),
       effectFor: (id, effects, seconds) => {
@@ -1447,6 +1459,13 @@ export class Game {
     }
     this.savePlayerNow();
     this.hud.toast('🎒 Tavarasi palasivat!');
+  }
+
+  /** A mod's hit; the worst ones splatter blood on your screen. */
+  private takeModDamage(amount: number, reason: string, blood = 0): void {
+    if (this.mode !== 'survival' || this.dead) return;
+    this.takeDamage(amount, reason);
+    if (blood > 0) this.blood.splat(blood);
   }
 
   /** A short change to how you move (a web slows you down). */
@@ -2021,6 +2040,7 @@ export class Game {
 
   private die(reason: string): void {
     this.dead = true;
+    this.blood.clear();
     this.giveBackStolen();
     this.mining = null;
     this.input.unlock();
@@ -2840,7 +2860,7 @@ export class Game {
         this.carts.remove(msg.id);
         return;
       case 'modCall':
-        if (msg.call === 'hurt') this.takeDamage(msg.damage ?? 1, msg.reason ?? '');
+        if (msg.call === 'hurt') this.takeModDamage(msg.damage ?? 1, msg.reason ?? '', msg.blood);
         else if (msg.call === 'strip') this.stealAll();
         else if (msg.call === 'unstrip') this.giveBackStolen();
         else if (msg.call === 'effect') {

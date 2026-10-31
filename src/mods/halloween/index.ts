@@ -155,7 +155,10 @@ function focus(
     player: { value: target },
     mode: { value: 'survival' },
     dead: { value: false },
-    hurt: { value: (amount: number, reason: string) => api.hurtPlayer(target.id, amount, reason) },
+    hurt: {
+      value: (amount: number, reason: string, blood?: number) =>
+        api.hurtPlayer(target.id, amount, reason, blood),
+    },
     // Only your own computer can push you.
     push: { value: target.id === api.players[0]?.id ? api.push.bind(api) : () => undefined },
     effect: {

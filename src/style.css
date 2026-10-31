@@ -1581,6 +1581,15 @@ kbd {
 }
 
 /* Eyelids: black from above and below, soft-edged, like your eyes closing. */
+/* Blood on the screen after a big hit (drawn by ui/bloodSplat.ts). */
+.blood {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
 .eyelids {
   --lid: 0%;
   position: absolute;

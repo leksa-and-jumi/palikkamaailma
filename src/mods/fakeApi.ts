@@ -98,12 +98,16 @@ export function fakeApi() {
     bossBar(name: string | null) {
       state.boss = name;
     },
-    hurt() {
+    /** Blood splattered on screens: [player id, amount]. */
+    blood: [] as [string, number][],
+    hurt(_amount: number, _reason: string, blood?: number) {
       state.hurts++;
+      if (blood) state.blood.push(['me', blood]);
     },
-    hurtPlayer(id: string, amount: number) {
+    hurtPlayer(id: string, amount: number, _reason: string, blood?: number) {
       if (id === 'me') state.hurts++;
       else state.hurtOthers.push([id, amount]);
+      if (blood) state.blood.push([id, blood]);
     },
     effect() {
       state.slowed++;

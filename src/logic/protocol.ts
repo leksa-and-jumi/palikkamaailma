@@ -249,6 +249,7 @@ export interface ModCallNet {
   walk?: number;
   jump?: number;
   seconds?: number;
+  blood?: number;
 }
 
 const MOD_ID = /^[a-z0-9-]{1,32}$/;
@@ -408,7 +409,10 @@ function parseModCall(msg: Record<string, unknown>): ModCallNet | null {
   }
   if (call === 'hurt') {
     if (!num(msg.damage, 20) || msg.damage <= 0 || !shortText(msg.reason, 80)) return null;
-    return { mod: msg.mod, call, damage: msg.damage, reason: msg.reason };
+    const hurt: ModCallNet = { mod: msg.mod, call, damage: msg.damage, reason: msg.reason };
+    // Blood on their screen (0–1), for the worst hits.
+    if (num(msg.blood, 1) && msg.blood > 0) hurt.blood = msg.blood;
+    return hurt;
   }
   // A shared mod takes a player's things for a while, or gives them back.
   if (call === 'strip' || call === 'unstrip') return { mod: msg.mod, call };
