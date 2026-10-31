@@ -110,6 +110,8 @@ export interface ActorPart {
   phase?: number;
   /** Tilts it a little (radians around x, z), e.g. arms held forward. */
   tilt?: [number, number];
+  /** Not only boxes: round heads, long thin arms, sharp claws (size = how big each way). */
+  shape?: 'box' | 'sphere' | 'cylinder' | 'cone';
 }
 
 /** How the whole character moves. */
@@ -194,6 +196,8 @@ export interface ModApi {
   atmosphere(a: Atmosphere | null): void;
   /** A quick flash over the screen (CSS colour). */
   flash(color: string, seconds: number): void;
+  /** Shakes the screen (0–1 strong) for a moment. */
+  shake(amount: number, seconds: number): void;
   /** Shows or moves one of the mod's own characters (only on this computer). */
   actor(id: string, spec: ActorSpec, state: ActorState): void;
   removeActor(id: string): void;
@@ -233,12 +237,19 @@ export type ModSound =
   | 'creak'
   | 'howl'
   | 'drip'
-  | 'wind';
+  | 'wind'
+  | 'roar'
+  | 'drone'
+  | 'glitch'
+  | 'scream'
+  | 'rumble';
 
 /** A chat command a mod adds (like /kauhu). */
 export interface ModCommand {
   names: readonly string[];
   help: string;
+  /** A secret (easter egg): not in the help lists. */
+  hidden?: boolean;
   run(api: ModApi, args: string): void;
 }
 
@@ -249,6 +260,8 @@ export interface Trophy {
   emoji: string;
   name: string;
   description: string;
+  /** Shown as ??? until won. */
+  secret?: boolean;
 }
 
 export interface Mod {
@@ -275,6 +288,13 @@ export interface Mod {
   liveEffects?(): ModEffects | null;
   /** Chat commands. */
   commands?: readonly ModCommand[];
+  /**
+   * Short facts about this player that a shared mod's host needs (e.g. "has
+   * every trophy"); the others' computers send theirs to the host now and then.
+   */
+  tags?(api: ModApi): readonly string[];
+  /** On the host: a player told one of their tags (`id` is theirs, or yours). */
+  onTag?(api: ModApi, playerId: string, tag: string): void;
   /** You hit one of the mod's characters. */
   onHitActor?(api: ModApi, id: string, damage: number): void;
   /** Called every frame while the mod is on. */

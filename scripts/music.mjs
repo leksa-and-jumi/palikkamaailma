@@ -25,6 +25,10 @@ const CALM =
 const SPOOKY =
   'Instrumental only, no vocals, no singing, no lyrics. Very quiet, subtle background underscore for a Halloween boss in a blocky game for children aged 7–10: creepy and mysterious but never too scary, soft dynamics, no sudden loud hits.';
 
+/** Ikiyö, the seventh: scarier than the others, but still made for children. */
+const DREAD =
+  'Instrumental only, no vocals, no singing, no lyrics, no screams. Dark horror film underscore for a giant shadow monster in a blocky game for children aged 7–10: genuinely creepy and tense, ominous and menacing, but no sudden loud jump scares, controlled dynamics, cinematic.';
+
 const TRACKS = [
   {
     id: 'aamu',
@@ -77,6 +81,18 @@ const TRACKS = [
   {
     id: 'halloween-silent',
     prompt: `${SPOOKY} Almost silent dark ambient: a deep soft drone with very sparse single piano notes, uneasy and still.`,
+  },
+  {
+    id: 'ikiyo-1',
+    prompt: `${DREAD} Phase one, the whisper: a deep sub-bass drone, slow distant breathing-like swells, sparse detuned music-box notes, faint ticking, unsettling and very slow.`,
+  },
+  {
+    id: 'ikiyo-2',
+    prompt: `${DREAD} Phase two, the red moon: slow heavy taiko-like drum hits far away, dissonant low strings sliding, a dark organ chord, rising tension, still not too loud.`,
+  },
+  {
+    id: 'ikiyo-3',
+    prompt: `${DREAD} Phase three, endless night: a slow heartbeat pulse, deep rumbling drone, eerie high glassy tones that bend out of tune, almost silent moments in between, deep dread.`,
   },
 ];
 

@@ -83,4 +83,15 @@ describe('shared mods', () => {
     expect(api.hurtOthers[0]?.[0]).toBe('leo');
     expect(api.hurts).toBe(0);
   });
+
+  it('a follower with every trophy tells the host, so Ikiyö may come for them', () => {
+    resetHalloween();
+    const calls: ModCall[] = [];
+    const api = fakeApi();
+    api.trophies.push('halloween-master');
+    const mods = new ModManager(api, { isHost: () => false, callHost: (c) => calls.push(c) });
+    mods.set(['halloween']);
+    mods.tick(2);
+    expect(calls).toContainEqual({ mod: 'halloween', call: 'tag', name: 'all-trophies' });
+  });
 });

@@ -240,7 +240,7 @@ const MAX_HIT_DAMAGE = 50;
  */
 export interface ModCallNet {
   mod: string;
-  call: 'hit' | 'command' | 'hurt' | 'effect';
+  call: 'hit' | 'command' | 'hurt' | 'effect' | 'tag';
   actor?: string;
   damage?: number;
   name?: string;
@@ -301,6 +301,11 @@ const SOUNDS = new Set([
   'howl',
   'drip',
   'wind',
+  'roar',
+  'drone',
+  'glitch',
+  'scream',
+  'rumble',
 ]);
 
 const ACTS = new Set(['attack', 'hurt', 'cast']);
@@ -331,6 +336,8 @@ function parseSyncEvent(v: unknown): SyncEvent | null {
       return v.length === 6 && v.slice(2, 5).every((n) => num(n)) && num(v[5], 0xffffff)
         ? (v as SyncEvent)
         : null;
+    case 'sk':
+      return v.length === 4 && num(v[2], 1) && num(v[3], 10) ? (v as SyncEvent) : null;
     case 'an':
       return v.length === 4 && shortText(v[2], 40) && ACTS.has(v[3] as string)
         ? (v as SyncEvent)
@@ -378,6 +385,10 @@ function parseModCall(msg: Record<string, unknown>): ModCallNet | null {
   if (call === 'command') {
     if (!shortText(msg.name, 32) || !shortText(msg.args, MOD_TEXT)) return null;
     return { mod: msg.mod, call, name: msg.name, args: msg.args };
+  }
+  if (call === 'tag') {
+    if (!shortText(msg.name, 32)) return null;
+    return { mod: msg.mod, call, name: msg.name };
   }
   if (call === 'hurt') {
     if (!num(msg.damage, 20) || msg.damage <= 0 || !shortText(msg.reason, 80)) return null;

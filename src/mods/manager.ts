@@ -8,6 +8,9 @@ import { MODS, modById } from './registry';
 import { ModFollower, ModRecorder, type ModCall, type ModSync } from './share';
 import type { ActorAct, ActorSpec, ActorState, Mod, ModApi } from './types';
 
+/** Seconds between telling the host your tags. */
+const TAG_EVERY = 8;
+
 export class ModManager {
   private enabled: string[] = [];
   private combined: CombinedEffects = NO_EFFECTS;
@@ -20,13 +23,15 @@ export class ModManager {
   private readonly recorders = new Map<string, { recorder: ModRecorder; api: ModApi }>();
   private readonly followers = new Map<string, ModFollower>();
   private wasHost = true;
+  private tagTimer = 1;
 
   constructor(
     private readonly base: ModApi,
     /** Multiplayer: am I the host, and how to ask the host. Alone you are always the host. */
-    private readonly net: { isHost(): boolean; callHost(call: ModCall): void } = {
+    private readonly net: { isHost(): boolean; callHost(call: ModCall): void; myId?(): string } = {
       isHost: () => true,
       callHost: () => undefined,
+      myId: () => 'me',
     },
   ) {}
 
@@ -132,6 +137,18 @@ export class ModManager {
       }
     }
     this.wasHost = host;
+    // Tell the host your tags now and then (a new host learns them within seconds).
+    this.tagTimer -= dt;
+    if (this.tagTimer <= 0) {
+      this.tagTimer = TAG_EVERY;
+      for (const mod of active) {
+        if (!mod.shared || !mod.tags) continue;
+        for (const tag of mod.tags(this.apiFor(mod))) {
+          if (host) mod.onTag?.(this.hostApi(mod), this.net.myId?.() ?? 'me', tag);
+          else this.net.callHost({ mod: mod.id, call: 'tag', name: tag });
+        }
+      }
+    }
     // Rules that change all the time (a web slows you) join the fixed ones.
     if (active.some((m) => m.liveEffects)) {
       const live = active.map((m) => ({ ...m, effects: { ...m.effects, ...m.liveEffects?.() } }));
@@ -152,9 +169,10 @@ export class ModManager {
   }
 
   /** On the host: a follower hit a character or used a command. */
-  receiveCall(call: ModCall): void {
+  receiveCall(call: ModCall, from = ''): void {
     const mod = modById(call.mod);
     if (!mod?.shared || !this.isOn(mod.id) || !this.net.isHost()) return;
+    if (call.call === 'tag' && call.name && from) mod.onTag?.(this.hostApi(mod), from, call.name);
     if (call.call === 'hit' && call.actor) {
       mod.onHitActor?.(this.hostApi(mod), call.actor, call.damage ?? 1);
     }
@@ -201,7 +219,9 @@ export class ModManager {
 
   /** Help lines for the commands of the mods that are on. */
   get commandHelp(): string[] {
-    return this.active.flatMap((m) => (m.commands ?? []).map((c) => c.help));
+    return this.active.flatMap((m) =>
+      (m.commands ?? []).filter((c) => !c.hidden).map((c) => c.help),
+    );
   }
 
   /** The game ended: mods stop (their recipes go away). */

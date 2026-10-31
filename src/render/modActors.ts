@@ -189,7 +189,7 @@ export class ModActors {
     for (const part of ordered) {
       const see = part.alpha !== undefined && part.alpha < 1;
       let mesh: THREE.Mesh;
-      const geometry = new THREE.BoxGeometry(...part.size);
+      const geometry = shapeGeometry(part);
       if (part.glow) {
         const material = new THREE.MeshBasicMaterial({
           color: part.color,
@@ -611,4 +611,19 @@ function onTop(part: ActorPart, head: ActorPart): boolean {
     y >= hy - sy / 2 - 0.12 &&
     y <= hy + sy / 2 + 0.5
   );
+}
+
+/** A part's shape, made `size` big each way (boxes keep their sharp edges). */
+function shapeGeometry(part: ActorPart): THREE.BufferGeometry {
+  const [w, h, d] = part.size;
+  switch (part.shape) {
+    case 'sphere':
+      return new THREE.SphereGeometry(0.5, 18, 14).scale(w, h, d);
+    case 'cylinder':
+      return new THREE.CylinderGeometry(0.5, 0.5, 1, 12).scale(w, h, d);
+    case 'cone':
+      return new THREE.ConeGeometry(0.5, 1, 12).scale(w, h, d);
+    default:
+      return new THREE.BoxGeometry(w, h, d);
+  }
 }

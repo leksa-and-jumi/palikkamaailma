@@ -118,6 +118,44 @@ function hum(pitch: [number, number], duration: number, volume: number, vowel = 
   osc.stop(start + duration + 0.05);
 }
 
+/** A rough growl: a buzzing tone that wobbles, through a dark filter. */
+function growl(
+  frequency: number,
+  endFrequency: number,
+  duration: number,
+  volume: number,
+  delay = 0,
+  attack = 0.15,
+): void {
+  const a = audio();
+  if (!a || volume <= 0.001) return;
+  const start = a.currentTime + delay;
+  const osc = a.createOscillator();
+  osc.type = 'sawtooth';
+  osc.frequency.setValueAtTime(frequency, start);
+  osc.frequency.exponentialRampToValueAtTime(endFrequency, start + duration);
+  // A slow wobble makes it sound alive.
+  const lfo = a.createOscillator();
+  const depth = a.createGain();
+  lfo.frequency.value = 7;
+  depth.gain.value = frequency * 0.08;
+  lfo.connect(depth).connect(osc.frequency);
+  const filter = a.createBiquadFilter();
+  filter.type = 'lowpass';
+  filter.frequency.value = 420;
+  filter.Q.value = 4;
+  const gain = a.createGain();
+  gain.gain.setValueAtTime(0.0001, start);
+  gain.gain.exponentialRampToValueAtTime(volume, start + attack);
+  gain.gain.setValueAtTime(volume, start + duration * 0.6);
+  gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+  osc.connect(filter).connect(gain).connect(out(a));
+  osc.start(start);
+  lfo.start(start);
+  osc.stop(start + duration + 0.05);
+  lfo.stop(start + duration + 0.05);
+}
+
 /** Quieter far away (0–1). */
 function near(distance: number): number {
   return Math.max(0, 1 - distance / 64);
@@ -294,6 +332,35 @@ export const sounds = {
   },
   /** A cold wind rising and falling. */
   wind: () => noise(3.5, 0.05, 300, 1400, 0, 'bandpass', 4),
+  /** A giant's roar: a deep growl with a rough edge. */
+  roar: () => {
+    growl(55, 38, 2.2, 0.16);
+    growl(82, 50, 1.8, 0.08, 0.08);
+    noise(2.2, 0.18, 900, 120, 0, 'lowpass');
+  },
+  /** A long, low hum that makes the air feel heavy. */
+  drone: () => {
+    growl(41, 39, 6, 0.07, 0, 2.5);
+    blip(61.7, 6, 'sine', 0.05, 0, 60);
+  },
+  /** The sound stutters, as if the world itself glitched. */
+  glitch: () => {
+    for (let i = 0; i < 9; i++) {
+      noise(0.04, 0.09, 4000 + Math.random() * 3000, 800, i * 0.055, 'bandpass', 6);
+      if (i % 3 === 0) blip(90 + Math.random() * 400, 0.05, 'square', 0.03, i * 0.055, 60);
+    }
+  },
+  /** A far, thin scream that falls away. */
+  scream: () => {
+    blip(1400, 1.4, 'sawtooth', 0.025, 0, 380);
+    blip(1480, 1.3, 'triangle', 0.02, 0.05, 420);
+    noise(1.4, 0.05, 5000, 1200, 0, 'bandpass', 3);
+  },
+  /** The ground rumbles (big footsteps, something rising). */
+  rumble: () => {
+    noise(1.8, 0.3, 160, 40, 0, 'lowpass');
+    blip(38, 1.6, 'sine', 0.22, 0, 30);
+  },
 };
 
 export type SoundName = keyof typeof sounds;

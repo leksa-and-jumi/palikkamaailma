@@ -21,9 +21,14 @@ export function renderTrophies(el: HTMLElement): void {
       emoji.className = 'trophy-emoji';
       emoji.textContent = has ? trophy.emoji : '🔒';
       const name = document.createElement('strong');
-      name.textContent = trophy.name;
+      // A secret trophy stays a mystery until it is won.
+      name.textContent = !has && trophy.secret ? '???' : trophy.name;
       const about = document.createElement('small');
-      about.textContent = has ? trophy.description : `${mod.emoji} ${mod.name}`;
+      about.textContent = has
+        ? trophy.description
+        : trophy.secret
+          ? `${mod.emoji} Salaisuus…`
+          : `${mod.emoji} ${mod.name}`;
       card.append(emoji, name, about);
       return card;
     }),
