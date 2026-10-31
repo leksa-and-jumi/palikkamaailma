@@ -123,6 +123,14 @@ const SCREAMS = [
   '{growls} GRRRAAAAAH!',
 ];
 
+/** Ikiyö's own words at the end of the story told before it comes (prelude.ts). */
+export const OMEN_LINES = {
+  /** The last line of the diary, in another hand. */
+  story: '{whispers} Nyt… on… sinun… {screams} VUOROSI!',
+  /** When it comes back later (the short warning). */
+  again: '{whispers} Minä… muistan… {growls} sinut…',
+} as const;
+
 type Wisp = Vec & { id: string; age: number };
 type Head = 'rest' | 'windup' | 'lunge' | 'bite' | 'retract';
 

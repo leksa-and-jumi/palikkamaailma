@@ -13,6 +13,7 @@ import { countBatula } from './count';
 import type { Encounter } from './encounter';
 import { me, burst } from './encounter';
 import { ikiyo, type IkiyoEncounter } from './ikiyo';
+import { prelude as makePrelude, type Prelude } from './prelude';
 import { mistMaiden } from './mistMaiden';
 import { pumpkinKing } from './pumpkinKing';
 import { silentOne } from './silent';
@@ -63,6 +64,9 @@ let lines: string[] = [];
 let lineTimer = 0;
 let scareTimer = SCARE_EVERY[0];
 let giant: IkiyoEncounter | null = null;
+/** The story told before Ikiyö comes (the whole story once, then a short warning). */
+let prelude: Prelude | null = null;
+let toldStory = false;
 let giantWait = GIANT_FIRST;
 let clock = 0;
 /** Who has every trophy (player id → when they last said so). */
@@ -115,6 +119,8 @@ function focus(
 }
 
 function stop(api: ModApi): void {
+  prelude?.end(api);
+  prelude = null;
   current?.end(api);
   current = null;
   giant = null;
@@ -194,10 +200,26 @@ export const halloween: Mod = {
           wait = WAIT_AFTER_ESCAPE;
           return;
         }
+        if (args.startsWith('tar')) {
+          // The whole story, now (it ends with Ikiyö).
+          if (!focus(api, worthy(api))) {
+            api.toast('👁️ Tarina on vain niille, joilla on kaikki pokaalit (selviytyjä-tilassa)…');
+            return;
+          }
+          if (current) stop(api);
+          prelude = makePrelude(true);
+          toldStory = true;
+          return;
+        }
         if (args.startsWith('iki')) {
           const g = focus(api, worthy(api));
           if (!g) {
-            api.toast('👁️ Ikiyö tulee vain niille, joilla on kaikki pokaalit…');
+            // Say why: no trophies yet, or nobody it could come for (creative, dead).
+            api.toast(
+              worthy(api).size === 0
+                ? '👁️ Ikiyö tulee vain niille, joilla on kaikki pokaalit…'
+                : '👁️ Ikiyö tulee vain selviytyjä-tilassa… vaihda pois nikkaroijasta.',
+            );
             return;
           }
           if (current) stop(api);
@@ -267,6 +289,20 @@ export const halloween: Mod = {
         f.sound(SCARES[Math.floor(Math.random() * SCARES.length)]!);
       }
     }
+    if (prelude) {
+      const g2 = focus(api, worthy(api));
+      if (!g2) {
+        // Nobody to tell it to any more.
+        prelude.end(api);
+        prelude = null;
+        api.atmosphere(null);
+      } else if (prelude.update(g2, dt)) {
+        prelude.end(g2);
+        prelude = null;
+        beginGiant(g2);
+      }
+      return;
+    }
     if (current) {
       lineTimer -= dt;
       if (lines.length > 0 && lineTimer <= 0) {
@@ -278,13 +314,14 @@ export const halloween: Mod = {
       if (outcome !== 'fight') finish(f, outcome);
       return;
     }
-    // Ikiyö comes for the players with every trophy, by day or by night.
+    // Ikiyö comes for the players with every trophy, by day or by night:
+    // first the story (strange things happen), then it rises.
     const g = focus(api, worthy(api));
     if (g) {
       giantWait -= dt;
-      if (giantWait <= 0) {
-        beginGiant(g);
-        return;
+      if (giantWait <= 0 && !prelude) {
+        prelude = makePrelude(!toldStory);
+        toldStory = true;
       }
     }
     if (!api.night) return;
@@ -297,6 +334,8 @@ export const halloween: Mod = {
 export function resetHalloween(): void {
   current = null;
   giant = null;
+  prelude = null;
+  toldStory = false;
   giantWait = GIANT_FIRST;
   clock = 0;
   tagged.clear();

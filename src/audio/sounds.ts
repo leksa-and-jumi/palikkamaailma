@@ -363,6 +363,20 @@ export const sounds = {
     noise(0.9, 0.35, 6000, 300, 0, 'lowpass');
     growl(48, 36, 1.2, 0.18);
   },
+  /** Three slow knocks on wood, from somewhere close. */
+  knock: () => {
+    for (let i = 0; i < 3; i++) {
+      blip(150, 0.12, 'triangle', 0.14, i * 0.55, 80);
+      noise(0.08, 0.16, 900, 250, i * 0.55, 'bandpass', 3);
+    }
+  },
+  /** Slow footsteps walking around you. */
+  steps: () => {
+    for (let i = 0; i < 5; i++) {
+      noise(0.12, 0.07 - i * 0.008, 1400, 300, i * 0.6 + Math.random() * 0.08, 'lowpass');
+      blip(90, 0.08, 'sine', 0.05, i * 0.6, 60);
+    }
+  },
   /** Teeth snapping shut. */
   bite: () => {
     noise(0.06, 0.4, 5000, 1500, 0, 'highpass', 2);

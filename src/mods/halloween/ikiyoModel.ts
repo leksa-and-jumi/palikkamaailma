@@ -253,3 +253,35 @@ export const NECK: ActorSpec = {
     ...fangs(0.38, -0.72, 0.1, 2.35, 4),
   ],
 };
+
+/**
+ * The Watcher, seen before Ikiyö comes: a very tall, thin black figure with
+ * arms down to its knees and small red eyes. It never moves while you look.
+ */
+export const WATCHER: ActorSpec = {
+  id: 'ikiyo-watcher',
+  width: 0.8,
+  height: 3.4,
+  parts: [
+    p([0.22, 1.5, 0.22], [-0.14, 0.75, 0], SHADOW),
+    p([0.22, 1.5, 0.22], [0.14, 0.75, 0], SHADOW),
+    p([0.6, 1.2, 0.3], [0, 2.1, 0], SHADOW),
+    p([0.14, 1.9, 0.14], [-0.4, 1.75, 0], SHADOW, { tilt: [0, 0.05] }),
+    p([0.14, 1.9, 0.14], [0.4, 1.75, 0], SHADOW, { tilt: [0, -0.05] }),
+    // The head hangs a little to one side.
+    p([0.5, 0.62, 0.5], [0.04, 3.0, 0], SHADOW, { tilt: [0, 0.18] }),
+    p([0.09, 0.06, 0.05], [-0.1, 3.05, -0.26], EYE, { glow: true }),
+    p([0.09, 0.06, 0.05], [0.14, 3.07, -0.26], EYE, { glow: true }),
+  ],
+};
+
+/** Two red eyes in the dark. */
+export const EYES: ActorSpec = {
+  id: 'ikiyo-eyes',
+  width: 0.6,
+  height: 0.3,
+  parts: [
+    p([0.16, 0.1, 0.06], [-0.18, 0.15, 0], EYE, { shape: 'sphere', glow: true, flicker: true }),
+    p([0.16, 0.1, 0.06], [0.18, 0.15, 0], EYE, { shape: 'sphere', glow: true, flicker: true }),
+  ],
+};

@@ -31,6 +31,8 @@ const CAST = [
   { file: 'spiderQueen.ts', voice: 'matilda', style: '[hissing]' },
   { file: 'silent.ts', voice: 'roger', style: '[very slow, deep whisper]' },
   { file: 'ikiyo.ts', voice: 'harry', style: '[raspy, monstrous, unhinged]' },
+  // The diary read before Ikiyö (narrator; voice still to be chosen by the parent).
+  { file: 'prelude.ts', voice: 'brian', style: '[slow, hushed, ominous narration]' },
 ];
 
 function apiKey() {
