@@ -27,7 +27,7 @@ function play(api: ReturnType<typeof fakeApi>, seconds: number, stopWhen: () => 
     if (swing <= 0) {
       swing = 0.4;
       for (const [id, s] of api.actors) {
-        if (s.visible !== false) halloween.onHitActor!(api, id.replace(/^halloween:/, ''), 5);
+        if (s.visible !== false) halloween.onHitActor!(api, id.replace(/^halloween:/, ''), 5, 'me');
       }
     }
   }

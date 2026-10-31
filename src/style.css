@@ -1500,6 +1500,29 @@ kbd {
   vertical-align: -4px;
 }
 
+/* A mod's small sign in the corner (the dawn's crown): it glows softly. */
+.mod-corner {
+  position: absolute;
+  top: 124px;
+  left: 10px;
+  font-size: 1.5rem;
+  line-height: 1;
+  padding: 2px 4px;
+  filter: drop-shadow(0 0 6px rgba(255, 214, 90, 0.9));
+  animation: corner-glow 3s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes corner-glow {
+  0%,
+  100% {
+    filter: drop-shadow(0 0 4px rgba(255, 214, 90, 0.6));
+  }
+  50% {
+    filter: drop-shadow(0 0 10px rgba(255, 236, 150, 1));
+  }
+}
+
 /* A mod's badge: Ikiyö has marked you (a red eye that pulses like a heartbeat). */
 .mod-mark {
   position: absolute;
@@ -1558,6 +1581,15 @@ kbd {
 }
 
 /* Eyelids: black from above and below, soft-edged, like your eyes closing. */
+/* Blood on the screen after a big hit (drawn by ui/bloodSplat.ts). */
+.blood {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
 .eyelids {
   --lid: 0%;
   position: absolute;

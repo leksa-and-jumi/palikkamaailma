@@ -112,6 +112,7 @@
     <!-- In-game HUD -->
     <div id="hud" hidden>
       <!-- First, so the hotbar, hearts and chat stay on top of the eyelids. -->
+      <canvas id="blood" class="blood" hidden></canvas>
       <div id="eyelids" class="eyelids" hidden>
         <div></div>
         <div></div>
@@ -160,6 +161,7 @@
       <div id="portal-glow" class="portal-glow" hidden></div>
       <div id="atmo" class="atmo"></div>
       <div id="screen-flash" class="screen-flash"></div>
+      <div id="mod-corner" class="mod-corner" hidden></div>
       <div id="mod-mark" class="mod-mark" hidden>
         <span class="mod-mark-eye">👁️</span><span id="mod-mark-text"></span>
       </div>

@@ -33,6 +33,33 @@ const CAST = [
   { file: 'ikiyo.ts', voice: 'harry', style: '[raspy, monstrous, unhinged]' },
   // The diary read before Ikiyö (narrator, chosen by the parent).
   { file: 'prelude.ts', voice: 'brian', style: '[slow, hushed, ominous narration]' },
+  // Ikiyö as the friendly stranger: the same voice, sweet… then wrong.
+  {
+    file: 'stranger.ts',
+    voice: 'harry',
+    style: '[soft, sweet, friendly, a little too calm]',
+    only: /^(STRANGER|AWAY)_LINES$/,
+  },
+  {
+    file: 'stranger.ts',
+    voice: 'harry',
+    style: '[slow, flat, whispering, unsettling]',
+    only: /^WRONG_LINES$/,
+  },
+  // The ones Ikiyö took, whispering in the dark (voices the parent chose before).
+  {
+    file: 'whispers.ts',
+    voice: 'lily',
+    style: '[scared child, whispering]',
+    only: /^SMALL_LINES$/,
+  },
+  { file: 'whispers.ts', voice: 'roger', style: '[very slow, deep whisper]', only: /^OLD_LINES$/ },
+  {
+    file: 'whispers.ts',
+    voice: 'harry',
+    style: '[raspy, monstrous, unhinged]',
+    only: /^IKIYO_LINES$/,
+  },
 ];
 
 function apiKey() {
@@ -49,8 +76,8 @@ function apiKey() {
   throw new Error('OPENROUTER_API_KEY puuttuu');
 }
 
-/** All the words a character says in its file. */
-function linesIn(file) {
+/** All the words a character says in its file (`only`: just these lists of lines). */
+function linesIn(file, only) {
   const source = ts.createSourceFile(
     file,
     fs.readFileSync(path.join(ROOT, 'src/mods/halloween', file), 'utf8'),
@@ -64,6 +91,7 @@ function linesIn(file) {
   };
   const visit = (node) => {
     if (
+      !only &&
       ts.isPropertyAssignment(node) &&
       ['intro', 'defeat', 'escape'].includes(node.name.getText(source))
     ) {
@@ -71,6 +99,7 @@ function linesIn(file) {
     }
     // api.say(who, '…') and a character's own say(api, '…').
     if (
+      !only &&
       ts.isCallExpression(node) &&
       node.arguments[1] &&
       ((ts.isPropertyAccessExpression(node.expression) && node.expression.name.text === 'say') ||
@@ -82,7 +111,7 @@ function linesIn(file) {
     if (
       ts.isVariableDeclaration(node) &&
       ts.isIdentifier(node.name) &&
-      /^(TAUNTS|SCREAMS|[A-Z_]*LINES)$/.test(node.name.text) &&
+      (only ?? /^(TAUNTS|SCREAMS|[A-Z_]*LINES)$/).test(node.name.text) &&
       node.initializer
     ) {
       strings(node.initializer);
@@ -111,7 +140,7 @@ async function record(key, voice, text, out) {
 
 if (process.argv.includes('--list')) {
   for (const who of CAST)
-    for (const text of linesIn(who.file)) console.log(`${who.voice}: ${text}`);
+    for (const text of linesIn(who.file, who.only)) console.log(`${who.voice}: ${text}`);
   process.exit(0);
 }
 
@@ -121,7 +150,7 @@ const old = fs.existsSync(LIST) ? JSON.parse(fs.readFileSync(LIST, 'utf8')) : {}
 const list = {};
 let letters = 0;
 for (const who of CAST) {
-  for (const text of linesIn(who.file)) {
+  for (const text of linesIn(who.file, who.only)) {
     const id = voiceId(text);
     const file = path.join(OUT, `${id}.m4a`);
     if (old[id] && fs.existsSync(file)) {

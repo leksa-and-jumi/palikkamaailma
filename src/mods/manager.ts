@@ -166,7 +166,7 @@ export class ModManager {
       this.net.callHost({ mod: modId, call: 'hit', actor: id, damage });
       return;
     }
-    mod.onHitActor?.(this.hostApi(mod), id, damage);
+    mod.onHitActor?.(this.hostApi(mod), id, damage, this.net.myId?.() ?? 'me');
   }
 
   /** On the host: a follower hit a character or used a command. */
@@ -175,7 +175,7 @@ export class ModManager {
     if (!mod?.shared || !this.isOn(mod.id) || !this.net.isHost()) return;
     if (call.call === 'tag' && call.name && from) mod.onTag?.(this.hostApi(mod), from, call.name);
     if (call.call === 'hit' && call.actor) {
-      mod.onHitActor?.(this.hostApi(mod), call.actor, call.damage ?? 1);
+      mod.onHitActor?.(this.hostApi(mod), call.actor, call.damage ?? 1, from);
     }
     if (call.call === 'command' && call.name) {
       mod.commands
@@ -210,7 +210,8 @@ export class ModManager {
     for (const mod of this.active) {
       const command = mod.commands?.find((c) => c.names.includes(name));
       if (!command) continue;
-      if (mod.shared && !this.net.isHost()) {
+      if (command.local) command.run(this.apiFor(mod), args);
+      else if (mod.shared && !this.net.isHost()) {
         this.net.callHost({ mod: mod.id, call: 'command', name, args });
       } else command.run(this.hostApi(mod), args);
       return true;

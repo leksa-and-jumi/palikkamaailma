@@ -54,6 +54,29 @@ export function fakeApi() {
     mark(text: string | null) {
       state.badge = text;
     },
+    cornerIcon: null as string | null,
+    corner(icon: string | null) {
+      state.cornerIcon = icon;
+    },
+    /** Who a mod has taken everything from right now. */
+    stripped: new Set<string>(),
+    strip(id: string) {
+      state.stripped.add(id);
+    },
+    giveBack(id: string) {
+      state.stripped.delete(id);
+    },
+    /** What the mod remembers: this world, and this player everywhere. */
+    worldMemory: new Map<string, unknown>(),
+    deviceMemory: new Map<string, unknown>(),
+    recall(key: string, everywhere?: boolean) {
+      return (everywhere ? state.deviceMemory : state.worldMemory).get(key);
+    },
+    remember(key: string, value: unknown, everywhere?: boolean) {
+      const m = everywhere ? state.deviceMemory : state.worldMemory;
+      if (value === undefined || value === null) m.delete(key);
+      else m.set(key, value);
+    },
     screamers: 0,
     screamer() {
       state.screamers++;
@@ -75,12 +98,16 @@ export function fakeApi() {
     bossBar(name: string | null) {
       state.boss = name;
     },
-    hurt() {
+    /** Blood splattered on screens: [player id, amount]. */
+    blood: [] as [string, number][],
+    hurt(_amount: number, _reason: string, blood?: number) {
       state.hurts++;
+      if (blood) state.blood.push(['me', blood]);
     },
-    hurtPlayer(id: string, amount: number) {
+    hurtPlayer(id: string, amount: number, _reason: string, blood?: number) {
       if (id === 'me') state.hurts++;
       else state.hurtOthers.push([id, amount]);
+      if (blood) state.blood.push([id, blood]);
     },
     effect() {
       state.slowed++;

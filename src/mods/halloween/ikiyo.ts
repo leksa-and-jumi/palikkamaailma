@@ -9,26 +9,44 @@
 //   3. Ikiyö (endless night): almost dark; it glitches away and comes back behind you.
 // And always, now and then: everything goes quiet… and its head is right in
 // front of your face, screaming.
-// It can't be beaten: with its very last sliver of life it sinks into the
-// ground to "charge up", and comes back later. Unless someone knows the
-// secret word… (see `arm`).
+//
+// What it is like: very old, very lonely and very childish. It plays games
+// with you (hide and seek, tag, hot and cold), it collects things (and
+// players), it lies, and it is a coward when it is losing.
+//   - Now and then it leaves to play hide and seek: the fight stops, and
+//     the dread builds (hot… hotter…) until it finds you.
+//   - With a tenth of its life left it laughs at you, takes everything you
+//     carry and wear, and vanishes: the ones it took before whisper in the
+//     dark (whispers.ts) until it comes back.
+//   - One hit from the end it begs for mercy, gives your things back and
+//     crawls away… then comes back with all its life ("I tricked you!").
+//   - The second time it sinks into the ground to charge up. Only a player
+//     wearing the dawn's crown (/aamunkoitto, see index.ts) can strike the
+//     last blow while it begs.
 
 import type { Atmosphere, ModApi } from '../types';
 import {
   aroundPlayer,
   burst,
   distance,
+  lookingAt,
   me,
   moveTowards,
   yawTo,
   type Encounter,
   type Vec,
 } from './encounter';
-import { EYES, IKIYO, IKIYO_HEAD, MARK, NECK, PUFF, WISP } from './ikiyoModel';
+import { EYES, IKIYO, IKIYO_HEAD, MARK, NECK, PUFF, WATCHER, WISP } from './ikiyoModel';
+import { Speech } from './scene';
+import { whispers, type Whispers } from './whispers';
 
 const MAX_HP = 180;
-/** The last sliver: below this it leaves (or, with the secret, is beaten). */
+/** The last sliver: one hit from the end it begs. */
 const LAST = 4;
+/** With this much life left it takes your things. */
+const STRIP_AT = MAX_HP * 0.1;
+/** Without your things you still hurt it this much (bare hands, but it is weak). */
+const NAKED_HIT = 3;
 const PHASE_2 = 0.66;
 const PHASE_3 = 0.33;
 /** How far away it likes to hover. */
@@ -58,6 +76,11 @@ const LUNGE_SPEED = 34;
 const RETRACT_SPEED = 13;
 const BITE_DAMAGE = 4;
 const BITE_HOLD = 0.6;
+/** Blood on your screen (0–1): only its bite and its claws, and not too much. */
+const BITE_BLOOD = 0.8;
+const SLAM_BLOOD = 0.45;
+/** At least this long between two bloody hits (seconds). */
+const BLOOD_EVERY = 6;
 /** The jump scare: quiet first, then the face in yours. */
 const SCARE_EVERY: [number, number] = [24, 42];
 const SCARE_QUIET = 2.3;
@@ -78,6 +101,13 @@ const SUBLIMINAL_EVERY: [number, number] = [15, 35];
 /** Where the neck starts on the body, and the head's middle, above their feet. */
 const SOCKET = (1.2 + 9.6) * SIZE;
 const HEAD_MIDDLE = 1.9 * SIZE;
+/** Hide and seek: seconds of fighting between games, and how long it hides. */
+const HIDE_EVERY: [number, number] = [45, 70];
+const HIDE_TIME: [number, number] = [22, 32];
+/** Begging, crawling away, and the calm before it comes back with all its life. */
+const SLINK_TIME = 6;
+const RELIEF_TIME = 24;
+const REFILL_TIME = 2.5;
 
 const MOODS: Record<1 | 2 | 3, Atmosphere> = {
   1: {
@@ -120,11 +150,26 @@ const TAUNTS = [
   '{whispers} Juokse… jos… {laughs maniacally}',
   '{whispers} Minä… näen… sinut… {shrieks} NÄEN SINUT!',
   '{whispers} Takanasi… {growls} ei… vaan…',
+  '{giggles} Hippa! {whispers} Sinä… olet… hippa…',
+  '{whispers} Minä… keräilen… {growls} pelaajia.',
+  '{whispers} Edellinen… huusi… kauniimmin… {laughs maniacally}',
+  '{whispers} Aamu… ei… tule… {screams} EI KOSKAAN!',
+  '{giggles} Kaikki… sinun… palikkasi… {whispers} ovat… minun… leluja…',
+  '{growls} Sinä… olet… {whispers} minun… lempilelu…',
+  '{whispers} Minä olin täällä… yksin… {screams} NIIN KAUAN!',
 ];
 const HIT_LINES = [
   '{laughs maniacally} Heh… heh… hhhh…',
   '{growls} Sinä… et voi…',
   '{whispers} Kutittaa… {screams} VAIN!',
+  '{giggles} Taas! {whispers} Lyö… taas…',
+  '{growls} Tuo… sattui… {screams} MELKEIN!',
+];
+/** When its bite or claws get you. */
+const GOT_YOU_LINES = [
+  '{giggles} Maistuu… pelolta…',
+  '{whispers} Vielä… vähän… {giggles} vielä…',
+  '{laughs maniacally} Sinä… olet… niin… hidas…',
 ];
 /** Screamed right in your face. */
 const SCREAMS = [
@@ -133,6 +178,65 @@ const SCREAMS = [
   '{screams} SINÄÄÄÄ!',
   '{growls} GRRRAAAAAH!',
 ];
+/** Hide and seek: it goes… */
+const HIDE_LINES = [
+  '{giggles} Leikitään… piilosta… {whispers} minä… etsin…',
+  '{whispers} Silmät… kiinni… {giggles} minä… lasken…',
+  '{whispers} Minä… menen… nyt… {giggles} vai… menenkö…?',
+];
+/** …it gets closer (cold, warm, hot)… */
+const HOT_COLD_LINES = [
+  '{whispers} Kylmä… kylmä…',
+  '{whispers} Lämmin… {giggles} lämpimämpi…',
+  '{whispers} Kuuma… {giggles} poltetta…',
+];
+/** …and it finds you. */
+const FOUND_LINES = [
+  '{shrieks} LÖYSIN SINUT!',
+  '{screams} PÖÖ!',
+  '{laughs maniacally} Täällä… minä… olin… {screams} KOKO AJAN!',
+];
+/** A tenth of its life left: it laughs at you and takes everything. */
+const STRIP_LINES = [
+  '{laughs maniacally} Luuletko… voittavasi? {whispers} Pikku… pikku… pelaaja…',
+  '{whispers} Annas… kun… otan… {growls} miekkasi…',
+  '{giggles} Ja haarniskasi… {whispers} ja kaiken… muun…',
+  '{laughs maniacally} Katso itseäsi! {whispers} Ei mitään… jäljellä…',
+];
+/** One hit from the end: it begs. */
+const BEG_LINES = [
+  '{sobbing} Armoa… armoa… älä lyö…',
+  '{whimpers} Minä annan… kaiken takaisin… {sobbing} ota… ota…',
+  '{sobbing} Minä olin vain… niin yksin… niin kauan…',
+  '{whimpers} Lupaan… etten tule… koskaan… takaisin…',
+];
+/** Hit while it begs (by someone without the crown). */
+const MERCY_LINES = ['{whimpers} Ai! Älä… älä…', '{sobbing} Ei enää… pyydän…'];
+/** The second time it begs: it means it this time (does it?). */
+const BEG_AGAIN_LINES = ['{whimpers} Tällä kertaa… oikeasti… {sobbing} armoa…'];
+/** It crawls away… */
+const SLINK_LINES = ['{sobbing} Minä… menen… nyt…'];
+/** …and comes back with all its life. */
+const TRICK_LINES = [
+  '{laughs maniacally} HUIJASIN! {screams} MINÄ HUIJASIN!',
+  '{laughs maniacally} Armoa? {screams} MINÄ EN TUNNE ARMOA!',
+];
+/** A crown-bearer is near while it begs. */
+const LIGHT_LINES = ['{whispers} Mitä… tuo… valo… {shrieks} EI VALOA!'];
+/** The first time it comes to a world. */
+const FIRST_LINES = [
+  '{whispers} Kuusi… pokaalia… {screams} JA NYT SINÄ!',
+  '{growls} Minä olin täällä… ennen kuin… {whispers} ensimmäinen palikka…',
+  '{whispers} Älä… katso… taakse… {shrieks} ÄLÄ!',
+];
+/** When it comes again to a world it has visited. */
+const AGAIN_LINES = [
+  '{whispers} Sinä… palasit… {giggles} minä… tiesin…',
+  '{growls} Viime kerralla… sinä… {whispers} melkein…',
+  '{giggles} Leikitäänkö… taas…?',
+];
+/** The friendly stranger turns into it (stranger.ts). */
+export const CHANGE_LINES = ['{whispers} Kiltti…? {screams} MINÄ EN OLE KILTTI!'];
 
 /** Ikiyö's own words at the end of the story told before it comes (prelude.ts). */
 export const OMEN_LINES = {
@@ -144,19 +248,34 @@ export const OMEN_LINES = {
 
 type Wisp = Vec & { id: string; age: number };
 type Head = 'rest' | 'windup' | 'lunge' | 'bite' | 'retract';
+/**
+ * fight: the battle. hide: gone, playing hide and seek. taunt: laughing at
+ * you while it takes your things. whisper: gone, the lost ones whisper.
+ * beg: begging for mercy. slink: crawling away. calm: pretending to be gone.
+ * fade: sinking into the ground to charge up (the end of the visit).
+ */
+type Mode = 'fight' | 'hide' | 'taunt' | 'whisper' | 'beg' | 'slink' | 'calm' | 'fade';
 
 const between = ([a, b]: [number, number]) => a + Math.random() * (b - a);
 const pick = <T>(list: readonly T[]): T => list[Math.floor(Math.random() * list.length)]!;
 
-export interface IkiyoEncounter extends Encounter {
-  /** The secret word was said: now its last life can be taken. */
-  arm(api: ModApi): void;
+export interface IkiyoOptions {
+  /** Is this player wearing the dawn's crown (/aamunkoitto)? */
+  dawn(playerId: string): boolean;
+  /** How many times it has come to this world before. */
+  visit: number;
+  /** Where it rises (where the friendly stranger stood), instead of in front of you. */
+  from?: Vec;
 }
 
-export function ikiyo(): IkiyoEncounter {
+export function ikiyo(options: IkiyoOptions = { dawn: () => false, visit: 0 }): Encounter {
   let at: Vec = { x: 0, y: 0, z: 0 };
   let hp = MAX_HP;
   let phase: 1 | 2 | 3 = 1;
+  let mode: Mode = 'fight';
+  let modeTime = 0;
+  /** 0 = the first life; 1 = it came back after begging. */
+  let round = 0;
   let attackIn = 4;
   let slam: (Vec & { t: number }) | null = null;
   let wisps: Wisp[] = [];
@@ -165,12 +284,12 @@ export function ikiyo(): IkiyoEncounter {
   let soundIn = 2;
   let heartbeat = 0;
   let hitLineIn = 0;
-  let fading = -1;
-  let armed = false;
   let won = false;
   let rise = 0;
   let pulse = 0;
   let time = 0;
+  let shrink = 1;
+  let refill = -1;
   // The head on its neck.
   let head: Vec = { x: 0, y: 0, z: 0 };
   let headMode: Head = 'rest';
@@ -183,6 +302,8 @@ export function ikiyo(): IkiyoEncounter {
   let scareIn = 11 + Math.random() * 4;
   let quiet = -1;
   let peek = -1;
+  /** The next scare is the end of hide and seek ("found you!"). */
+  let found = false;
   let flicker = -1;
   let teleportIn = 2.5;
   let stutter: Vec[] = [];
@@ -192,22 +313,54 @@ export function ikiyo(): IkiyoEncounter {
   let eyesIn = 3;
   let subliminalIn = between(SUBLIMINAL_EVERY);
   let eyes: (Vec & { id: string; age: number; life: number; yaw: number })[] = [];
+  // Hide and seek, its long speeches, and those it took things from.
+  let hideIn = between(HIDE_EVERY);
+  let hideLength = 0;
+  let hotCold = 0;
+  let watcher: (Vec & { gone: boolean }) | null = null;
+  let scene: Whispers | null = null;
+  let stripped: string[] = [];
+  let naked = false;
+  let mercyIn = 0;
+  let bloodIn = 0;
+  const speech = new Speech(0.5);
   const who = { emoji: '👁️', name: 'Ikiyö', color: '#ff3b2f' };
 
+  const gone = () => mode === 'hide' || mode === 'whisper' || mode === 'calm';
   const bodyY = () => {
-    const sink = fading >= 0 ? Math.min(1, fading / FADE_TIME) * 14 : 0;
+    const sink = mode === 'fade' ? Math.min(1, modeTime / FADE_TIME) * 14 : 0;
     const up = (Math.min(1, rise) - 1) * 15;
     return at.y + up - sink;
   };
-  const socket = (): Vec => ({ x: at.x, y: bodyY() + SOCKET, z: at.z });
+  const size = () => SIZE * shrink;
+  const socket = (): Vec => ({ x: at.x, y: bodyY() + SOCKET * shrink, z: at.z });
   const eye = (api: ModApi): Vec => ({ x: api.player.x, y: api.player.y + 1.6, z: api.player.z });
+  const restHead = () => {
+    head = { ...socket(), y: socket().y + NECK_REST * shrink };
+  };
+  const setMode = (next: Mode) => {
+    mode = next;
+    modeTime = 0;
+  };
 
   const mood = (api: ModApi): Atmosphere => {
     const m = MOODS[phase];
     // Your eyelids feel heavy: they droop with each heartbeat, more when it is near.
     const near = Math.max(0, 1 - distance(me(api), at) / 14);
-    let lids = 0.06 + Math.max(0, Math.sin(pulse)) * 0.08 + near * 0.25 + (phase - 1) * 0.05;
-    if (fading >= 0) lids = 0;
+    const lids = 0.06 + Math.max(0, Math.sin(pulse)) * 0.08 + near * 0.25 + (phase - 1) * 0.05;
+    if (mode === 'fade' || mode === 'beg' || mode === 'slink') return { ...m, eyelids: 0 };
+    if (mode === 'hide') {
+      // It is gone… the music stops, and the dark creeps back as it comes closer.
+      const k = Math.min(1, modeTime / hideLength);
+      return {
+        ...m,
+        music: undefined,
+        lightning: false,
+        darkness: (m.darkness ?? 0) * (0.55 + 0.45 * k),
+        vignette: Math.min(1, 0.4 + k * 0.6),
+        eyelids: Math.min(0.7, 0.04 + k * 0.4 + Math.max(0, Math.sin(pulse)) * 0.1 * k),
+      };
+    }
     // Before a scare everything goes quiet, darker… and your eyes slowly close.
     if (quiet >= 0) {
       return {
@@ -239,10 +392,9 @@ export function ikiyo(): IkiyoEncounter {
 
   /** Gone in a puff of smoke… and somewhere else. */
   const teleport = (api: ModApi, to: Vec) => {
-    puffs.push({ id: `puff${counter++}`, ...at, y: bodyY(), age: 0 });
-    while (puffs.length > MAX_PUFFS) api.removeActor(puffs.shift()!.id);
+    leavePuff(api);
     at = { ...to, y: api.groundY(to.x, to.z, me(api).y) };
-    head = { ...socket(), y: socket().y + NECK_REST };
+    restHead();
     strobe = STROBE_TIME;
     api.sound('glitch');
     if (Math.random() < 0.4) api.sound('whisper');
@@ -250,6 +402,11 @@ export function ikiyo(): IkiyoEncounter {
     api.shake(0.25, 0.2);
     // Now and then a face in the flicker, too short to be sure you saw it.
     if (phase >= 2 && Math.random() < 0.15) api.screamer(Math.floor(Math.random() * FACES), 0.07);
+  };
+
+  const leavePuff = (api: ModApi) => {
+    puffs.push({ id: `puff${counter++}`, ...at, y: bodyY(), age: 0 });
+    while (puffs.length > MAX_PUFFS) api.removeActor(puffs.shift()!.id);
   };
 
   /** Where it goes next: round you, often behind; or it stutters closer. */
@@ -269,7 +426,7 @@ export function ikiyo(): IkiyoEncounter {
   };
 
   /** Smoke curtains thin out; red eyes open and close round you; a face flashes. */
-  const effects = (api: ModApi, dt: number) => {
+  const effects = (api: ModApi, dt: number, eyeRate: number = phase) => {
     strobe = Math.max(0, strobe - dt);
     subliminalIn -= dt;
     if (subliminalIn <= 0 && quiet < 0 && peek < 0) {
@@ -287,8 +444,8 @@ export function ikiyo(): IkiyoEncounter {
       }
     }
     eyesIn -= dt;
-    if (eyesIn <= 0 && eyes.length < MAX_EYES && quiet < 0) {
-      eyesIn = between(EYES_EVERY) / phase;
+    if (eyesIn <= 0 && eyes.length < MAX_EYES && quiet < 0 && eyeRate > 0) {
+      eyesIn = between(EYES_EVERY) / eyeRate;
       const spot = aroundPlayer(api, 7 + Math.random() * 7, Math.random() * Math.PI * 2);
       eyes.push({
         id: `eyes${counter++}`,
@@ -311,43 +468,48 @@ export function ikiyo(): IkiyoEncounter {
 
   const show = (api: ModApi) => {
     const p = me(api);
-    const peeking = peek >= 0;
+    const hidden = peek >= 0 || gone();
+    const s = size();
     api.actor('ikiyo', IKIYO, {
       ...at,
       y: bodyY(),
       yaw: yawTo(at, p),
-      scale: SIZE,
-      visible: !peeking,
+      scale: s,
+      visible: !hidden,
     });
-    // The head looks you in the eye.
+    // The head looks you in the eye (it hangs low while it begs).
     const e = eye(api);
     const hx = e.x - head.x;
     const hz = e.z - head.z;
-    const hy = e.y - (head.y + HEAD_MIDDLE);
+    const hy = e.y - (head.y + HEAD_MIDDLE * shrink);
+    const begging = mode === 'beg' || mode === 'slink';
     api.actor('head', IKIYO_HEAD, {
       x: head.x + twitchOffset.x,
       y: head.y + twitchOffset.y,
       z: head.z + twitchOffset.z,
-      yaw: Math.atan2(-hx, -hz) + (twitch > 0 ? (Math.random() - 0.5) * 0.6 : 0),
-      pitch: Math.atan2(hy, Math.hypot(hx, hz)),
-      scale: SIZE,
+      yaw:
+        (mode === 'slink' ? Math.atan2(hx, hz) : Math.atan2(-hx, -hz)) +
+        (twitch > 0 ? (Math.random() - 0.5) * 0.6 : 0),
+      pitch: begging ? -0.5 : Math.atan2(hy, Math.hypot(hx, hz)),
+      scale: s,
+      visible: !gone(),
     });
     // The neck: a chain of pieces from the body to the head.
-    const s = socket();
-    const d = { x: head.x - s.x, y: head.y + 0.3 * SIZE - s.y, z: head.z - s.z };
+    const so = socket();
+    const d = { x: head.x - so.x, y: head.y + 0.3 * s - so.y, z: head.z - so.z };
     const flat = Math.hypot(d.x, d.z);
-    const yaw = flat > 0.3 ? Math.atan2(-d.x, -d.z) : yawTo(s, p);
+    const yaw = flat > 0.3 ? Math.atan2(-d.x, -d.z) : yawTo(so, p);
     const pitch = -Math.atan2(flat, d.y);
     for (let i = 0; i < NECK_PIECES; i++) {
       const k = i / NECK_PIECES;
       api.actor(`n${i}`, NECK, {
-        x: s.x + d.x * k,
-        y: s.y + d.y * k,
-        z: s.z + d.z * k,
+        x: so.x + d.x * k,
+        y: so.y + d.y * k,
+        z: so.z + d.z * k,
         yaw,
         pitch,
-        scale: SIZE,
-        visible: !peeking,
+        scale: s,
+        visible: !hidden,
       });
     }
     for (const w of wisps) api.actor(w.id, WISP, { ...w, yaw: yawTo(w, p) });
@@ -361,13 +523,24 @@ export function ikiyo(): IkiyoEncounter {
         visible: k < 0.7 || Math.random() < 0.5,
       });
     }
-    for (const e of eyes) api.actor(e.id, EYES, { ...e, scale: 1.4 });
+    for (const ey of eyes) api.actor(ey.id, EYES, { ...ey, scale: 1.4 });
     if (slam) api.actor('mark', MARK, { ...slam, yaw: slam.t * 2 });
     else api.removeActor('mark');
-    api.bossBar(`👁️ Ikiyö`, Math.max(0.01, hp / MAX_HP));
+    if (watcher) api.actor('watcher', WATCHER, { ...watcher, yaw: yawTo(watcher, p), scale: 1.2 });
+    else api.removeActor('watcher');
+    // The boss bar: "???" while it hides, nothing while it pretends to be gone.
+    const bar = refill >= 0 ? Math.min(1, refill / REFILL_TIME) : Math.max(0.01, hp / MAX_HP);
+    if (mode === 'calm' || mode === 'slink') api.bossBar(null);
+    else api.bossBar(gone() ? '👁️ ???' : '👁️ Ikiyö', bar);
   };
 
   const say = (api: ModApi, text: string) => api.say(who, text);
+  /** Blood on the screen now and then, not with every hit. */
+  const bleed = (amount: number) => {
+    if (bloodIn > 0 || Math.random() < 0.3) return 0;
+    bloodIn = BLOOD_EVERY;
+    return amount;
+  };
 
   const goPhase = (api: ModApi, next: 2 | 3) => {
     phase = next;
@@ -430,7 +603,7 @@ export function ikiyo(): IkiyoEncounter {
     api.shake(0.4, 0.4);
     // It is suddenly somewhere behind you.
     at = aroundPlayer(api, KEEP_AWAY - 1, Math.PI + (Math.random() - 0.5) * 0.8);
-    head = { ...socket(), y: socket().y + NECK_REST };
+    restHead();
     api.sound('giggle');
   };
 
@@ -455,13 +628,21 @@ export function ikiyo(): IkiyoEncounter {
     pick(choices)(api);
   };
 
+  /** It got you: now and then it is pleased about it. */
+  const gotYou = (api: ModApi) => {
+    if (hitLineIn <= 0 && Math.random() < 0.3) {
+      hitLineIn = 8;
+      say(api, pick(GOT_YOU_LINES));
+    }
+  };
+
   /** Moves the head: resting on its neck, pulling back, lunging, biting, coming back. */
   const moveHead = (api: ModApi, dt: number) => {
     const s = socket();
     const e = eye(api);
     const rest: Vec = {
       x: s.x + Math.sin(time * 0.8) * 0.7,
-      y: s.y + NECK_REST + Math.sin(time * 1.3) * 0.35,
+      y: s.y + NECK_REST * shrink + Math.sin(time * 1.3) * 0.35,
       z: s.z + Math.cos(time * 0.7) * 0.6,
     };
     headTimer += dt;
@@ -507,7 +688,8 @@ export function ikiyo(): IkiyoEncounter {
           const mouth = { ...head, y: head.y + HEAD_MIDDLE };
           if (Math.hypot(mouth.x - e.x, mouth.y - e.y, mouth.z - e.z) < 3) {
             api.flash('rgba(160,0,0,0.75)', 0.6);
-            api.hurt(BITE_DAMAGE, 'Ikiyö puraisi!');
+            api.hurt(BITE_DAMAGE, 'Ikiyö puraisi!', bleed(BITE_BLOOD));
+            gotYou(api);
           }
         }
         break;
@@ -558,7 +740,8 @@ export function ikiyo(): IkiyoEncounter {
       api.sound('scream');
       api.flash('rgba(255,255,255,0.95)', 0.35);
       api.shake(1, 1.3);
-      say(api, pick(SCREAMS));
+      say(api, pick(found ? FOUND_LINES : SCREAMS));
+      found = false;
       // A face slams onto the screen.
       api.screamer(Math.floor(Math.random() * FACES), 0.45);
       api.sound('shriek');
@@ -574,7 +757,7 @@ export function ikiyo(): IkiyoEncounter {
       peek = -1;
       api.sound('glitch');
       at = aroundPlayer(api, KEEP_AWAY, Math.PI + (Math.random() - 0.5));
-      head = { ...socket(), y: socket().y + NECK_REST };
+      restHead();
       headMode = 'rest';
       api.sound('giggle');
       return false;
@@ -593,10 +776,14 @@ export function ikiyo(): IkiyoEncounter {
     // A heartbeat you can feel: the ground trembles with it.
     heartbeat -= dt;
     if (heartbeat <= 0) {
-      heartbeat = HEARTBEAT_EVERY - phase * 0.4;
+      heartbeat =
+        mode === 'hide'
+          ? Math.max(0.5, 2.6 - (modeTime / hideLength) * 2.1)
+          : HEARTBEAT_EVERY - phase * 0.4;
       api.sound('heartbeat');
       api.shake(0.12 + phase * 0.05, 0.25);
     }
+    if (mode !== 'fight') return;
     soundIn -= dt;
     if (soundIn <= 0) {
       soundIn = between(SOUND_EVERY);
@@ -615,25 +802,349 @@ export function ikiyo(): IkiyoEncounter {
     }
   };
 
-  const arm = (api: ModApi) => {
-    if (!armed) {
-      armed = true;
-      api.sound('magic');
-      api.flash('rgba(255,236,170,0.7)', 1.2);
-      say(api, '{whispers} Mitä… tuo… valo… {shrieks} EI VALOA!');
-      api.toast('🌅 Aamun valo on kanssasi… vie sen viimeinen elämä!');
+  /** Takes its attacks back (before it hides, begs or leaves). */
+  const calmDown = (api: ModApi) => {
+    slam = null;
+    quiet = -1;
+    peek = -1;
+    flicker = -1;
+    stutter = [];
+    headMode = 'retract';
+    for (const w of wisps) api.removeActor(w.id);
+    wisps = [];
+  };
+
+  // --- Hide and seek -----------------------------------------------------------
+
+  const startHide = (api: ModApi) => {
+    calmDown(api);
+    setMode('hide');
+    hideLength = between(HIDE_TIME);
+    hotCold = 0;
+    watcher = null;
+    say(api, pick(HIDE_LINES));
+    leavePuff(api);
+    api.sound('giggle');
+    api.sound('glitch');
+    api.flash('rgba(0,0,0,0.9)', 0.5);
+  };
+
+  /** Gone… the music stops, then it is cold, warm, hot, and it finds you. */
+  const hideTick = (api: ModApi, dt: number) => {
+    const k = modeTime / hideLength;
+    effects(api, dt, k < 0.3 ? 0 : 1 + k * 2);
+    if (hotCold < HOT_COLD_LINES.length && k > 0.3 + hotCold * 0.25) {
+      say(api, HOT_COLD_LINES[hotCold++]!);
+      api.sound(hotCold === 3 ? 'steps' : 'whisper');
     }
-    // With its last sliver left, the light takes it.
-    if (hp <= LAST || fading >= 0) {
-      won = true;
-      hp = 0;
-      api.flash('rgba(255,244,210,1)', 3);
-      api.shake(1, 1.5);
+    if (k > 0.2 && k < 0.3 && Math.random() < dt * 0.4) api.sound('knock');
+    // A tall figure behind you that creeps closer whenever you look away.
+    const p = me(api);
+    if (!watcher && k > 0.45 && k < 0.8) {
+      watcher = { ...aroundPlayer(api, 20, Math.PI), gone: false };
+      api.sound('drone');
+    }
+    if (watcher && !lookingAt(api, watcher, 22)) {
+      const d = Math.hypot(watcher.x - p.x, watcher.z - p.z);
+      const step = Math.min(d - 1.5, dt * 5);
+      watcher.x += ((p.x - watcher.x) / d) * step;
+      watcher.z += ((p.z - watcher.z) / d) * step;
+      watcher.y = api.groundY(watcher.x, watcher.z, p.y);
+      if (d < 3) {
+        watcher = null;
+        api.sound('stinger');
+        api.flash('rgba(0,0,0,0.95)', 0.8);
+        api.shake(0.7, 0.6);
+      }
+    }
+    if (k < 1) return;
+    // Found you: from right behind you, or in your face.
+    watcher = null;
+    setMode('fight');
+    teleportIn = between(TELEPORT_EVERY);
+    attackIn = 3;
+    hideIn = between(HIDE_EVERY);
+    at = aroundPlayer(api, 7, Math.PI + (Math.random() - 0.5) * 0.6);
+    restHead();
+    headMode = 'rest';
+    if (Math.random() < 0.6) {
+      found = true;
+      quiet = 0;
+    } else {
+      api.sound('stinger');
+      api.sound('shriek');
+      api.screamer(Math.floor(Math.random() * FACES), 0.3);
+      api.shake(1, 1.2);
+      api.flash('rgba(160,0,0,0.8)', 0.8);
+      say(api, pick(FOUND_LINES));
+    }
+  };
+
+  // --- A tenth left: it takes your things --------------------------------------
+
+  const startTaunt = (api: ModApi) => {
+    calmDown(api);
+    setMode('taunt');
+    at = aroundPlayer(api, 8, 0);
+    restHead();
+    api.sound('giggle');
+    api.sound('stinger');
+    api.flash('rgba(0,0,0,0.9)', 0.4);
+    const target = api.player.id;
+    speech.clear();
+    speech.add(who, STRIP_LINES[0]!, (a) => a.animate('ikiyo', 'cast'));
+    speech.add(who, STRIP_LINES[1]!, (a) => {
+      doLunge(a);
+    });
+    speech.add(who, STRIP_LINES[2]!, (a) => {
+      // Everything you carry and wear, gone.
+      a.strip(target);
+      if (!stripped.includes(target)) stripped.push(target);
+      naked = true;
+      a.sound('giggle');
+      a.sound('glitch');
+      a.flash('rgba(255,255,255,0.9)', 0.4);
+      a.shake(0.6, 0.6);
+      a.toast('👁️ Ikiyö vei kaikki tavarasi!');
+      burst(a, { ...me(a), y: me(a).y + 1 }, [0x050508, 0xff2010, 0x2a2a30], 30);
+    });
+    speech.add(who, STRIP_LINES[3]!, (a) => a.sound('laugh'));
+  };
+
+  const tauntTick = (api: ModApi, dt: number) => {
+    speech.update(api, dt);
+    moveHead(api, dt);
+    effects(api, dt, 1);
+    if (!speech.done) return;
+    // Gone… and the ones it took start to whisper.
+    leavePuff(api);
+    api.sound('glitch');
+    api.flash('rgba(0,0,0,1)', 1);
+    setMode('whisper');
+    scene = whispers();
+  };
+
+  const whisperTick = (api: ModApi, dt: number) => {
+    effects(api, dt, 0);
+    if (!scene?.update(api, dt)) return;
+    scene.end(api);
+    scene = null;
+    // Back, in your face.
+    setMode('fight');
+    at = aroundPlayer(api, 9, (Math.random() - 0.5) * 0.8);
+    restHead();
+    hideIn = between(HIDE_EVERY);
+    attackIn = 2.5;
+    api.screamer(Math.floor(Math.random() * FACES), 0.4);
+    api.sound('roar');
+    api.sound('shriek');
+    api.shake(1, 1.5);
+    api.flash('rgba(150,0,0,0.85)', 1);
+  };
+
+  // --- One hit from the end: it begs -------------------------------------------
+
+  const anyDawn = (api: ModApi) => api.players.some((p) => !p.safe && options.dawn(p.id));
+
+  const startBeg = (api: ModApi) => {
+    calmDown(api);
+    setMode('beg');
+    naked = false;
+    speech.clear();
+    api.sound('scream');
+    api.sound('glitch');
+    api.shake(0.5, 1);
+    at = aroundPlayer(api, 6, (Math.random() - 0.5) * 0.4);
+    restHead();
+    if (anyDawn(api)) {
+      // It sees the crown's light, and it is afraid.
+      speech.add(who, LIGHT_LINES[0]!, (a) => {
+        a.flash('rgba(255,236,170,0.6)', 1);
+        a.sound('bell');
+        a.toast('👑 Aamunkoiton kruunu hehkuu… kruunun kantaja voi lyödä viimeisen iskun!');
+      });
+    }
+    if (round === 0) {
+      speech.add(who, BEG_LINES[0]!);
+      speech.add(who, BEG_LINES[1]!, (a) => {
+        // Your things come back.
+        for (const id of stripped) a.giveBack(id);
+        stripped = [];
+        a.sound('magic');
+      });
+      speech.add(who, BEG_LINES[2]!);
+      speech.add(who, BEG_LINES[3]!);
+    } else speech.add(who, BEG_AGAIN_LINES[0]!);
+  };
+
+  const begTick = (api: ModApi, dt: number) => {
+    speech.update(api, dt);
+    // It shrinks and sinks down, its head low.
+    shrink = Math.max(0.55, shrink - dt * 0.12);
+    moveHead(api, dt);
+    if (Math.random() < dt * 0.6) api.sound('whisper');
+    if (!speech.done) return;
+    if (round === 0) {
+      setMode('slink');
+      speech.add(who, SLINK_LINES[0]!);
+    } else {
+      // This time it really goes, to charge up.
+      setMode('fade');
       api.sound('scream');
-      api.sound('magic');
-      api.toast('🌅 Aamu koitti! Ikiyö katosi valoon.');
-      burst(api, { ...at, y: bodyY() + 6 }, [0xfff2b0, 0xffd060, 0xffffff], 24);
+      api.sound('glitch');
+      api.shake(0.8, 2);
+      api.toast('👁️ Ikiyö vajoaa maahan… se lataa voimiaan.');
     }
+  };
+
+  /** It crawls away from you, small and sad… */
+  const slinkTick = (api: ModApi, dt: number) => {
+    speech.update(api, dt);
+    const p = me(api);
+    const d = Math.max(0.5, distance(p, at));
+    at.x += ((at.x - p.x) / d) * dt * 2.2;
+    at.z += ((at.z - p.z) / d) * dt * 2.2;
+    at.y = api.groundY(at.x, at.z, at.y);
+    shrink = Math.max(0.35, shrink - dt * 0.05);
+    moveHead(api, dt);
+    if (modeTime < SLINK_TIME) return;
+    leavePuff(api);
+    api.sound('glitch');
+    setMode('calm');
+    api.atmosphere(null);
+    api.toast('🕯️ Ikiyö pakeni… onko se nyt ohi?');
+  };
+
+  /** …all is calm (it even looks like morning)… and then it is back, with all its life. */
+  const calmTick = (api: ModApi, dt: number) => {
+    effects(api, dt, 0);
+    if (modeTime > RELIEF_TIME * 0.7 && modeTime - dt <= RELIEF_TIME * 0.7) api.sound('giggle');
+    if (modeTime < RELIEF_TIME) return;
+    round = 1;
+    hp = MAX_HP;
+    refill = 0;
+    shrink = 1;
+    phase = 2;
+    rise = 0;
+    setMode('fight');
+    at = aroundPlayer(api, 11, 0);
+    restHead();
+    hideIn = between(HIDE_EVERY);
+    attackIn = 4;
+    api.screamer(3, 0.5);
+    api.sound('stinger');
+    api.sound('roar');
+    api.sound('laugh');
+    api.shake(1, 2.5);
+    api.flash('rgba(200,0,0,0.9)', 1.5);
+    say(api, pick(TRICK_LINES));
+  };
+
+  // --- The battle ----------------------------------------------------------------
+
+  const fightTick = (api: ModApi, dt: number) => {
+    // Lights flickering: it moves while it is dark.
+    if (flicker >= 0) {
+      flicker += dt;
+      if (Math.random() < dt * 4) api.sound('glitch');
+      if (flicker > FLICKER_TIME / 2 && flicker - dt <= FLICKER_TIME / 2) {
+        at = aroundPlayer(api, KEEP_AWAY - 3, (Math.random() - 0.5) * 2.5);
+        restHead();
+        api.sound('giggle');
+      }
+      if (flicker >= FLICKER_TIME) flicker = -1;
+    }
+    if (refill >= 0) {
+      refill += dt;
+      if (refill >= REFILL_TIME) refill = -1;
+    }
+
+    const p = me(api);
+    hideIn -= dt;
+    if (scare(api, dt)) return;
+
+    // It never walks: it vanishes in smoke and is somewhere else.
+    effects(api, dt);
+    if (stutter.length > 0) {
+      stutterIn -= dt;
+      if (stutterIn <= 0) {
+        stutterIn = STUTTER_GAP;
+        teleport(api, stutter.shift()!);
+      }
+    } else if (headMode === 'rest' && !slam) {
+      teleportIn -= dt;
+      if (teleportIn <= 0) {
+        teleportIn = between(TELEPORT_EVERY) - phase * 0.6;
+        nextPlace(api);
+      }
+    }
+    moveHead(api, dt);
+
+    if (slam) {
+      slam.t += dt;
+      if (slam.t >= SLAM_WARNING) {
+        api.animate('ikiyo', 'attack');
+        api.sound('boom');
+        api.sound('rumble');
+        api.shake(0.95, 0.7);
+        burst(api, { ...slam, y: slam.y + 0.2 }, [0x1a1a1a, 0x5a5a5a, 0xff3020], 24);
+        if (distance(p, slam) < SLAM_RADIUS && Math.abs(p.y - slam.y) < 3) {
+          api.hurt(SLAM_DAMAGE, 'Ikiyön kynnet iskivät maahan!', bleed(SLAM_BLOOD));
+          gotYou(api);
+        }
+        slam = null;
+      }
+    } else if (headMode === 'rest') {
+      attackIn -= dt;
+      if (attackIn <= 0) {
+        attackIn = between(ATTACK_EVERY) - phase * 0.8;
+        attack(api);
+      }
+      // Now and then it goes off to play hide and seek.
+      if (hideIn <= 0 && stutter.length === 0) {
+        startHide(api);
+        return;
+      }
+    }
+
+    // Skulls fly at you.
+    for (const w of [...wisps]) {
+      w.age += dt;
+      moveTowards(w, { ...p, y: p.y + 1.2 }, WISP_SPEED * dt);
+      if (distance(w, p) < 1.1 && Math.abs(w.y - (p.y + 1.2)) < 1.5) {
+        api.hurt(WISP_DAMAGE, 'Varjokallo puraisi!');
+        api.sound('bite');
+        api.removeActor(w.id);
+        wisps = wisps.filter((x) => x !== w);
+      } else if (w.age > 14) {
+        api.removeActor(w.id);
+        wisps = wisps.filter((x) => x !== w);
+      }
+    }
+
+    // Broken sentences now and then.
+    tauntIn -= dt;
+    if (tauntIn <= 0) {
+      tauntIn = between(TAUNT_EVERY);
+      say(api, pick(TAUNTS));
+    }
+  };
+
+  const win = (api: ModApi) => {
+    won = true;
+    hp = 0;
+    api.flash('rgba(255,244,210,1)', 3);
+    api.shake(1, 1.5);
+    api.sound('scream');
+    api.sound('magic');
+    api.toast('🌅 Aamu koitti! Ikiyö katosi valoon.');
+    burst(api, { ...at, y: bodyY() + 6 }, [0xfff2b0, 0xffd060, 0xffffff], 24);
+  };
+
+  const intro = (): string[] => {
+    if (options.from) return [];
+    if (options.visit === 0) return [...FIRST_LINES];
+    return [AGAIN_LINES[(options.visit - 1) % AGAIN_LINES.length]!];
   };
 
   return {
@@ -642,22 +1153,18 @@ export function ikiyo(): IkiyoEncounter {
       id: 'halloween-ikiyo',
       emoji: '🌅',
       name: 'Aamunkoitto',
-      description: 'Löysit salaisuuden ja veit Ikiyöltä viimeisenkin elämän.',
+      description: 'Löysit salaisuuden ja löit Ikiyöltä viimeisenkin elämän.',
       secret: true,
     },
     mood: MOODS[1],
-    intro: [
-      '{whispers} Kuusi… pokaalia… {screams} JA NYT SINÄ!',
-      '{growls} Minä olin täällä… ennen kuin… {whispers} ensimmäinen palikka…',
-      '{whispers} Älä… katso… taakse… {shrieks} ÄLÄ!',
-    ],
+    intro: intro(),
     defeat: '{screams} Aamu… ei… EI… {whispers} minä…',
     escape: '{growls} Minä… lataan… voimani… {whispers} ja palaan… kun et…',
     start(api) {
-      // It rises out of the ground in front of you.
-      at = aroundPlayer(api, KEEP_AWAY + 4, 0);
+      // It rises out of the ground in front of you (or where the stranger stood).
+      at = options.from ? { ...options.from } : aroundPlayer(api, KEEP_AWAY + 4, 0);
       rise = 0;
-      head = { ...socket(), y: socket().y + NECK_REST };
+      restHead();
       api.sound('rumble');
       api.sound('roar');
       api.sound('stinger');
@@ -668,105 +1175,57 @@ export function ikiyo(): IkiyoEncounter {
     update(api, dt) {
       if (won) return 'won';
       time += dt;
+      modeTime += dt;
       rise += dt / 3;
-      ambience(api, dt);
-
-      // The last sliver: it sinks away to charge up (or the secret beats it).
-      if (fading >= 0) {
-        fading += dt;
-        api.atmosphere(mood(api));
-        if (Math.random() < dt * 3) api.sound('glitch');
-        api.shake(0.35, 0.2);
-        moveHead(api, dt);
-        show(api);
-        if (fading >= FADE_TIME) return 'fled';
-        return 'fight';
-      }
-
-      // Lights flickering: it moves while it is dark.
-      if (flicker >= 0) {
-        flicker += dt;
-        if (Math.random() < dt * 4) api.sound('glitch');
-        if (flicker > FLICKER_TIME / 2 && flicker - dt <= FLICKER_TIME / 2) {
-          at = aroundPlayer(api, KEEP_AWAY - 3, (Math.random() - 0.5) * 2.5);
-          head = { ...socket(), y: socket().y + NECK_REST };
-          api.sound('giggle');
-        }
-        if (flicker >= FLICKER_TIME) flicker = -1;
-      }
-      api.atmosphere(mood(api));
-
-      const p = me(api);
-      if (scare(api, dt)) {
-        show(api);
-        return 'fight';
-      }
-
-      // It never walks: it vanishes in smoke and is somewhere else.
-      effects(api, dt);
-      if (stutter.length > 0) {
-        stutterIn -= dt;
-        if (stutterIn <= 0) {
-          stutterIn = STUTTER_GAP;
-          teleport(api, stutter.shift()!);
-        }
-      } else if (headMode === 'rest' && !slam) {
-        teleportIn -= dt;
-        if (teleportIn <= 0) {
-          teleportIn = between(TELEPORT_EVERY) - phase * 0.6;
-          nextPlace(api);
-        }
-      }
-      moveHead(api, dt);
-
-      if (slam) {
-        slam.t += dt;
-        if (slam.t >= SLAM_WARNING) {
-          api.animate('ikiyo', 'attack');
-          api.sound('boom');
-          api.sound('rumble');
-          api.shake(0.95, 0.7);
-          burst(api, { ...slam, y: slam.y + 0.2 }, [0x1a1a1a, 0x5a5a5a, 0xff3020], 24);
-          if (distance(p, slam) < SLAM_RADIUS && Math.abs(p.y - slam.y) < 3) {
-            api.hurt(SLAM_DAMAGE, 'Ikiyön kynnet iskivät maahan!');
-          }
-          slam = null;
-        }
-      } else if (headMode === 'rest') {
-        attackIn -= dt;
-        if (attackIn <= 0) {
-          attackIn = between(ATTACK_EVERY) - phase * 0.8;
-          attack(api);
-        }
-      }
-
-      // Skulls fly at you.
-      for (const w of [...wisps]) {
-        w.age += dt;
-        moveTowards(w, { ...p, y: p.y + 1.2 }, WISP_SPEED * dt);
-        if (distance(w, p) < 1.1 && Math.abs(w.y - (p.y + 1.2)) < 1.5) {
-          api.hurt(WISP_DAMAGE, 'Varjokallo puraisi!');
-          api.sound('bite');
-          api.removeActor(w.id);
-          wisps = wisps.filter((x) => x !== w);
-        } else if (w.age > 14) {
-          api.removeActor(w.id);
-          wisps = wisps.filter((x) => x !== w);
-        }
-      }
-
-      // Broken sentences now and then.
-      tauntIn -= dt;
       hitLineIn -= dt;
-      if (tauntIn <= 0) {
-        tauntIn = between(TAUNT_EVERY);
-        say(api, pick(TAUNTS));
+      mercyIn -= dt;
+      bloodIn -= dt;
+      ambience(api, dt);
+      if (mode !== 'calm') api.atmosphere(mood(api));
+      switch (mode) {
+        case 'fight':
+          fightTick(api, dt);
+          break;
+        case 'hide':
+          hideTick(api, dt);
+          break;
+        case 'taunt':
+          tauntTick(api, dt);
+          break;
+        case 'whisper':
+          whisperTick(api, dt);
+          break;
+        case 'beg':
+          begTick(api, dt);
+          break;
+        case 'slink':
+          slinkTick(api, dt);
+          break;
+        case 'calm':
+          calmTick(api, dt);
+          break;
+        case 'fade':
+          if (Math.random() < dt * 3) api.sound('glitch');
+          api.shake(0.35, 0.2);
+          moveHead(api, dt);
+          if (modeTime >= FADE_TIME) return 'fled';
+          break;
       }
       show(api);
       return 'fight';
     },
-    hit(api, id, damage) {
-      if (fading >= 0) return;
+    hit(api, id, damage, by = api.player.id) {
+      if (mode === 'beg') {
+        // Only the one wearing the dawn's crown can strike the last blow.
+        if (options.dawn(by)) win(api);
+        else if (mercyIn <= 0) {
+          mercyIn = 3;
+          say(api, pick(MERCY_LINES));
+          api.animate('ikiyo', 'hurt');
+        }
+        return;
+      }
+      if (mode !== 'fight' || peek >= 0) return;
       if (id.startsWith('wisp')) {
         const w = wisps.find((x) => x.id === id);
         if (!w) return;
@@ -782,7 +1241,10 @@ export function ikiyo(): IkiyoEncounter {
       } else if (id !== 'ikiyo' && !/^n\d+$/.test(id)) {
         return;
       }
-      hp = Math.max(LAST, hp - damage);
+      if (naked) damage = Math.max(damage, NAKED_HIT);
+      // The first time, it always stops at a tenth to take your things.
+      const takes = round === 0 && !naked && stripped.length === 0;
+      hp = Math.max(takes ? STRIP_AT : LAST, hp - damage);
       api.animate('ikiyo', 'hurt');
       if (Math.random() < 0.3) api.sound('glitch');
       if (hitLineIn <= 0 && Math.random() < 0.35) {
@@ -791,31 +1253,20 @@ export function ikiyo(): IkiyoEncounter {
       }
       if (phase === 1 && hp <= MAX_HP * PHASE_2) goPhase(api, 2);
       else if (phase === 2 && hp <= MAX_HP * PHASE_3) goPhase(api, 3);
-      if (hp <= LAST) {
-        if (armed) arm(api);
-        else {
-          // It can't be beaten: it leaves to charge up.
-          fading = 0;
-          slam = null;
-          quiet = -1;
-          peek = -1;
-          flicker = -1;
-          headMode = 'retract';
-          for (const w of wisps) api.removeActor(w.id);
-          wisps = [];
-          api.sound('scream');
-          api.sound('glitch');
-          api.shake(0.8, 2);
-          api.toast('👁️ Ikiyö vajoaa maahan… se lataa voimiaan.');
-        }
-      }
+      if (hp <= LAST) startBeg(api);
+      else if (takes && hp <= STRIP_AT) startTaunt(api);
     },
-    arm,
     end(api) {
+      // Whatever it took comes back.
+      for (const pid of stripped) api.giveBack(pid);
+      stripped = [];
+      scene?.end(api);
+      scene = null;
       api.removeActor('ikiyo');
       api.removeActor('head');
       for (let i = 0; i < NECK_PIECES; i++) api.removeActor(`n${i}`);
       api.removeActor('mark');
+      api.removeActor('watcher');
       for (const w of wisps) api.removeActor(w.id);
       wisps = [];
       for (const puff of puffs) api.removeActor(puff.id);

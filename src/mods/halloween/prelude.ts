@@ -4,8 +4,8 @@
 // when you stand still, someone "joins" the world, the sun goes out, red
 // eyes in the dark, and a tall figure that is always a little closer when
 // you turn around. Then silence, one line in another hand… and it rises.
-// Psychological dread, not gore. The first time it is the whole story
-// (about three minutes); later only a short warning.
+// Psychological dread, not gore. The first time in each world it is the
+// whole story (about three minutes); later only a short warning.
 
 import { speechSeconds } from '../reading';
 import type { Atmosphere, ModApi, Speaker } from '../types';
@@ -29,8 +29,13 @@ const STORY_LINES = [
   'Siihen päiväkirja loppui. Häntä ei koskaan löydetty. Hänen maailmansa on yhä täällä… sinun maailmasi alla.',
   'Päiväkirjan viimeisellä sivulla oli vielä yksi rivi. Se oli kirjoitettu eri käsialalla.',
 ];
-/** The short warning when it comes back. */
-const AGAIN_LINES = ['Se palasi. Ne palaavat aina.'];
+/** The short warning when it comes back to this world (a different one each time). */
+const AGAIN_LINES = [
+  'Se palasi. Ne palaavat aina.',
+  'Päiväkirjaan oli ilmestynyt uusi sivu. Joku oli piirtänyt siihen sinut.',
+  'Kuuletko? Joku koputtaa taas. Kolme kertaa.',
+  'Kaikki silmät pimeässä kääntyivät yhtä aikaa sinua kohti.',
+];
 
 type Step = { at: number; run: (api: ModApi, s: State) => void };
 
@@ -155,19 +160,21 @@ const STORY: readonly Step[] = [
   { at: 170, run: (_api, s) => ikiyoSays(s, OMEN_LINES.story) },
 ];
 
-/** Later visits: a knock, darkness, and it remembers you. */
-const AGAIN: readonly Step[] = [
-  {
-    at: 0,
-    run: (api, s) => {
-      api.sound('knock');
-      s.quiet = true;
-      s.dark = 0.01;
+/** Later visits to this world: a knock, darkness, and it remembers you. */
+function again(visit: number): readonly Step[] {
+  return [
+    {
+      at: 0,
+      run: (api, s) => {
+        api.sound('knock');
+        s.quiet = true;
+        s.dark = 0.01;
+      },
     },
-  },
-  { at: 3, run: (_api, s) => tell(s, AGAIN_LINES[0]!) },
-  { at: 6, run: (_api, s) => ikiyoSays(s, OMEN_LINES.again) },
-];
+    { at: 3, run: (_api, s) => tell(s, AGAIN_LINES[(visit - 1) % AGAIN_LINES.length]!) },
+    { at: 6, run: (_api, s) => ikiyoSays(s, OMEN_LINES.again) },
+  ];
+}
 
 /** Ikiyö's own line ends the story: as it is said, it rises. */
 function ikiyoSays(s: State, text: string): void {
@@ -192,8 +199,9 @@ export interface Prelude {
   end(api: ModApi): void;
 }
 
-export function prelude(full: boolean): Prelude {
-  const steps = full ? STORY : AGAIN;
+/** The whole story (the first time in a world), or the short warning for its `visit`th visit. */
+export function prelude(full: boolean, visit = 1): Prelude {
+  const steps = full ? STORY : again(Math.max(1, visit));
   let time = 0;
   let lineTimer = 0;
   let next = 0;

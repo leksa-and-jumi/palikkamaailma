@@ -228,6 +228,44 @@ export class Inventory {
     this.onChange();
   }
 
+  /** Takes out everything you carry and wear (a mod's trick: see `restore`). */
+  takeAll(): { slots: Slot[]; armor: Slot[] } {
+    const all = {
+      slots: this.slots.map((s) => (s ? { ...s } : null)),
+      armor: this.armor.map((s) => (s ? { ...s } : null)),
+    };
+    this.clear();
+    return all;
+  }
+
+  /**
+   * Puts taken things back where they were. Things picked up meanwhile stay;
+   * a taken stack whose place is full goes to any free room. Returns what
+   * did not fit at all (to drop at your feet).
+   */
+  restore(data: unknown): ItemStack[] {
+    const back = new Inventory();
+    back.load(data);
+    const left: ItemStack[] = [];
+    back.armor.forEach((stack, i) => {
+      if (!stack) return;
+      if (this.armor[i]) left.push(stack);
+      else this.armor[i] = stack;
+    });
+    back.slots.forEach((stack, i) => {
+      if (!stack) return;
+      if (this.slots[i]) left.push(stack);
+      else this.slots[i] = stack;
+    });
+    const rest: ItemStack[] = [];
+    for (const stack of left) {
+      const over = this.add(stack);
+      if (over > 0) rest.push({ ...stack, count: over });
+    }
+    this.onChange();
+    return rest;
+  }
+
   toJSON(): { slots: Slot[]; armor: Slot[] } {
     return { slots: this.slots, armor: this.armor };
   }
