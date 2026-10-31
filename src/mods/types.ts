@@ -214,6 +214,11 @@ export interface ModApi {
    * e.g. "Ikiyö has marked you". `level` 0–1 makes it pulse faster.
    */
   mark(text: string | null, level?: number): void;
+  /**
+   * A horror face slams onto the screen for `seconds` (a split second),
+   * shaking and flickering; under 0.12 s it is just a subliminal flash.
+   */
+  screamer(variant: number, seconds: number): void;
   /** Shakes the screen (0–1 strong) for a moment. */
   shake(amount: number, seconds: number): void;
   /** Shows or moves one of the mod's own characters (only on this computer). */
@@ -266,7 +271,8 @@ export type ModSound =
   | 'stretch'
   | 'giggle'
   | 'knock'
-  | 'steps';
+  | 'steps'
+  | 'shriek';
 
 /** A chat command a mod adds (like /kauhu). */
 export interface ModCommand {

@@ -54,6 +54,10 @@ export function fakeApi() {
     mark(text: string | null) {
       state.badge = text;
     },
+    screamers: 0,
+    screamer() {
+      state.screamers++;
+    },
     shakes: 0,
     shake() {
       state.shakes++;

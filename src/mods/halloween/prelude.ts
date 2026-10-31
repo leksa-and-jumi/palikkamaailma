@@ -142,8 +142,9 @@ const STORY: readonly Step[] = [
   { at: 148, run: line(8) },
   {
     at: 161,
-    run: (_api, s) => {
-      // Total silence.
+    run: (api, s) => {
+      // Total silence… and a face, too fast to be sure.
+      api.screamer(0, 0.07);
       s.watcher = null;
       s.eyes = null;
       s.stepsOn = false;
@@ -175,6 +176,9 @@ function ikiyoSays(s: State, text: string): void {
     text,
     then: (api, st) => {
       api.sound('stinger');
+      api.sound('shriek');
+      // Its face, for a moment, right in yours.
+      api.screamer(3, 0.5);
       api.flash('rgba(160,0,0,0.85)', 1.2);
       api.shake(1, 1.5);
       st.riseAt = 1.6;

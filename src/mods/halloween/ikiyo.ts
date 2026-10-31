@@ -72,6 +72,9 @@ const STROBE_TIME = 0.4;
 /** Red eyes opening in the dark around you. */
 const EYES_EVERY: [number, number] = [2.5, 5];
 const MAX_EYES = 8;
+/** Faces flashing on the screen: how many there are, and how often a split-second one comes. */
+const FACES = 4;
+const SUBLIMINAL_EVERY: [number, number] = [15, 35];
 /** Where the neck starts on the body, and the head's middle, above their feet. */
 const SOCKET = (1.2 + 9.6) * SIZE;
 const HEAD_MIDDLE = 1.9 * SIZE;
@@ -187,6 +190,7 @@ export function ikiyo(): IkiyoEncounter {
   let strobe = 0;
   let puffs: (Vec & { id: string; age: number })[] = [];
   let eyesIn = 3;
+  let subliminalIn = between(SUBLIMINAL_EVERY);
   let eyes: (Vec & { id: string; age: number; life: number; yaw: number })[] = [];
   const who = { emoji: '👁️', name: 'Ikiyö', color: '#ff3b2f' };
 
@@ -244,6 +248,8 @@ export function ikiyo(): IkiyoEncounter {
     if (Math.random() < 0.4) api.sound('whisper');
     api.flash(Math.random() < 0.5 ? 'rgba(0,0,0,0.85)' : 'rgba(110,0,0,0.5)', 0.18);
     api.shake(0.25, 0.2);
+    // Now and then a face in the flicker, too short to be sure you saw it.
+    if (phase >= 2 && Math.random() < 0.15) api.screamer(Math.floor(Math.random() * FACES), 0.07);
   };
 
   /** Where it goes next: round you, often behind; or it stutters closer. */
@@ -262,9 +268,17 @@ export function ikiyo(): IkiyoEncounter {
     teleport(api, aroundPlayer(api, 10 + Math.random() * 6, angle));
   };
 
-  /** Smoke curtains thin out; red eyes open and close round you. */
+  /** Smoke curtains thin out; red eyes open and close round you; a face flashes. */
   const effects = (api: ModApi, dt: number) => {
     strobe = Math.max(0, strobe - dt);
+    subliminalIn -= dt;
+    if (subliminalIn <= 0 && quiet < 0 && peek < 0) {
+      subliminalIn = between(SUBLIMINAL_EVERY) / phase;
+      if (phase >= 2 || Math.random() < 0.4) {
+        api.screamer(Math.floor(Math.random() * FACES), 0.08 + Math.random() * 0.05);
+        api.sound('glitch');
+      }
+    }
     for (const puff of [...puffs]) {
       puff.age += dt;
       if (puff.age > PUFF_LIFE) {
@@ -357,6 +371,8 @@ export function ikiyo(): IkiyoEncounter {
 
   const goPhase = (api: ModApi, next: 2 | 3) => {
     phase = next;
+    api.screamer(Math.floor(Math.random() * FACES), 0.32);
+    api.sound('shriek');
     api.animate('ikiyo', 'cast');
     api.animate('head', 'attack');
     api.sound('stinger');
@@ -543,6 +559,9 @@ export function ikiyo(): IkiyoEncounter {
       api.flash('rgba(255,255,255,0.95)', 0.35);
       api.shake(1, 1.3);
       say(api, pick(SCREAMS));
+      // A face slams onto the screen.
+      api.screamer(Math.floor(Math.random() * FACES), 0.45);
+      api.sound('shriek');
       // It comes out of a burst of black smoke.
       burst(api, { ...head, y: head.y + HEAD_MIDDLE - 1 }, [0x050508, 0x1a0a0a, 0xff2010], 24);
       return true;

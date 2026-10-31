@@ -316,6 +316,7 @@ const SOUNDS = new Set([
   'giggle',
   'knock',
   'steps',
+  'shriek',
 ]);
 
 const ACTS = new Set(['attack', 'hurt', 'cast']);
@@ -344,6 +345,10 @@ function parseSyncEvent(v: unknown): SyncEvent | null {
         : null;
     case 'sp':
       return v.length === 6 && v.slice(2, 5).every((n) => num(n)) && num(v[5], 0xffffff)
+        ? (v as SyncEvent)
+        : null;
+    case 'sc':
+      return v.length === 4 && Number.isInteger(v[2]) && num(v[2], 9) && num(v[3], 3)
         ? (v as SyncEvent)
         : null;
     case 'sk':

@@ -29,7 +29,8 @@ export type SyncEvent =
   | [number, 'trophy', string]
   | [number, 'sp', number, number, number, number]
   | [number, 'an', string, ActorAct]
-  | [number, 'sk', number, number];
+  | [number, 'sk', number, number]
+  | [number, 'sc', number, number];
 
 /** What the host sends about one shared mod. */
 export interface ModSync {
@@ -108,6 +109,10 @@ export class ModRecorder {
       flash: (color: string, seconds: number) => {
         api.flash(color, seconds);
         this.event(['flash', color, seconds]);
+      },
+      screamer: (variant: number, seconds: number) => {
+        api.screamer(variant, seconds);
+        this.event(['sc', variant, seconds]);
       },
       shake: (amount: number, seconds: number) => {
         api.shake(amount, seconds);
@@ -214,6 +219,9 @@ export class ModFollower {
           break;
         case 'sk':
           api.shake(e[2], e[3]);
+          break;
+        case 'sc':
+          api.screamer(e[2], e[3]);
           break;
         case 'sound':
           api.sound(e[2]);
