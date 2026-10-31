@@ -240,7 +240,7 @@ const MAX_HIT_DAMAGE = 50;
  */
 export interface ModCallNet {
   mod: string;
-  call: 'hit' | 'command' | 'hurt' | 'effect' | 'tag';
+  call: 'hit' | 'command' | 'hurt' | 'effect' | 'tag' | 'strip' | 'unstrip';
   actor?: string;
   damage?: number;
   name?: string;
@@ -410,6 +410,8 @@ function parseModCall(msg: Record<string, unknown>): ModCallNet | null {
     if (!num(msg.damage, 20) || msg.damage <= 0 || !shortText(msg.reason, 80)) return null;
     return { mod: msg.mod, call, damage: msg.damage, reason: msg.reason };
   }
+  // A shared mod takes a player's things for a while, or gives them back.
+  if (call === 'strip' || call === 'unstrip') return { mod: msg.mod, call };
   if (call === 'effect') {
     if (!num(msg.walk, 5) || !num(msg.jump, 5) || !num(msg.seconds, 30)) return null;
     if (msg.walk < 0 || msg.jump < 0 || msg.seconds < 0) return null;

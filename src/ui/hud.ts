@@ -328,6 +328,14 @@ export class Hud {
     el.style.setProperty('--pulse', `${(2.4 - Math.min(1, Math.max(0, level)) * 1.8).toFixed(2)}s`);
   }
 
+  /** A mod's small sign in the corner (null hides it). */
+  setModCorner(icon: string | null, title = ''): void {
+    const el = $('mod-corner');
+    el.hidden = icon === null;
+    if (icon !== null && el.textContent !== icon) el.textContent = icon;
+    el.title = title;
+  }
+
   bossBar(name: string | null, health = 1): void {
     $('boss-bar').hidden = name === null;
     if (name === null) return;

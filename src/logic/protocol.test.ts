@@ -139,4 +139,17 @@ describe('protocol', () => {
     );
     expect(odd && ('pose' in odd || 'act' in odd)).toBe(false);
   });
+
+  it('lets a shared mod take and give back things, with nothing extra', () => {
+    const strip = parseClientMessage(
+      JSON.stringify({ t: 'modCall', to: 'p1', mod: '', call: 'strip', items: [1, 2] }),
+    );
+    expect(strip).toEqual({ t: 'modCall', to: 'p1', mod: '', call: 'strip' });
+    expect(
+      parseClientMessage(JSON.stringify({ t: 'modCall', to: 'p1', mod: '', call: 'unstrip' })),
+    ).toEqual({ t: 'modCall', to: 'p1', mod: '', call: 'unstrip' });
+    expect(
+      parseClientMessage(JSON.stringify({ t: 'modCall', to: 'p1', mod: '', call: 'steal' })),
+    ).toBeNull();
+  });
 });

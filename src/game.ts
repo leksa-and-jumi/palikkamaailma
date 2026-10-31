@@ -28,13 +28,17 @@ import {
   loadLocalCarts,
   loadLocalEdits,
   loadLocalMods,
+  loadModMemory,
   loadPlayer,
+  loadStolen,
   winTrophy,
   loadTrophies,
   saveLocalCarts,
   saveLocalEdits,
   saveLocalMods,
+  saveModMemory,
   savePlayer,
+  saveStolen,
 } from './data/storage';
 import {
   AIR,
@@ -135,7 +139,7 @@ import { HURT_REASONS, MobManager, villagerProfession } from './play/mobManager'
 import { MobRenderer } from './render/mobRenderer';
 import { ModManager } from './mods/manager';
 import { LETTER_SECONDS, shownText } from './mods/reading';
-import { speak } from './audio/voices';
+import { speak, VOICE_FX } from './audio/voices';
 import { materialOf } from './audio/materials';
 import { music, type Place } from './audio/music';
 import type { ModApi, ModEffects, ModPlayer } from './mods/types';
@@ -224,6 +228,8 @@ function skipTo(now: number, target: number): number {
 }
 
 /** How far around a Nether portal's place to look for floor (blocks). */
+/** Things a mod takes come back by themselves after this long at the latest. */
+const MOD_STEAL_SECONDS = 240;
 const NETHER_PORTAL_SEARCH = 12;
 
 const BUILDER_ERRORS: Record<string, string> = {
@@ -344,6 +350,8 @@ export class Game {
   private lightningTimer = 0;
   /** Short changes to how you move (from shared mods), until a time (ms). */
   private tempEffects: { effects: ModEffects; until: number }[] = [];
+  /** A mod took everything you had: it comes back by this time at the latest (ms). */
+  private stolenUntil = 0;
   /** Seconds standing in a portal, and true after travelling until you step out. */
   private portalTime = 0;
   private portalCooldown = false;
@@ -394,6 +402,8 @@ export class Game {
       this.hud.setAtmosphere(null, 0);
       this.hud.bossBar(null);
       this.hud.setModMark(null, 0);
+      this.hud.setModCorner(null);
+      this.giveBackStolen();
     };
     this.carts = new CartManager({
       save: (cart) => {
@@ -462,6 +472,8 @@ export class Game {
     });
     if (saved.inventory) this.inventory.load(saved.inventory);
     else if (this.mode === 'creative') this.giveCreativeKit();
+    // Things a mod took last time come back (the game was closed in the middle).
+    if (loadStolen(options.code)) this.giveBackStolen();
     hud.setInventory(this.inventory);
 
     this.input = new Input(renderer.renderer.domElement, {
@@ -635,6 +647,7 @@ export class Game {
     if (this.ready && !this.dead) this.updateCarts(dt);
     this.modActors.update(dt, this.player.x, this.player.y + PLAYER.eyeHeight, this.player.z);
     // In multiplayer the host's pause must not freeze a boss for the others.
+    if (this.stolenUntil > 0 && Date.now() > this.stolenUntil) this.giveBackStolen();
     if (this.ready && (!this.paused || this.room)) {
       this.mods.tick(dt);
       this.updateModWeather(dt);
@@ -1325,9 +1338,7 @@ export class Game {
       sparkle: (x, y, z, color) => this.effects.sparkle(x, y, z, color),
       say: (who, text) => {
         // Ikiyö speaks through the monster filter; {tags} are not shown.
-        const fx =
-          who.name === 'Ikiyö' ? 'monster' : who.name === 'Päiväkirja' ? 'narrator' : undefined;
-        const voice = speak(text, fx);
+        const voice = speak(text, VOICE_FX[who.name]);
         this.hud.say(who.emoji, who.name, who.color ?? '#ffd66b', shownText(text), voice + 1);
         // The speaking character's mouth moves while it talks (or the words type out).
         this.modActors.talk(voice || [...text].length * LETTER_SECONDS + 0.4);
@@ -1348,6 +1359,7 @@ export class Game {
       animate: (id, act) => this.modActors.animate(id, act),
       bossBar: (name, health) => this.hud.bossBar(name, health),
       mark: (text, level) => this.hud.setModMark(text, level ?? 0),
+      corner: (icon, title) => this.hud.setModCorner(icon, title),
       hurt: (amount, reason) => this.takeDamage(amount, reason),
       hurtPlayer: (id, amount, reason) => {
         if (id === this.myId) this.takeDamage(amount, reason);
@@ -1368,6 +1380,21 @@ export class Game {
             seconds,
           });
         }
+      },
+      strip: (id) => {
+        if (id === this.myId) this.stealAll();
+        else this.room?.send({ t: 'modCall', to: id, mod: '', call: 'strip' });
+      },
+      giveBack: (id) => {
+        if (id === this.myId) this.giveBackStolen();
+        else this.room?.send({ t: 'modCall', to: id, mod: '', call: 'unstrip' });
+      },
+      recall: (key, everywhere) => loadModMemory(everywhere ? null : this.options.code)[key],
+      remember: (key, value, everywhere) => {
+        const code = everywhere ? null : this.options.code;
+        const memory = Object.entries(loadModMemory(code)).filter(([k]) => k !== key);
+        if (value !== undefined && value !== null) memory.push([key, value]);
+        saveModMemory(code, Object.fromEntries(memory));
       },
       push: (vx, vy, vz) => {
         this.player.vx += vx;
@@ -1393,6 +1420,33 @@ export class Game {
         return nearY;
       },
     };
+  }
+
+  /**
+   * A mod takes everything you carry and wear. It is kept on this device
+   * (never lost, even if the game closes) and comes back within minutes.
+   */
+  private stealAll(): void {
+    if (this.stolenUntil > 0 || loadStolen(this.options.code)) return;
+    this.stolenUntil = Date.now() + MOD_STEAL_SECONDS * 1000;
+    saveStolen(this.options.code, {
+      inventory: this.inventory.takeAll(),
+      until: this.stolenUntil,
+    });
+    this.savePlayerNow();
+  }
+
+  /** Everything a mod took comes back (what no longer fits drops at your feet). */
+  private giveBackStolen(): void {
+    const stolen = loadStolen(this.options.code);
+    this.stolenUntil = 0;
+    if (!stolen) return;
+    saveStolen(this.options.code, null);
+    for (const stack of this.inventory.restore(stolen.inventory)) {
+      this.spawnDrop(stack, [this.player.x, this.player.y + 1, this.player.z], false);
+    }
+    this.savePlayerNow();
+    this.hud.toast('🎒 Tavarasi palasivat!');
   }
 
   /** A short change to how you move (a web slows you down). */
@@ -1967,6 +2021,7 @@ export class Game {
 
   private die(reason: string): void {
     this.dead = true;
+    this.giveBackStolen();
     this.mining = null;
     this.input.unlock();
     if (!SURVIVAL.keepInventory) {
@@ -2786,6 +2841,8 @@ export class Game {
         return;
       case 'modCall':
         if (msg.call === 'hurt') this.takeDamage(msg.damage ?? 1, msg.reason ?? '');
+        else if (msg.call === 'strip') this.stealAll();
+        else if (msg.call === 'unstrip') this.giveBackStolen();
         else if (msg.call === 'effect') {
           this.addTempEffect({ walkSpeed: msg.walk, jumpSpeed: msg.jump }, msg.seconds ?? 0);
         } else {

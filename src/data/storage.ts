@@ -142,6 +142,46 @@ export function winTrophy(id: string): boolean {
   return true;
 }
 
+/**
+ * What mods remember on this device (never in the world): per world, or
+ * for this player in every world (`everywhere`). Keys are "mod-id.thing".
+ */
+export function loadModMemory(code: string | null): Record<string, unknown> {
+  const key = code === null ? `${STORAGE.player}.modmem` : `${STORAGE.player}.modmem.${code}`;
+  const saved = read<Record<string, unknown>>(key, {});
+  return typeof saved === 'object' && saved !== null ? saved : {};
+}
+
+export function saveModMemory(code: string | null, memory: Record<string, unknown>): void {
+  write(code === null ? `${STORAGE.player}.modmem` : `${STORAGE.player}.modmem.${code}`, memory);
+}
+
+/**
+ * Things a mod took from you for a while (Ikiyö steals everything). They are
+ * kept here until given back, so closing the game never loses them.
+ */
+export interface StolenItems {
+  inventory: unknown;
+  /** When they come back by themselves at the latest (ms). */
+  until: number;
+}
+
+export function loadStolen(code: string): StolenItems | null {
+  const saved = read<StolenItems | null>(`${STORAGE.player}.stolen.${code}`, null);
+  return saved && typeof saved === 'object' && typeof saved.until === 'number' ? saved : null;
+}
+
+export function saveStolen(code: string, stolen: StolenItems | null): void {
+  if (stolen) write(`${STORAGE.player}.stolen.${code}`, stolen);
+  else {
+    try {
+      localStorage.removeItem(`${STORAGE.player}.stolen.${code}`);
+    } catch {
+      // Blocked: nothing to forget.
+    }
+  }
+}
+
 export interface AudioSettings {
   music: boolean;
   sounds: boolean;

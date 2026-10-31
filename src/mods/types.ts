@@ -114,8 +114,26 @@ export interface ActorPart {
   phase?: number;
   /** Tilts it a little (radians around x, z), e.g. arms held forward. */
   tilt?: [number, number];
-  /** Not only boxes: round heads, long thin arms, sharp claws (size = how big each way). */
-  shape?: 'box' | 'sphere' | 'cylinder' | 'cone' | 'rib';
+  /**
+   * Not only boxes: round heads, long thin arms, sharp claws (size = how big
+   * each way). Living shapes: `bone` (a long bone with knobby joints),
+   * `claw` (a curved hook), `rib` (a pair of ribs curving round from the
+   * spine), `vertebra` (a knobby piece of spine), `blob` (a lumpy, uneven
+   * ball), `cloak` (a ragged cloak, wide and torn at the hem) and `tendril`
+   * (a wavy strand thinning to a point, pointing up like a cone).
+   */
+  shape?:
+    | 'box'
+    | 'sphere'
+    | 'cylinder'
+    | 'cone'
+    | 'rib'
+    | 'bone'
+    | 'claw'
+    | 'vertebra'
+    | 'blob'
+    | 'cloak'
+    | 'tendril';
   /**
    * Drawn with a living shader instead of a plain colour: `smoke` is a
    * see-through, rippling shadow with a faint red glow at its edges.
@@ -219,6 +237,11 @@ export interface ModApi {
    * shaking and flickering; under 0.12 s it is just a subliminal flash.
    */
   screamer(variant: number, seconds: number): void;
+  /**
+   * A small sign in the top corner that stays until changed (null hides it),
+   * e.g. a little crown while a secret power is on.
+   */
+  corner(icon: string | null, title?: string): void;
   /** Shakes the screen (0–1 strong) for a moment. */
   shake(amount: number, seconds: number): void;
   /** Shows or moves one of the mod's own characters (only on this computer). */
@@ -235,6 +258,20 @@ export interface ModApi {
   /** Changes your rules for a while (a web slows you down). */
   effect(effects: ModEffects, seconds: number): void;
   effectFor(id: string, effects: ModEffects, seconds: number): void;
+  /**
+   * Takes everything a player carries and wears, for a while. They always
+   * get it back: with `giveBack`, when they die or leave, when the mod is
+   * turned off, or by themselves after a few minutes.
+   */
+  strip(id: string): void;
+  giveBack(id: string): void;
+  /**
+   * What the mod remembers on this device: about this world, or (with
+   * `everywhere`) about this player in every world. Never stored in the world.
+   * Keys start with the mod's id ("halloween.story").
+   */
+  recall(key: string, everywhere?: boolean): unknown;
+  remember(key: string, value: unknown, everywhere?: boolean): void;
   /** Gives you a push. */
   push(vx: number, vy: number, vz: number): void;
   /** Gives a trophy (kept on this device). True the first time. */
@@ -280,6 +317,8 @@ export interface ModCommand {
   help: string;
   /** A secret (easter egg): not in the help lists. */
   hidden?: boolean;
+  /** Runs on your own computer even in a shared mod (something about you only). */
+  local?: boolean;
   run(api: ModApi, args: string): void;
 }
 
@@ -325,8 +364,8 @@ export interface Mod {
   tags?(api: ModApi): readonly string[];
   /** On the host: a player told one of their tags (`id` is theirs, or yours). */
   onTag?(api: ModApi, playerId: string, tag: string): void;
-  /** You hit one of the mod's characters. */
-  onHitActor?(api: ModApi, id: string, damage: number): void;
+  /** Someone (`by`: their player id) hit one of the mod's characters. */
+  onHitActor?(api: ModApi, id: string, damage: number, by: string): void;
   /** Called every frame while the mod is on. */
   tick?(api: ModApi, dt: number): void;
   /**

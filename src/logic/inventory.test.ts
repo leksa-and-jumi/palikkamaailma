@@ -98,4 +98,29 @@ describe('inventory', () => {
     expect(inv.armor[0]).toBeNull();
     expect(inv.count(itemId('diamond_helmet'))).toBe(1);
   });
+
+  it('takes everything away and puts it back where it was', () => {
+    const inv = new Inventory();
+    inv.add({ id: itemId('diamond_sword'), count: 1 });
+    inv.add({ id: DIRT, count: 10 });
+    inv.armor[0] = { id: itemId('diamond_helmet'), count: 1, damage: 3 };
+    const taken = JSON.parse(JSON.stringify(inv.takeAll())) as unknown;
+    expect(inv.slots.every((s) => s === null)).toBe(true);
+    expect(inv.armor.every((s) => s === null)).toBe(true);
+    // Something picked up meanwhile stays, and the dirt finds other room.
+    inv.slots[1] = { id: STONE, count: 5 };
+    expect(inv.restore(taken)).toEqual([]);
+    expect(inv.slots[0]?.id).toBe(itemId('diamond_sword'));
+    expect(inv.count(DIRT)).toBe(10);
+    expect(inv.count(STONE)).toBe(5);
+    expect(inv.armor[0]).toEqual({ id: itemId('diamond_helmet'), count: 1, damage: 3 });
+  });
+
+  it('gives back what does not fit', () => {
+    const inv = new Inventory();
+    inv.add({ id: DIRT, count: 64 });
+    const taken = inv.takeAll();
+    for (let i = 0; i < inv.slots.length; i++) inv.slots[i] = { id: STONE, count: 64 };
+    expect(inv.restore(taken)).toEqual([{ id: DIRT, count: 64 }]);
+  });
 });
