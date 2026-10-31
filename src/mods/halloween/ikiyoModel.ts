@@ -16,31 +16,42 @@ const p = (
 ): ActorPart => ({ size, pos, color, ...more });
 
 const SHADOW = 0x07070c;
-const CLOAK = 0x0c0b12;
 const BONE = 0xd9d2bf;
 const OLD_BONE = 0xa89f88;
 const HOLE = 0x020203;
 const EYE = 0xff2a1a;
 
-/** One very long arm: shoulder to claws, all turning from the shoulder. */
+const SMOKE = 0x050508;
+const EMBER = 0x7a0808;
+/** A see-through, rippling shadow (the smoke shader). */
+const smoke = (size: V, pos: V, more: Partial<ActorPart> = {}): ActorPart =>
+  p(size, pos, SMOKE, { shader: 'smoke', rim: EMBER, alpha: 0.85, ...more });
+
+/** One very long arm: smoke down to the elbow, then bare bone and claws. */
 function arm(side: 1 | -1, move: PartMove): ActorPart[] {
-  const x = 1.75 * side;
-  const shoulder: V = [x, 8.7, 0];
+  const x = 1.85 * side;
+  const shoulder: V = [x, 8.8, 0];
   const swing = { move, pivot: shoulder };
   return [
-    p([0.9, 0.9, 0.9], [x, 8.6, 0], CLOAK, { shape: 'sphere' }),
-    p([0.5, 3.4, 0.5], [x + side * 0.15, 6.9, 0], SHADOW, { shape: 'cylinder', ...swing }),
+    smoke([0.9, 3.6, 0.9], [x + side * 0.15, 6.9, 0], { shape: 'cylinder', ...swing }),
     p([0.42, 0.42, 0.42], [x + side * 0.2, 5.1, 0], OLD_BONE, { shape: 'sphere', ...swing }),
-    p([0.36, 3.2, 0.36], [x + side * 0.25, 3.4, -0.1], OLD_BONE, { shape: 'cylinder', ...swing }),
-    p([0.8, 0.6, 0.55], [x + side * 0.25, 1.7, -0.15], OLD_BONE, { shape: 'sphere', ...swing }),
-    // Four claws pointing down.
+    p([0.3, 3.2, 0.3], [x + side * 0.25, 3.4, -0.1], OLD_BONE, { shape: 'cylinder', ...swing }),
+    p([0.75, 0.55, 0.5], [x + side * 0.25, 1.7, -0.15], OLD_BONE, { shape: 'sphere', ...swing }),
+    // Four long claws pointing down.
     ...[-0.3, -0.1, 0.1, 0.3].map((dz, i) =>
-      p([0.16, 1.1, 0.16], [x + side * (0.12 + i * 0.06), 0.95, -0.15 + dz], 0x1a1714, {
+      p([0.14, 1.3, 0.14], [x + side * (0.12 + i * 0.06), 0.9, -0.15 + dz], 0x1a1714, {
         shape: 'cone',
         tilt: [Math.PI + dz * 0.6, side * (0.1 + i * 0.04)],
         ...swing,
       }),
     ),
+    // Smoke dripping off the arm.
+    smoke([0.5, 2.2, 0.5], [x + side * 0.3, 4.6, 0.3], {
+      shape: 'cone',
+      tilt: [Math.PI, side * 0.2],
+      alpha: 0.6,
+      ...swing,
+    }),
   ];
 }
 
@@ -51,28 +62,45 @@ export const IKIYO: ActorSpec = {
   speaker: true,
   motion: { float: 1.2, swing: 0.25, gait: 0.6 },
   parts: [
-    // The cloak: a dark cone, see-through at the edges, with rags that wave.
-    p([5, 6.8, 4.4], [0, 3.6, 0.2], CLOAK, { shape: 'cone', alpha: 0.94 }),
-    ...Array.from({ length: 10 }, (_, i): ActorPart => {
-      const a = (i / 10) * Math.PI * 2;
-      return p([0.55, 2.4, 0.1], [Math.sin(a) * 2.15, 0.6, Math.cos(a) * 1.9 + 0.2], SHADOW, {
+    // A body of living smoke: a long ragged cloak, hunched shoulders.
+    smoke([5.2, 8.2, 4.6], [0, 4.2, 0.2], { shape: 'cone', alpha: 0.8 }),
+    smoke([2.6, 4.4, 1.9], [0, 7.2, 0], { shape: 'cylinder', alpha: 0.7 }),
+    smoke([4.4, 1.7, 2.6], [0, 8.9, 0.1], { shape: 'sphere' }),
+    // Inside the smoke: a spine, ribs and a red heart that beats.
+    p([0.2, 3.6, 0.2], [0, 7.2, 0.3], OLD_BONE, { shape: 'cylinder' }),
+    ...[6.2, 6.8, 7.4, 8.0].map((y, i) =>
+      p([1.7 - i * 0.12, 0.13, 1.1], [0, y, 0], BONE, { shape: 'cylinder', alpha: 0.9 }),
+    ),
+    p([0.5, 0.55, 0.42], [0.25, 7.5, -0.15], 0xff1a10, {
+      shape: 'sphere',
+      glow: true,
+      flicker: true,
+      move: 'pulse',
+    }),
+    // Smoke hanging from its hem, waving.
+    ...Array.from({ length: 12 }, (_, i): ActorPart => {
+      const a = (i / 12) * Math.PI * 2;
+      return smoke([0.7, 3.4, 0.7], [Math.sin(a) * 2.1, 0.4, Math.cos(a) * 1.8 + 0.2], {
+        shape: 'cone',
+        tilt: [Math.PI + Math.cos(a) * 0.25, Math.sin(a) * 0.25],
         move: 'sway',
-        phase: i * 1.7,
-        alpha: 0.85,
+        phase: i * 1.3,
+        alpha: 0.65,
       });
     }),
-    // Chest with ribs showing through a tear.
-    p([2.6, 3.2, 1.7], [0, 7.4, 0], SHADOW, { shape: 'cylinder' }),
-    p([1.6, 2.3, 0.2], [0, 7.6, -0.78], HOLE),
-    ...[6.7, 7.2, 7.7, 8.2].map((y, i) => p([1.5 - i * 0.05, 0.14, 0.14], [0, y, -0.86], BONE)),
-    p([0.18, 2.1, 0.18], [0, 7.45, -0.84], OLD_BONE),
-    // Spikes down the back.
-    ...[8.6, 7.8, 7.0, 6.2].map((y, i) =>
-      p([0.35, 0.9 - i * 0.1, 0.35], [0, y, 0.95], 0x1b1820, { shape: 'cone', tilt: [-0.9, 0] }),
+    // Black flames rising from its back.
+    ...[-1.2, -0.4, 0.4, 1.2].map((x, i): ActorPart =>
+      smoke([0.9, 3.2 + (i % 2) * 0.8, 0.9], [x, 10.6, 0.9], {
+        shape: 'cone',
+        tilt: [-0.45, -x * 0.2],
+        move: 'sway',
+        phase: i * 2.1,
+        alpha: 0.6,
+      }),
     ),
-    // A collar of rags where the long neck comes out (the head and the neck are their own pieces).
-    p([3.2, 0.7, 2.4], [0, 9.05, 0], CLOAK, { shape: 'cylinder' }),
-    p([1.5, 0.5, 1.5], [0, 9.5, 0], 0x161012, { shape: 'cylinder' }),
+    // Where the long neck comes out.
+    smoke([1.9, 1.2, 1.7], [0, 9.6, 0], { shape: 'cylinder' }),
+    p([1.3, 0.4, 1.3], [0, 9.9, 0], 0x161012, { shape: 'cylinder' }),
     ...arm(1, 'armB'),
     ...arm(-1, 'armA'),
   ],
@@ -243,7 +271,13 @@ export const NECK: ActorSpec = {
   width: 1.4,
   height: 2.4,
   parts: [
-    p([1.35, 2.5, 1.35], [0, 1.2, 0], 0x161012, { shape: 'cylinder' }),
+    // A smoky tube: the fangs and the throat show through it.
+    p([1.35, 2.5, 1.35], [0, 1.2, 0], 0x0a0608, {
+      shape: 'cylinder',
+      shader: 'smoke',
+      rim: 0x8a0a0a,
+      alpha: 0.95,
+    }),
     // Bony bumps down the back.
     p([0.35, 0.5, 0.35], [0, 1.2, 0.62], 0x2a2420, { shape: 'cone', tilt: [-1.2, 0] }),
     // The slit down the front: throat, gums and fangs.

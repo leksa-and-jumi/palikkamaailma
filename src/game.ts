@@ -392,6 +392,7 @@ export class Game {
       this.renderer.atmosphere = null;
       this.hud.setAtmosphere(null, 0);
       this.hud.bossBar(null);
+      this.hud.setModMark(null, 0);
     };
     this.carts = new CartManager({
       save: (cart) => {
@@ -1342,6 +1343,7 @@ export class Game {
       removeActor: (id) => this.modActors.remove(id),
       animate: (id, act) => this.modActors.animate(id, act),
       bossBar: (name, health) => this.hud.bossBar(name, health),
+      mark: (text, level) => this.hud.setModMark(text, level ?? 0),
       hurt: (amount, reason) => this.takeDamage(amount, reason),
       hurtPlayer: (id, amount, reason) => {
         if (id === this.myId) this.takeDamage(amount, reason);

@@ -80,6 +80,12 @@ function hunted(api: ModApi, only?: ReadonlySet<string>): ModPlayer[] {
   );
 }
 
+/** Everyone the six may still come for: not those Ikiyö has marked. */
+function unmarked(api: ModApi): Set<string> {
+  const marked = worthy(api);
+  return new Set(api.players.map((p) => p.id).filter((id) => !marked.has(id)));
+}
+
 /** The players who have won every trophy (the others said so lately; your own you know). */
 function worthy(api: ModApi): Set<string> {
   const ids = new Set([...tagged].filter(([, t]) => clock - t < TAG_FRESH).map(([id]) => id));
@@ -226,13 +232,17 @@ export const halloween: Mod = {
           beginGiant(g);
           return;
         }
-        const f = focus(api);
-        if (!f) {
-          api.toast('🛠️ Kauhuhahmot tulevat vain selviytyjä-tilassa.');
-          return;
-        }
         if (current) {
           api.toast(`${current.who.emoji} ${current.who.name} on jo täällä!`);
+          return;
+        }
+        const f = focus(api, unmarked(api));
+        if (!f) {
+          api.toast(
+            focus(api)
+              ? '👁️ Ikiyö on merkinnyt sinut. Muut kauhuhahmot eivät enää uskalla tulla.'
+              : '🛠️ Kauhuhahmot tulevat vain selviytyjä-tilassa.',
+          );
           return;
         }
         begin(f, (id) => api.hasTrophy(id));
@@ -261,6 +271,13 @@ export const halloween: Mod = {
   },
   onDisable(api) {
     stop(api);
+    api.mark(null);
+  },
+  localTick(api) {
+    // Those with every trophy belong to Ikiyö now: a little red eye says so.
+    if (api.hasTrophy(MASTER.id)) {
+      api.mark('Ikiyö on merkinnyt sinut', giant || prelude ? 1 : 0.25);
+    } else api.mark(null);
   },
   onHitActor(api, id, damage) {
     const f = focus(api);
@@ -326,7 +343,9 @@ export const halloween: Mod = {
     }
     if (!api.night) return;
     wait -= dt;
-    if (wait <= 0) begin(f, (id) => api.hasTrophy(id));
+    // The six come only for those Ikiyö has not marked yet.
+    const n = focus(api, unmarked(api));
+    if (wait <= 0 && n) begin(n, (id) => api.hasTrophy(id));
   },
 };
 

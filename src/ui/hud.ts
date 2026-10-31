@@ -311,6 +311,15 @@ export class Hud {
     });
   }
 
+  /** A mod's little badge (Ikiyö has marked you); it pulses faster with `level`. */
+  setModMark(text: string | null, level: number): void {
+    const el = $('mod-mark');
+    el.hidden = text === null;
+    if (text === null) return;
+    if ($('mod-mark-text').textContent !== text) $('mod-mark-text').textContent = text;
+    el.style.setProperty('--pulse', `${(2.4 - Math.min(1, Math.max(0, level)) * 1.8).toFixed(2)}s`);
+  }
+
   bossBar(name: string | null, health = 1): void {
     $('boss-bar').hidden = name === null;
     if (name === null) return;
