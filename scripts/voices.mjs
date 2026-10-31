@@ -30,6 +30,8 @@ const CAST = [
   { file: 'captain.ts', voice: 'bill', style: '[gruff, pirate]' },
   { file: 'spiderQueen.ts', voice: 'matilda', style: '[hissing]' },
   { file: 'silent.ts', voice: 'roger', style: '[very slow, deep whisper]' },
+  // Ikiyö: the voice is still to be chosen by the parent (samples sent).
+  { file: 'ikiyo.ts', voice: 'callum', style: '[raspy, monstrous, slow whisper]' },
 ];
 
 function apiKey() {
@@ -66,13 +68,23 @@ function linesIn(file) {
     ) {
       strings(node.initializer);
     }
+    // api.say(who, '…') and a character's own say(api, '…').
     if (
       ts.isCallExpression(node) &&
-      ts.isPropertyAccessExpression(node.expression) &&
-      node.expression.name.text === 'say' &&
-      node.arguments[1]
+      node.arguments[1] &&
+      ((ts.isPropertyAccessExpression(node.expression) && node.expression.name.text === 'say') ||
+        (ts.isIdentifier(node.expression) && node.expression.text === 'say'))
     ) {
       strings(node.arguments[1]);
+    }
+    // Lists of lines (TAUNTS, HIT_LINES).
+    if (
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      /^(TAUNTS|[A-Z_]*LINES)$/.test(node.name.text) &&
+      node.initializer
+    ) {
+      strings(node.initializer);
     }
     ts.forEachChild(node, visit);
   };

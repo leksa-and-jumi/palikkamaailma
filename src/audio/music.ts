@@ -19,6 +19,7 @@ const CALM: Record<Place, readonly string[]> = {
 /** Quiet, like in Minecraft: music is a background, not the main thing. */
 const CALM_VOLUME = 0.22;
 const MOD_VOLUME = 0.16;
+const GIANT_VOLUME = 0.26;
 const MENU_VOLUME = 0.25;
 const FIRST_WAIT: [number, number] = [20, 60];
 /** Seconds of quiet between calm tracks. */
@@ -49,7 +50,8 @@ export class Music {
     const track = id && known[id] ? id : null;
     if (track === this.modTrack) return;
     this.modTrack = track;
-    if (track) this.play(track, MOD_VOLUME, true);
+    // Ikiyö's music is felt a little more than the other characters'.
+    if (track) this.play(track, track.startsWith('ikiyo') ? GIANT_VOLUME : MOD_VOLUME, true);
     else if (this.track && !CALM_TRACKS.has(this.track)) {
       this.stop(false);
       this.wait = between(FIRST_WAIT);

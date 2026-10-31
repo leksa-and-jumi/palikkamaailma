@@ -4,6 +4,7 @@
 // Glowing eyes and lanterns shine in the dark.
 
 import type { ActorPart, ActorSpec, FaceSpec, PartMove } from '../types';
+import { IKIYO, MARK, WISP } from './ikiyoModel';
 
 type V = [number, number, number];
 const part = (
@@ -558,4 +559,7 @@ export const ALL_SPECS: readonly ActorSpec[] = [
   SPIDER_QUEEN,
   WEB_SHOT,
   SILENT,
+  IKIYO,
+  WISP,
+  MARK,
 ];

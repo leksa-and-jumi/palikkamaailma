@@ -50,6 +50,10 @@ export function fakeApi() {
       state.mood = a;
     },
     flash() {},
+    shakes: 0,
+    shake() {
+      state.shakes++;
+    },
     actor(id: string, _spec: unknown, s: ActorState) {
       state.actors.set(id, { ...s });
     },

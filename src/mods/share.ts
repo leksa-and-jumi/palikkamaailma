@@ -17,7 +17,8 @@ export type SyncEvent =
   | [number, 'toast', string]
   | [number, 'trophy', string]
   | [number, 'sp', number, number, number, number]
-  | [number, 'an', string, ActorAct];
+  | [number, 'an', string, ActorAct]
+  | [number, 'sk', number, number];
 
 /** What the host sends about one shared mod. */
 export interface ModSync {
@@ -31,7 +32,7 @@ export interface ModSync {
 /** A follower asks the host to do something in a shared mod. */
 export interface ModCall {
   mod: string;
-  call: 'hit' | 'command';
+  call: 'hit' | 'command' | 'tag';
   /** The character hit (without the mod's prefix) and how hard. */
   actor?: string;
   damage?: number;
@@ -95,6 +96,10 @@ export class ModRecorder {
       flash: (color: string, seconds: number) => {
         api.flash(color, seconds);
         this.event(['flash', color, seconds]);
+      },
+      shake: (amount: number, seconds: number) => {
+        api.shake(amount, seconds);
+        this.event(['sk', amount, seconds]);
       },
       sound: (name: ModSound) => {
         api.sound(name);
@@ -193,6 +198,9 @@ export class ModFollower {
           break;
         case 'flash':
           api.flash(e[2], e[3]);
+          break;
+        case 'sk':
+          api.shake(e[2], e[3]);
           break;
         case 'sound':
           api.sound(e[2]);

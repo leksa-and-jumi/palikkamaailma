@@ -359,6 +359,8 @@ export class Game {
   /** When piston moves were sent (ms), to stay under PISTONS.maxSendsPerSecond. */
   private pistonSends: number[] = [];
   private shake = 0;
+  private shakeAmount = 0;
+  private shakeHold = 0;
 
   constructor(
     private readonly options: GameOptions,
@@ -382,6 +384,7 @@ export class Game {
         const host = this.modHostId();
         if (host && host !== this.myId) this.room?.send({ t: 'modCall', to: host, ...call });
       },
+      myId: () => this.myId ?? 'me',
     });
     this.mods.onTurnedOff = (id) => {
       // A mod turned off leaves nothing behind.
@@ -742,15 +745,22 @@ export class Game {
   private updateCamera(dt: number): void {
     const cam = this.renderer.camera;
     cam.position.set(this.player.x, this.player.y + PLAYER.eyeHeight, this.player.z);
+    // A mod's long shake (a giant's footsteps) holds for a while before fading.
+    if (this.shakeHold > 0) {
+      this.shakeHold -= dt;
+      this.shake = Math.max(this.shake, this.shakeAmount);
+    }
+    let roll = 0;
     if (this.shake > 0) {
       // A big bang nearby shakes the screen.
       const amount = this.shake * TNT_RULES.shake;
       cam.position.x += (Math.random() - 0.5) * amount;
       cam.position.y += (Math.random() - 0.5) * amount;
       cam.position.z += (Math.random() - 0.5) * amount;
+      roll = (Math.random() - 0.5) * this.shake * 0.05;
       this.shake = Math.max(0, this.shake - dt / SHAKE_TIME);
     }
-    cam.rotation.set(this.player.pitch, this.player.yaw, 0);
+    cam.rotation.set(this.player.pitch, this.player.yaw, roll);
     this.renderer.setUnderwater(this.headInWater());
   }
 
@@ -820,6 +830,13 @@ export class Game {
     const id = (s: ItemStack | null | undefined) => s?.id ?? 0;
     const armor = this.inventory.armor;
     return [id(armor[0]), id(armor[1]), id(armor[2]), id(armor[3]), id(this.selectedStack())];
+  }
+
+  /** Shakes the screen (0–1) for a while (mods: a giant walking, a scream). */
+  private shakeScreen(amount: number, seconds: number): void {
+    this.shakeAmount = Math.min(1, Math.max(0, amount));
+    this.shakeHold = Math.max(this.shakeHold, Math.min(10, seconds));
+    this.shake = Math.max(this.shake, this.shakeAmount);
   }
 
   /** Which calm music fits where you are (the title screen has its own). */
@@ -1317,6 +1334,7 @@ export class Game {
         music.setModTrack(a?.music ?? null);
       },
       flash: (color, seconds) => this.hud.flash(color, seconds),
+      shake: (amount, seconds) => this.shakeScreen(amount, seconds),
       actor: (id, spec, state) => this.modActors.set(id, spec, state),
       removeActor: (id) => this.modActors.remove(id),
       animate: (id, act) => this.modActors.animate(id, act),
@@ -2762,14 +2780,17 @@ export class Game {
         else if (msg.call === 'effect') {
           this.addTempEffect({ walkSpeed: msg.walk, jumpSpeed: msg.jump }, msg.seconds ?? 0);
         } else {
-          this.mods.receiveCall({
-            mod: msg.mod,
-            call: msg.call,
-            actor: msg.actor,
-            damage: msg.damage,
-            name: msg.name,
-            args: msg.args,
-          });
+          this.mods.receiveCall(
+            {
+              mod: msg.mod,
+              call: msg.call,
+              actor: msg.actor,
+              damage: msg.damage,
+              name: msg.name,
+              args: msg.args,
+            },
+            msg.from,
+          );
         }
         return;
       case 'mods':
