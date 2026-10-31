@@ -6,8 +6,19 @@
 
 import type { ActorAct, ActorSpec, ActorState, Atmosphere, ModApi, ModSound } from './types';
 
-/** One character: id, spec id, x, y, z, yaw, visible (1/0), scale, label. */
-export type SyncActor = [string, string, number, number, number, number, number, number, string];
+/** One character: id, spec id, x, y, z, yaw, visible (1/0), scale, label, pitch. */
+export type SyncActor = [
+  string,
+  string,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  string,
+  number?,
+];
 
 /** Something that happens once: [number, kind, ...]. */
 export type SyncEvent =
@@ -75,6 +86,7 @@ export class ModRecorder {
           s.visible === false ? 0 : 1,
           r2(s.scale ?? 1),
           s.label ?? '',
+          r2(s.pitch ?? 0),
         ]);
       },
       removeActor: (id: string) => {
@@ -171,7 +183,7 @@ export class ModFollower {
     }
     this.active = true;
     const now = new Set<string>();
-    for (const [id, specId, x, y, z, yaw, visible, scale, label] of sync.a) {
+    for (const [id, specId, x, y, z, yaw, visible, scale, label, pitch] of sync.a) {
       const spec = this.specs.get(specId);
       if (!spec) continue;
       now.add(id);
@@ -183,6 +195,7 @@ export class ModFollower {
         visible: visible === 1,
         scale,
         label: label || undefined,
+        pitch: pitch ?? 0,
       });
     }
     for (const id of this.shown) if (!now.has(id)) api.removeActor(id);

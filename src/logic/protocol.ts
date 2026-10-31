@@ -306,6 +306,10 @@ const SOUNDS = new Set([
   'glitch',
   'scream',
   'rumble',
+  'stinger',
+  'bite',
+  'stretch',
+  'giggle',
 ]);
 
 const ACTS = new Set(['attack', 'hurt', 'cast']);
@@ -356,8 +360,9 @@ export function parseModSync(v: unknown): ModSync | null {
   if (!Array.isArray(s.e) || s.e.length > MAX_SYNC_EVENTS) return null;
   const actors: SyncActor[] = [];
   for (const a of s.a as unknown[]) {
-    if (!Array.isArray(a) || a.length !== 9) return null;
-    const [id, spec, x, y, z, yaw, visible, scale, label] = a as unknown[];
+    if (!Array.isArray(a) || (a.length !== 9 && a.length !== 10)) return null;
+    const [id, spec, x, y, z, yaw, visible, scale, label, pitch] = a as unknown[];
+    if (pitch !== undefined && !num(pitch, 10)) return null;
     if (!shortText(id, 40) || !shortText(spec, 40) || !shortText(label, 40)) return null;
     if (![x, y, z].every((n) => num(n)) || !num(yaw, 1e4) || !num(scale, 20)) return null;
     if (visible !== 0 && visible !== 1) return null;

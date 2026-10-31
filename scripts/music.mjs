@@ -27,7 +27,7 @@ const SPOOKY =
 
 /** Ikiyö, the seventh: scarier than the others, but still made for children. */
 const DREAD =
-  'Instrumental only, no vocals, no singing, no lyrics, no screams. Dark horror film underscore for a giant shadow monster in a blocky game for children aged 7–10: genuinely creepy and tense, ominous and menacing, but no sudden loud jump scares, controlled dynamics, cinematic.';
+  'Instrumental only, no vocals, no singing, no lyrics. Intense horror film score for a terrifying giant monster: dissonant screeching violins, sudden loud orchestral stingers and hits, pounding low drums, unsettling silences broken by bursts of noise, metallic scrapes, deep menacing brass, nightmare atmosphere. Very scary.';
 
 const TRACKS = [
   {
@@ -84,15 +84,15 @@ const TRACKS = [
   },
   {
     id: 'ikiyo-1',
-    prompt: `${DREAD} Phase one, the whisper: a deep sub-bass drone, slow distant breathing-like swells, sparse detuned music-box notes, faint ticking, unsettling and very slow.`,
+    prompt: `${DREAD} Phase one: whispers in the dark, a creeping sub-bass drone, scraping metal, sudden violin screeches that stab in and vanish, music-box notes falling out of tune, then a loud stinger.`,
   },
   {
     id: 'ikiyo-2',
-    prompt: `${DREAD} Phase two, the red moon: slow heavy taiko-like drum hits far away, dissonant low strings sliding, a dark organ chord, rising tension, still not too loud.`,
+    prompt: `${DREAD} Phase two, the red moon: relentless pounding war drums, shrieking string clusters, dark brass blasts, frantic heartbeat rhythm, chaos building to repeated loud hits.`,
   },
   {
     id: 'ikiyo-3',
-    prompt: `${DREAD} Phase three, endless night: a slow heartbeat pulse, deep rumbling drone, eerie high glassy tones that bend out of tune, almost silent moments in between, deep dread.`,
+    prompt: `${DREAD} Phase three, endless night: near silence and a slow heartbeat, then sudden deafening orchestral screams, distorted bass rumbles, reversed noises, glitching tones, pure dread.`,
   },
 ];
 

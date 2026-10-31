@@ -30,7 +30,7 @@ const CAST = [
   { file: 'captain.ts', voice: 'bill', style: '[gruff, pirate]' },
   { file: 'spiderQueen.ts', voice: 'matilda', style: '[hissing]' },
   { file: 'silent.ts', voice: 'roger', style: '[very slow, deep whisper]' },
-  { file: 'ikiyo.ts', voice: 'harry', style: '[raspy, monstrous, slow whisper]' },
+  { file: 'ikiyo.ts', voice: 'harry', style: '[raspy, monstrous, unhinged]' },
 ];
 
 function apiKey() {
@@ -76,11 +76,11 @@ function linesIn(file) {
     ) {
       strings(node.arguments[1]);
     }
-    // Lists of lines (TAUNTS, HIT_LINES).
+    // Lists of lines (TAUNTS, SCREAMS, HIT_LINES).
     if (
       ts.isVariableDeclaration(node) &&
       ts.isIdentifier(node.name) &&
-      /^(TAUNTS|[A-Z_]*LINES)$/.test(node.name.text) &&
+      /^(TAUNTS|SCREAMS|[A-Z_]*LINES)$/.test(node.name.text) &&
       node.initializer
     ) {
       strings(node.initializer);
@@ -126,7 +126,9 @@ for (const who of CAST) {
       list[id] = old[id];
       continue;
     }
-    const seconds = await record(key, who.voice, `${who.style} ${text}`, file);
+    // {tags} in a line become the voice's own tags ([screams], [whispers]…).
+    const spoken = text.replace(/\{([^}]*)\}/g, '[$1]');
+    const seconds = await record(key, who.voice, `${who.style} ${spoken}`, file);
     list[id] = Math.round(seconds * 10) / 10;
     letters += text.length;
     console.log(`🎙️ ${who.voice}: ${text} (${list[id]} s)`);

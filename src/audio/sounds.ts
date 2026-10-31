@@ -356,6 +356,48 @@ export const sounds = {
     blip(1480, 1.3, 'triangle', 0.02, 0.05, 420);
     noise(1.4, 0.05, 5000, 1200, 0, 'bandpass', 3);
   },
+  /** A jump-scare hit: a harsh clash of notes, a metal screech and a bang. */
+  stinger: () => {
+    for (const f of [220, 233, 311, 466, 622]) blip(f, 1.1, 'sawtooth', 0.045, 0, f * 0.97);
+    blip(2400, 0.9, 'square', 0.02, 0, 1700);
+    noise(0.9, 0.35, 6000, 300, 0, 'lowpass');
+    growl(48, 36, 1.2, 0.18);
+  },
+  /** Teeth snapping shut. */
+  bite: () => {
+    noise(0.06, 0.4, 5000, 1500, 0, 'highpass', 2);
+    noise(0.12, 0.3, 1200, 200, 0.03, 'bandpass', 3);
+    blip(140, 0.12, 'square', 0.08, 0.02, 60);
+  },
+  /** Something long and wet stretching out, creaking. */
+  stretch: () => {
+    const a = audio();
+    if (!a) return;
+    const start = a.currentTime;
+    const osc = a.createOscillator();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(60, start);
+    osc.frequency.exponentialRampToValueAtTime(260, start + 0.9);
+    const filter = a.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(500, start);
+    filter.frequency.exponentialRampToValueAtTime(1800, start + 0.9);
+    filter.Q.value = 10;
+    const gain = a.createGain();
+    gain.gain.setValueAtTime(0.0001, start);
+    gain.gain.exponentialRampToValueAtTime(0.09, start + 0.1);
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.95);
+    osc.connect(filter).connect(gain).connect(out(a));
+    osc.start(start);
+    osc.stop(start + 1);
+    noise(0.9, 0.06, 2000, 600, 0, 'bandpass', 4);
+  },
+  /** A twisted little giggle far away. */
+  giggle: () => {
+    [620, 700, 580, 760, 540, 820].forEach((f, i) =>
+      blip(f, 0.11, 'triangle', 0.025, i * 0.12 + Math.random() * 0.03, f * 0.8),
+    );
+  },
   /** The ground rumbles (big footsteps, something rising). */
   rumble: () => {
     noise(1.8, 0.3, 160, 40, 0, 'lowpass');
