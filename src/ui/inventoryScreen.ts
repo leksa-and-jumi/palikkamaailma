@@ -48,7 +48,8 @@ import {
 } from '../logic/inventory';
 import { ITEMS, getItem, itemId, type ItemType } from '../logic/items';
 import { sounds } from '../audio/sounds';
-import { drawDoll } from './armorDoll';
+import { AvatarPreview } from '../render/avatarPreview';
+import { gearOf } from '../render/playerModel';
 import { fillSlot } from './slots';
 
 function $(id: string): HTMLElement {
@@ -174,6 +175,7 @@ export class InventoryScreen {
   cursor: Slot = null;
   inventory: Inventory = new EmptyInventory();
   private mode: GameMode = 'survival';
+  private doll: AvatarPreview | null = null;
   /** Your animal, for the figure next to the armor slots. */
   face = '🦊';
   private category = 'blocks';
@@ -224,6 +226,7 @@ export class InventoryScreen {
 
   close(): void {
     if (!this.isOpen) return;
+    this.doll?.stop();
     this.extra?.close(this);
     this.extra = null;
     this.giveBack(this.cursor);
@@ -247,7 +250,13 @@ export class InventoryScreen {
     $('creative-tabs').hidden = !creative;
     $('creative-grid').hidden = !creative;
     $('armor-box').hidden = creative || !!this.extra?.hideArmor;
-    drawDoll($('armor-doll') as HTMLCanvasElement, this.inventory.armor, this.face);
+    // Your character in 3D, wearing your armor.
+    if (!$('armor-box').hidden) {
+      this.doll ??= new AvatarPreview($('armor-doll') as HTMLCanvasElement);
+      this.doll.setAvatar(this.face, false);
+      this.doll.setGear(gearOf(this.inventory.armor, null));
+      this.doll.start();
+    } else this.doll?.stop();
     const points = this.inventory.armorPoints();
     $('armor-points').textContent = `🛡️ ${points}/20`;
     $('armor-points').title =

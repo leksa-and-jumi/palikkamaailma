@@ -73,6 +73,8 @@ import {
   parseCart,
   type DroppedItem,
   type Gear,
+  type PlayerAct,
+  type PlayerPoseName,
   type ServerMessage,
 } from './logic/protocol';
 import { raycast, type RayHit } from './logic/raycast';
@@ -174,6 +176,9 @@ const SWEEP_RANGE = 1.6;
 const SWEEP_DAMAGE = 1;
 /** Blocks walked between footstep sounds. */
 const STEP_LENGTH = 1.9;
+/** Forced swing messages at most this often; older swings are dropped. */
+const ACT_GAP_MS = 350;
+const ACT_STALE_MS = 600;
 const HUM_EVERY: [number, number] = [9, 22];
 const HUM_NEAR = 14;
 const MAX_PITCH = Math.PI / 2 - 0.01;
@@ -251,6 +256,12 @@ export class Game {
   /** Creative or dead: monsters and bosses leave you alone. */
   private lastSentSafe = false;
   private lastSentGear = '';
+  private lastSentPose = '';
+  /** An arm swing or a hurt for the others to see, and whether it may send a message of its own. */
+  private pendingAct: PlayerAct | null = null;
+  private pendingActAt = 0;
+  private actForce = false;
+  private lastForcedAct = 0;
   private stepDistance = 0;
   private wasInWater = false;
   /** Villagers nearby hum now and then. */
@@ -795,6 +806,15 @@ export class Game {
 
   // --- Maps ---------------------------------------------------------------
 
+  /** Your arm swings (on your screen at once; for the others with the next message). */
+  private swingArm(force: boolean): void {
+    this.held.swing();
+    if (this.pendingAct === 'hurt') return;
+    this.pendingAct = 'swing';
+    this.pendingActAt = performance.now();
+    if (force) this.actForce = true;
+  }
+
   /** What others see on you: helmet, chestplate, leggings, boots and the item in your hand. */
   private gear(): Gear {
     const id = (s: ItemStack | null | undefined) => s?.id ?? 0;
@@ -893,7 +913,7 @@ export class Game {
     ];
     this.arrows.shoot(eye, dir, power, stack.enchants?.power ?? 0);
     sounds.bow(power);
-    this.held.swing();
+    this.swingArm(true);
     if (this.mode === 'survival') {
       this.inventory.removeItems(itemId('arrow'), 1);
       this.wearSelected();
@@ -931,7 +951,7 @@ export class Game {
   }
 
   private onBreakPressed(): void {
-    this.held.swing();
+    this.swingArm(true);
     if (this.placing) {
       this.finishPlacing();
       this.breakCooldown = SURVIVAL.creativeBreakDelay;
@@ -999,7 +1019,7 @@ export class Game {
     // Tap, tap, tap while digging (like Minecraft).
     if (Math.floor(before * 4) !== Math.floor(this.mining.progress * 4)) {
       sounds.dig(materialOf(block));
-      this.held.swing();
+      this.swingArm(false);
     }
     if (this.mining.progress >= 1) {
       this.breakTarget();
@@ -1190,7 +1210,7 @@ export class Game {
     if (this.change(edits).length === 0) return;
     if (this.mode === 'survival') this.inventory.takeOne(this.hud.selected);
     sounds.placeBlock(materialOf(edits[0]![3]));
-    this.held.swing();
+    this.swingArm(true);
   }
 
   /** Opens or closes a door, trapdoor or gate (both halves of a door). */
@@ -1658,7 +1678,7 @@ export class Game {
     const damage =
       ((item?.tool?.damage ?? MOBS.fistDamage) + (sharpness > 0 ? 0.5 * sharpness + 0.5 : 0)) *
       (critical ? CRIT_DAMAGE : 1);
-    this.held.swing();
+    this.swingArm(true);
     const target = [...this.mobs.views()].find((v) => v.id === id);
     if (!this.mobs.hit(id, damage, [p.x, p.z])) return;
     const sword = item?.tool?.kind === 'sword';
@@ -1907,6 +1927,9 @@ export class Game {
 
   private afterDamage(reason: string): void {
     this.hud.flashHurt();
+    // The others see you wince.
+    this.pendingAct = 'hurt';
+    this.pendingActAt = performance.now();
     sounds.hurt();
     // Armor wears a little with every hit.
     for (let i = 0; i < this.inventory.armor.length; i++) {
@@ -2618,9 +2641,18 @@ export class Game {
     // Armor and the held item go along only when they change (others see them on you).
     const gear = this.gear();
     const newGear = gear.join() !== this.lastSentGear;
-    if (!playing && mod.length === 0 && sameSafe && !newGear) return;
+    const pose: PlayerPoseName = this.player.flying ? 'fly' : 'stand';
+    const newPose = pose !== this.lastSentPose;
+    // A swing waits for the next message (a hit, a hurt or a placed block may send one, a few a second at most).
+    const now = performance.now();
+    if (this.pendingAct && now - this.pendingActAt > ACT_STALE_MS) this.pendingAct = null;
+    const forceAct =
+      this.pendingAct !== null &&
+      (this.pendingAct === 'hurt' || (this.actForce && now - this.lastForcedAct > ACT_GAP_MS));
+    const changed = newGear || newPose || forceAct;
+    if (!playing && mod.length === 0 && sameSafe && !changed) return;
     const last = this.lastSentMove;
-    if (last && sameSafe && !newGear && !mobs.length && !carts.length && !mod.length) {
+    if (last && sameSafe && !changed && !mobs.length && !carts.length && !mod.length) {
       const moved = Math.hypot(p.x - last[0], p.y - last[1], p.z - last[2]);
       const turned = Math.abs(p.yaw - last[3]) + Math.abs(p.pitch - last[4]);
       const small = moved < NET.moveDeadZone && turned < NET.turnDeadZone;
@@ -2634,6 +2666,11 @@ export class Game {
     this.moveIdle = 0;
     this.lastSentSafe = safe;
     this.lastSentGear = gear.join();
+    this.lastSentPose = pose;
+    const act = this.pendingAct;
+    if (forceAct) this.lastForcedAct = now;
+    this.pendingAct = null;
+    this.actForce = false;
     this.room.send({
       t: 'move',
       p: pos,
@@ -2644,6 +2681,8 @@ export class Game {
       ...(mod.length > 0 ? { mod } : {}),
       ...(safe ? { safe: true } : {}),
       ...(newGear ? { gear } : {}),
+      ...(newPose ? { pose } : {}),
+      ...(act ? { act } : {}),
     });
   }
 
@@ -2662,6 +2701,7 @@ export class Game {
         this.myId = msg.you;
         // A new connection: tell the others what you wear again.
         this.lastSentGear = '';
+        this.lastSentPose = '';
         this.timeOffset = msg.timeOffset ?? 0;
         this.mods.set(msg.mods ?? []);
         this.mobs.myId = msg.you;
@@ -2705,6 +2745,8 @@ export class Game {
       case 'move':
         this.others.move(msg.id, msg.p, msg.yaw, msg.pitch, msg.safe === true);
         if (msg.gear) this.others.setGear(msg.id, msg.gear);
+        if (msg.pose) this.others.setPose(msg.id, msg.pose);
+        if (msg.act) this.others.act(msg.id, msg.act);
         if (msg.mobs) this.mobs.receive(msg.id, msg.mobs);
         if (msg.carts) this.carts.receiveMoving(msg.id, msg.carts, this.cartWorld());
         if (msg.mod && msg.id === this.modHostId()) this.mods.receiveSync(msg.mod);
@@ -2746,6 +2788,7 @@ export class Game {
         return;
       case 'chat':
         this.hud.addChat(msg.avatar, msg.text);
+        this.others.talk(msg.id, msg.text);
         return;
       case 'item':
         this.drops.set(msg.drop.id, liveDrop(msg.drop));

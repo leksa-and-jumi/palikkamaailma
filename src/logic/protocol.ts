@@ -25,9 +25,14 @@ export interface PlayerInfo {
   safe?: boolean;
   /** What they wear and hold: helmet, chestplate, leggings, boots, hand (item ids, 0 = nothing). */
   gear?: Gear;
+  /** Standing, crouching or flying. */
+  pose?: PlayerPoseName;
 }
 
 export type Gear = [number, number, number, number, number];
+export type PlayerPoseName = 'stand' | 'sneak' | 'fly';
+/** Something a player does once that others see: an arm swing or getting hurt. */
+export type PlayerAct = 'swing' | 'hurt';
 
 /** An item lying on the ground. */
 export interface DroppedItem {
@@ -79,6 +84,9 @@ export type ClientMessage =
       mod?: ModSync[];
       /** Sent only when your armor or held item changes. */
       gear?: Gear;
+      /** Sent only when it changes. */
+      pose?: PlayerPoseName;
+      act?: PlayerAct;
     }
   | { t: 'set'; edits: Edit[] }
   | { t: 'chat'; text: string }
@@ -138,6 +146,8 @@ export type ServerMessage =
       carts?: CartNet[];
       mod?: ModSync[];
       gear?: Gear;
+      pose?: PlayerPoseName;
+      act?: PlayerAct;
     }
   | { t: 'set'; edits: Edit[] }
   | { t: 'hitMob'; id: string; damage: number; from: [number, number]; by: string }
@@ -451,6 +461,8 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       if (msg.safe === true) move.safe = true;
       const gear = parseGear(msg.gear);
       if (gear) move.gear = gear;
+      if (msg.pose === 'stand' || msg.pose === 'sneak' || msg.pose === 'fly') move.pose = msg.pose;
+      if (msg.act === 'swing' || msg.act === 'hurt') move.act = msg.act;
       if (Array.isArray(msg.mod) && msg.mod.length <= MAX_MODS) {
         const syncs = msg.mod.map(parseModSync);
         if (syncs.every((x) => x !== null)) move.mod = syncs as ModSync[];

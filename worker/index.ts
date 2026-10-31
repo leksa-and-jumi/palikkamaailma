@@ -363,6 +363,7 @@ export class WorldRoom extends DurableObject<Env> {
           safe: msg.safe,
           // Gear comes only when it changes: remember it for players who join later.
           gear: msg.gear ?? me.player.gear,
+          pose: msg.pose ?? me.player.pose,
         };
         ws.serializeAttachment(me);
         this.broadcast(
@@ -377,6 +378,8 @@ export class WorldRoom extends DurableObject<Env> {
             carts: msg.carts,
             mod: msg.mod,
             gear: msg.gear,
+            pose: msg.pose,
+            act: msg.act,
           },
           ws,
         );
