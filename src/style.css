@@ -398,16 +398,80 @@ button:disabled {
 }
 
 .avatars button {
-  font-size: 2rem;
-  padding: 6px 10px;
-  background: #fff;
-  box-shadow: 0 4px 0 #d8d2c4;
-  border: 3px solid transparent;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 7px 8px 6px;
+  background: linear-gradient(#5a5f68, #464a52);
+  border: 2px solid #111316;
+  box-shadow:
+    inset 2px 2px 0 rgba(255, 255, 255, 0.25),
+    inset -2px -3px 0 rgba(0, 0, 0, 0.35);
+}
+
+.avatars button canvas {
+  image-rendering: pixelated;
+  border-radius: 3px;
+  transition: transform 120ms;
+}
+
+.avatars button:hover canvas {
+  transform: scale(1.12) rotate(-3deg);
 }
 
 .avatars button.selected {
-  border-color: var(--accent);
-  background: #eaf7e6;
+  background: linear-gradient(#57b84a, #3f9a37);
+  border-color: #fff;
+  outline: 2px solid #ffff8a;
+}
+
+.avatar-panel {
+  width: min(520px, 100%);
+}
+
+.avatar-stage {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin: -4px 0 10px;
+  border-radius: 10px;
+  background: radial-gradient(ellipse at 50% 40%, rgba(255, 255, 255, 0.16), rgba(0, 0, 0, 0) 70%);
+}
+
+.avatar-preview {
+  width: min(260px, 70vw);
+  aspect-ratio: 4 / 5;
+  cursor: grab;
+  touch-action: none;
+}
+
+.avatar-preview:active {
+  cursor: grabbing;
+}
+
+.avatar-name {
+  font-family: var(--font-pixel);
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #ffff8a;
+  text-shadow: 2px 2px 0 #3a3a00;
+  margin-top: -6px;
+}
+
+.avatar-tip {
+  margin: 2px 0 0;
+  font-size: 0.8rem;
+  color: #c8c4ba;
+}
+
+.face-icon canvas {
+  width: 1.4em;
+  height: 1.4em;
+  vertical-align: -0.3em;
+  image-rendering: pixelated;
+  border-radius: 2px;
 }
 
 .join {
@@ -982,7 +1046,10 @@ kbd {
 }
 
 .armor-doll canvas {
-  image-rendering: pixelated;
+  width: 120px;
+  height: 160px;
+  cursor: grab;
+  touch-action: none;
 }
 
 .armor-points {
@@ -1300,7 +1367,9 @@ kbd {
 .avatars button small {
   display: block;
   font-size: 0.75rem;
-  color: var(--muted);
+  color: #f4f4f4;
+  text-shadow: 1px 1px 0 #222;
+  text-transform: capitalize;
 }
 
 /* --- Mods: mood, flashes, boss bar and speech ------------------------------ */
@@ -1412,4 +1481,21 @@ kbd {
   margin-top: 8px;
   color: #8cff3a;
   font-weight: 800;
+}
+
+/* Little pixel faces for players (the list at the top right and the chat). */
+.player-face,
+.chat-face {
+  image-rendering: pixelated;
+  border-radius: 3px;
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.35);
+}
+
+.player-face {
+  margin: 0 2px;
+  vertical-align: middle;
+}
+
+.chat-face {
+  vertical-align: -4px;
 }

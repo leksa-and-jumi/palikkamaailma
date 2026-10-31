@@ -27,6 +27,8 @@ import { music } from './audio/music';
 import { audioSettings, setAudio } from './audio/settings';
 import { randomSplash } from './ui/titleLogo';
 import { Logo3D } from './render/logo3d';
+import { AvatarPreview } from './render/avatarPreview';
+import { faceIcon } from './render/skins';
 import { renderTrophies } from './ui/trophyList';
 
 function $(id: string): HTMLElement {
@@ -44,12 +46,16 @@ let game: Game | null = null;
 
 const panorama = new Panorama(renderer);
 const logo = new Logo3D($('title-logo') as HTMLCanvasElement);
+const avatarPreview = new AvatarPreview($('avatar-preview') as HTMLCanvasElement);
 
 /** Shows one page of the title screen (main, singleplayer, multiplayer…). */
 function showPage(id: string): void {
   for (const page of document.querySelectorAll<HTMLElement>('.menu-page')) {
     page.hidden = page.id !== id;
   }
+  // The floating character only moves while its page is open.
+  if (id === 'page-avatar') avatarPreview.start();
+  else avatarPreview.stop();
   if (id === 'page-trophies') renderTrophies($('trophy-list'));
 }
 
@@ -79,12 +85,19 @@ function showMenu(message = '', isError = false, page = 'page-main'): void {
 }
 
 function renderAvatars(): void {
-  $('avatar-now').textContent = avatar;
+  $('avatar-now').replaceChildren(faceIcon(avatar, 32));
+  const name = AVATARS.find((a) => a.emoji === avatar)?.name ?? '';
+  $('avatar-name').textContent = name.charAt(0).toUpperCase() + name.slice(1);
+  avatarPreview.setAvatar(avatar);
   $('avatars').replaceChildren(
     ...AVATARS.map(({ emoji, name }) => {
       const button = document.createElement('button');
-      button.innerHTML = `${emoji}<small>${name}</small>`;
+      button.append(faceIcon(emoji, 40));
+      const label = document.createElement('small');
+      label.textContent = name;
+      button.append(label);
       button.className = emoji === avatar ? 'selected' : '';
+      button.title = name;
       button.addEventListener('click', () => {
         avatar = emoji;
         saveAvatar(emoji);

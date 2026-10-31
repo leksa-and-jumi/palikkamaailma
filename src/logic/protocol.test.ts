@@ -128,4 +128,15 @@ describe('protocol', () => {
     );
     expect(bad && 'gear' in bad).toBe(false);
   });
+
+  it('passes poses and arm swings, nothing else', () => {
+    const move = parseClientMessage(
+      JSON.stringify({ t: 'move', p: [1, 2, 3], yaw: 0, pitch: 0, pose: 'fly', act: 'swing' }),
+    );
+    expect(move).toMatchObject({ pose: 'fly', act: 'swing' });
+    const odd = parseClientMessage(
+      JSON.stringify({ t: 'move', p: [1, 2, 3], yaw: 0, pitch: 0, pose: 'dance', act: 'boom' }),
+    );
+    expect(odd && ('pose' in odd || 'act' in odd)).toBe(false);
+  });
 });

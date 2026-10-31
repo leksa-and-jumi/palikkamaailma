@@ -1,7 +1,8 @@
 // Everything drawn on top of the 3D world: hotbar, hearts and hunger, world
 // code, players and chat.
 
-import { SURVIVAL } from '../config';
+import { AVATARS, SURVIVAL } from '../config';
+import { LOOKS, faceIcon } from '../render/skins';
 import { HOTBAR_SIZE, type Inventory } from '../logic/inventory';
 import { levelOf, stackName } from '../logic/enchanting';
 import type { Vitals } from '../logic/survival';
@@ -110,8 +111,16 @@ export class Hud {
     $('status').textContent = STATUS_TEXT[status];
   }
 
+  /** Everyone in the world as little pixel faces (the animal's name on hover). */
   setPlayers(avatars: string[]): void {
-    $('players').textContent = avatars.join('');
+    $('players').replaceChildren(
+      ...avatars.map((a) => {
+        const icon = faceIcon(a, 28);
+        icon.className = 'player-face';
+        icon.title = AVATARS.find((x) => x.emoji === a)?.name ?? '';
+        return icon;
+      }),
+    );
   }
 
   setFlying(flying: boolean): void {
@@ -192,7 +201,12 @@ export class Hud {
     const log = $('chat-log');
     const line = document.createElement('div');
     line.className = 'chat-line';
-    line.textContent = `${avatar} ${text}`;
+    // Players get their pixel face; game messages keep their emoji (💡).
+    if (LOOKS[avatar]) {
+      const icon = faceIcon(avatar, 20);
+      icon.className = 'chat-face';
+      line.append(icon, document.createTextNode(` ${text}`));
+    } else line.textContent = `${avatar} ${text}`;
     log.append(line);
     while (log.children.length > CHAT_LINES) log.firstElementChild?.remove();
     setTimeout(() => line.classList.add('faded'), CHAT_FADE_MS);

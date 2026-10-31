@@ -25,7 +25,7 @@
         <button class="mc-button" data-page="page-multi">👥 Moninpeli</button>
         <div class="mc-row">
           <button class="mc-button" data-page="page-avatar">
-            <span id="avatar-now">🦊</span> Hahmo
+            <span id="avatar-now" class="face-icon"></span> Hahmo
           </button>
           <button class="mc-button" data-page="page-trophies">🏆 Pokaalit</button>
         </div>
@@ -71,8 +71,13 @@
 
       <!-- Avatar -->
       <div id="page-avatar" class="menu-page" hidden>
-        <div class="mc-panel">
+        <div class="mc-panel avatar-panel">
           <h2>Kuka olet?</h2>
+          <div class="avatar-stage">
+            <canvas id="avatar-preview" class="avatar-preview" aria-label="Hahmosi"></canvas>
+            <div id="avatar-name" class="avatar-name"></div>
+            <p class="avatar-tip">Pyöritä vetämällä · klikkaa, niin hahmo vilkuttaa</p>
+          </div>
           <div id="avatars" class="avatars"></div>
         </div>
         <button class="mc-button" data-page="page-main">✔️ Valmis</button>
