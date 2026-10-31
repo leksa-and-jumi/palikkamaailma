@@ -168,7 +168,8 @@ export function ikiyo(): IkiyoEncounter {
   let twitch = 0;
   let twitchOffset: Vec = { x: 0, y: 0, z: 0 };
   // Jump scares and flickering lights.
-  let scareIn = between(SCARE_EVERY) * 0.6;
+  // The first scare comes soon after it rises.
+  let scareIn = 11 + Math.random() * 4;
   let quiet = -1;
   let peek = -1;
   let flicker = -1;
@@ -434,6 +435,8 @@ export function ikiyo(): IkiyoEncounter {
       api.flash('rgba(255,255,255,0.95)', 0.35);
       api.shake(1, 1.3);
       say(api, pick(SCREAMS));
+      // It comes out of a burst of black smoke.
+      burst(api, { ...head, y: head.y + HEAD_MIDDLE - 1 }, [0x050508, 0x1a0a0a, 0xff2010], 24);
       return true;
     }
     if (peek >= 0) {

@@ -137,6 +137,7 @@ export class ModManager {
       }
     }
     this.wasHost = host;
+    for (const mod of active) mod.localTick?.(this.apiFor(mod), dt);
     // Tell the host your tags now and then (a new host learns them within seconds).
     this.tagTimer -= dt;
     if (this.tagTimer <= 0) {

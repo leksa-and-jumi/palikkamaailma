@@ -112,6 +112,13 @@ export interface ActorPart {
   tilt?: [number, number];
   /** Not only boxes: round heads, long thin arms, sharp claws (size = how big each way). */
   shape?: 'box' | 'sphere' | 'cylinder' | 'cone';
+  /**
+   * Drawn with a living shader instead of a plain colour: `smoke` is a
+   * see-through, rippling shadow with a faint red glow at its edges.
+   */
+  shader?: 'smoke';
+  /** The glowing edge of a smoke part (default dark red). */
+  rim?: number;
 }
 
 /** How the whole character moves. */
@@ -198,6 +205,11 @@ export interface ModApi {
   atmosphere(a: Atmosphere | null): void;
   /** A quick flash over the screen (CSS colour). */
   flash(color: string, seconds: number): void;
+  /**
+   * A small badge in the corner that stays until changed (null hides it),
+   * e.g. "Ikiyö has marked you". `level` 0–1 makes it pulse faster.
+   */
+  mark(text: string | null, level?: number): void;
   /** Shakes the screen (0–1 strong) for a moment. */
   shake(amount: number, seconds: number): void;
   /** Shows or moves one of the mod's own characters (only on this computer). */
@@ -307,6 +319,11 @@ export interface Mod {
   onHitActor?(api: ModApi, id: string, damage: number): void;
   /** Called every frame while the mod is on. */
   tick?(api: ModApi, dt: number): void;
+  /**
+   * Called every frame on every computer (also the others' in a shared mod),
+   * for things about you only: a badge, your own trophies.
+   */
+  localTick?(api: ModApi, dt: number): void;
   onEnable?(api: ModApi): void;
   onDisable?(api: ModApi): void;
 }

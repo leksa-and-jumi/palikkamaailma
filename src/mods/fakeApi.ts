@@ -50,6 +50,10 @@ export function fakeApi() {
       state.mood = a;
     },
     flash() {},
+    badge: null as string | null,
+    mark(text: string | null) {
+      state.badge = text;
+    },
     shakes: 0,
     shake() {
       state.shakes++;

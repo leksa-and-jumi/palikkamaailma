@@ -190,7 +190,9 @@ export class ModActors {
       const see = part.alpha !== undefined && part.alpha < 1;
       let mesh: THREE.Mesh;
       const geometry = shapeGeometry(part);
-      if (part.glow) {
+      if (part.shader === 'smoke') {
+        mesh = new THREE.Mesh(geometry, smokeMaterial(part));
+      } else if (part.glow) {
         const material = new THREE.MeshBasicMaterial({
           color: part.color,
           transparent: see,
@@ -343,6 +345,7 @@ export class ModActors {
   /** Every frame: characters glide to where they should be and move. `eye` is where you look from. */
   update(dt: number, ex = 0, ey = 0, ez = 0): void {
     this.time += dt;
+    for (const m of liveShaders) m.uniforms.uTime!.value = this.time;
     this.talkLeft = Math.max(0, this.talkLeft - dt);
     const t = 1 - Math.exp(-SMOOTHING * dt);
     for (const a of this.actors.values()) {
@@ -532,7 +535,10 @@ export class ModActors {
       if (o instanceof THREE.Mesh) {
         o.geometry.dispose();
         const materials = Array.isArray(o.material) ? o.material : [o.material];
-        for (const m of new Set(materials)) (m as THREE.Material).dispose();
+        for (const m of new Set(materials)) {
+          if (m instanceof THREE.ShaderMaterial) liveShaders.delete(m);
+          (m as THREE.Material).dispose();
+        }
       }
     });
     for (const t of textures) t.dispose();
@@ -620,12 +626,91 @@ function shapeGeometry(part: ActorPart): THREE.BufferGeometry {
   const [w, h, d] = part.size;
   switch (part.shape) {
     case 'sphere':
-      return new THREE.SphereGeometry(0.5, 18, 14).scale(w, h, d);
+      return new THREE.SphereGeometry(0.5, 28, 20).scale(w, h, d);
     case 'cylinder':
-      return new THREE.CylinderGeometry(0.5, 0.5, 1, 12).scale(w, h, d);
+      return new THREE.CylinderGeometry(0.5, 0.5, 1, 24, 6).scale(w, h, d);
     case 'cone':
-      return new THREE.ConeGeometry(0.5, 1, 12).scale(w, h, d);
+      return new THREE.ConeGeometry(0.5, 1, 24, 10, part.shader === 'smoke').scale(w, h, d);
     default:
       return new THREE.BoxGeometry(w, h, d);
   }
+}
+
+// --- Living smoke ---------------------------------------------------------------
+
+/** Smoke materials whose time moves on every frame. */
+const liveShaders = new Set<THREE.ShaderMaterial>();
+
+const SMOKE_VERTEX = /* glsl */ `
+  uniform float uTime;
+  varying vec3 vNormal;
+  varying vec3 vView;
+  varying vec3 vPos;
+  void main() {
+    vec3 p = position;
+    // The surface ripples and breathes.
+    float w = sin(p.y * 3.1 + uTime * 2.0 + p.x * 2.3) * 0.07
+            + sin(p.y * 7.3 - uTime * 3.4 + p.z * 3.1) * 0.035
+            + sin(uTime * 1.3 + p.x * 5.0) * 0.02;
+    p += normal * w;
+    vec4 mv = modelViewMatrix * vec4(p, 1.0);
+    vView = -mv.xyz;
+    vNormal = normalize(normalMatrix * normal);
+    vPos = position;
+    gl_Position = projectionMatrix * mv;
+  }
+`;
+
+const SMOKE_FRAGMENT = /* glsl */ `
+  uniform float uTime;
+  uniform vec3 uColor;
+  uniform vec3 uRim;
+  uniform float uOpacity;
+  varying vec3 vNormal;
+  varying vec3 vView;
+  varying vec3 vPos;
+  float hash(vec3 p) {
+    p = fract(p * 0.3183099 + 0.1);
+    p *= 17.0;
+    return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+  }
+  float noise(vec3 x) {
+    vec3 i = floor(x);
+    vec3 f = fract(x);
+    f = f * f * (3.0 - 2.0 * f);
+    return mix(
+      mix(mix(hash(i), hash(i + vec3(1, 0, 0)), f.x), mix(hash(i + vec3(0, 1, 0)), hash(i + vec3(1, 1, 0)), f.x), f.y),
+      mix(mix(hash(i + vec3(0, 0, 1)), hash(i + vec3(1, 0, 1)), f.x), mix(hash(i + vec3(0, 1, 1)), hash(i + vec3(1, 1, 1)), f.x), f.y),
+      f.z);
+  }
+  void main() {
+    // Smoke drifting upwards inside it.
+    vec3 q = vPos * 2.2 + vec3(0.0, -uTime * 0.7, uTime * 0.15);
+    float n = noise(q) * 0.6 + noise(q * 2.3) * 0.3 + noise(q * 5.1) * 0.1;
+    // Edges glow; seen straight on it is thin and dark.
+    float edge = pow(1.0 - abs(dot(normalize(vNormal), normalize(vView))), 2.2);
+    vec3 col = mix(uColor, uRim, edge * 0.85) + uRim * pow(n, 5.0) * 0.6;
+    // Dense in the middle, thin and ragged at the edges.
+    float alpha = uOpacity * (0.72 + 0.25 * n) * (1.0 - edge * 0.35);
+    if (n < 0.34 && edge > 0.45) discard;
+    gl_FragColor = vec4(col, clamp(alpha, 0.0, 1.0));
+  }
+`;
+
+function smokeMaterial(part: ActorPart): THREE.ShaderMaterial {
+  const m = new THREE.ShaderMaterial({
+    uniforms: {
+      uTime: { value: 0 },
+      uColor: { value: new THREE.Color(part.color) },
+      uRim: { value: new THREE.Color(part.rim ?? 0x8a0a0a) },
+      uOpacity: { value: part.alpha ?? 0.9 },
+    },
+    vertexShader: SMOKE_VERTEX,
+    fragmentShader: SMOKE_FRAGMENT,
+    transparent: true,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  });
+  liveShaders.add(m);
+  return m;
 }

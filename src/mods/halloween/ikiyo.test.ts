@@ -97,4 +97,18 @@ describe('Ikiyö', () => {
     expect(after).toContain('Se palasi. Ne palaavat aina.');
     expect(after.some((l) => l.includes('Tämä maailma ei ole ensimmäinen'))).toBe(false);
   });
+
+  it('marks those with every trophy, and the six no longer come for them', () => {
+    resetHalloween();
+    const api = fakeApi();
+    api.trophies.push(...ALL);
+    halloween.localTick!(api, 0.05);
+    expect(api.badge).toBe('Ikiyö on merkinnyt sinut');
+    // A night goes by: no pumpkin king, only (after the story) Ikiyö.
+    const old = ['king', 'maiden', 'count', 'captain', 'queen', 'silent'];
+    for (let i = 0; i < 20 * 40; i++) halloween.tick!(api, 0.05);
+    expect(old.some((id) => api.actors.has(id))).toBe(false);
+    halloween.commands![0]!.run(api, '');
+    expect(api.toasts.at(-1)).toContain('merkinnyt');
+  });
 });
