@@ -87,7 +87,7 @@ export class HeldItem {
     const key = itemId ?? -1;
     let model = this.cache.get(key);
     if (model) return model;
-    model = itemId === null ? arm() : (blockModel(itemId) ?? spriteModel(itemId) ?? arm());
+    model = itemId === null ? arm() : (firstPerson(itemId) ?? arm());
     this.cache.set(key, model);
     return model;
   }
@@ -106,8 +106,50 @@ function arm(): THREE.Object3D {
   return group;
 }
 
+/** The item as seen in your own hand. */
+function firstPerson(itemId: number): THREE.Object3D | null {
+  const block = blockMesh(itemId);
+  const mesh = block ?? spriteMesh(itemId);
+  if (!mesh) return null;
+  if (block) {
+    mesh.rotation.set(0.1, 0.75, 0);
+    mesh.position.set(-0.02, 0.02, 0);
+  } else {
+    // Held like a sword: the handle in your hand, the tip up and forward.
+    mesh.rotation.set(0, 2.3, 0.1);
+    mesh.position.set(-0.02, 0.1, 0);
+  }
+  const group = new THREE.Group();
+  group.add(mesh);
+  return group;
+}
+
+/**
+ * The item in another player's hand (their arm hangs down from the
+ * shoulder; the hand is at its end): blocks held in front, tools and
+ * weapons pointing forward.
+ */
+export function thirdPerson(itemId: number): THREE.Object3D | null {
+  const block = blockMesh(itemId);
+  const mesh = block ?? spriteMesh(itemId);
+  if (!mesh) return null;
+  if (block) {
+    mesh.scale.setScalar(0.85);
+    mesh.position.set(0, -0.05, -0.12);
+    mesh.rotation.set(0, Math.PI / 4, 0);
+  } else {
+    mesh.scale.setScalar(1.6);
+    // Seen from the side, the tip pointing forward and a little up.
+    mesh.rotation.set(-0.5, Math.PI / 2, 0);
+    mesh.position.set(0, 0.04, -0.2);
+  }
+  const group = new THREE.Group();
+  group.add(mesh);
+  return group;
+}
+
 /** A small block with its real pictures on each side. */
-function blockModel(itemId: number): THREE.Object3D | null {
+function blockMesh(itemId: number): THREE.Mesh | null {
   const block = getItem(itemId)?.block;
   if (block === undefined) return null;
   const type = getBlockType(block);
@@ -127,15 +169,11 @@ function blockModel(itemId: number): THREE.Object3D | null {
     side(t.front ?? t.side),
     side(t.side),
   ]);
-  mesh.rotation.set(0.1, 0.75, 0);
-  mesh.position.set(-0.02, 0.02, 0);
-  const group = new THREE.Group();
-  group.add(mesh);
-  return group;
+  return mesh;
 }
 
 /** A tool, weapon or item: its pixel picture made into a thin 3D shape. */
-function spriteModel(itemId: number): THREE.Object3D | null {
+function spriteMesh(itemId: number): THREE.Mesh | null {
   const canvas = itemSpriteCanvas(itemId) ?? drawnIcon(itemId);
   if (!canvas) return null;
   const ctx = canvas.getContext('2d')!;
@@ -164,13 +202,7 @@ function spriteModel(itemId: number): THREE.Object3D | null {
   if (parts.length === 0) return null;
   const geometry = mergeGeometries(parts)!;
   for (const p of parts) p.dispose();
-  const mesh = new THREE.Mesh(geometry, new THREE.MeshLambertMaterial({ vertexColors: true }));
-  // Held like a sword: the handle in your hand, the tip up and forward.
-  mesh.rotation.set(0, 2.3, 0.1);
-  mesh.position.set(-0.02, 0.1, 0);
-  const group = new THREE.Group();
-  group.add(mesh);
-  return group;
+  return new THREE.Mesh(geometry, new THREE.MeshLambertMaterial({ vertexColors: true }));
 }
 
 /** Items without a sprite of their own (blocks that are not cubes): their icon. */

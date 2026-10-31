@@ -68,7 +68,13 @@ import {
   stepPlayer,
   type PlayerState,
 } from './logic/physics';
-import { cleanChatText, parseCart, type DroppedItem, type ServerMessage } from './logic/protocol';
+import {
+  cleanChatText,
+  parseCart,
+  type DroppedItem,
+  type Gear,
+  type ServerMessage,
+} from './logic/protocol';
 import { raycast, type RayHit } from './logic/raycast';
 import { nearSideOffset, planPlacement } from './logic/placement';
 import { planPlace } from './logic/placing';
@@ -244,6 +250,7 @@ export class Game {
   private lastSentMove: [number, number, number, number, number] | null = null;
   /** Creative or dead: monsters and bosses leave you alone. */
   private lastSentSafe = false;
+  private lastSentGear = '';
   private stepDistance = 0;
   private wasInWater = false;
   /** Villagers nearby hum now and then. */
@@ -787,6 +794,13 @@ export class Game {
   }
 
   // --- Maps ---------------------------------------------------------------
+
+  /** What others see on you: helmet, chestplate, leggings, boots and the item in your hand. */
+  private gear(): Gear {
+    const id = (s: ItemStack | null | undefined) => s?.id ?? 0;
+    const armor = this.inventory.armor;
+    return [id(armor[0]), id(armor[1]), id(armor[2]), id(armor[3]), id(this.selectedStack())];
+  }
 
   /** Which calm music fits where you are (the title screen has its own). */
   musicPlace(): Place {
@@ -2601,9 +2615,12 @@ export class Game {
     const mod = this.mods.takeSync();
     const safe = this.mode === 'creative' || this.dead;
     const sameSafe = safe === this.lastSentSafe;
-    if (!playing && mod.length === 0 && sameSafe) return;
+    // Armor and the held item go along only when they change (others see them on you).
+    const gear = this.gear();
+    const newGear = gear.join() !== this.lastSentGear;
+    if (!playing && mod.length === 0 && sameSafe && !newGear) return;
     const last = this.lastSentMove;
-    if (last && sameSafe && mobs.length === 0 && carts.length === 0 && mod.length === 0) {
+    if (last && sameSafe && !newGear && !mobs.length && !carts.length && !mod.length) {
       const moved = Math.hypot(p.x - last[0], p.y - last[1], p.z - last[2]);
       const turned = Math.abs(p.yaw - last[3]) + Math.abs(p.pitch - last[4]);
       const small = moved < NET.moveDeadZone && turned < NET.turnDeadZone;
@@ -2616,6 +2633,7 @@ export class Game {
     this.lastSentMove = [p.x, p.y, p.z, p.yaw, p.pitch];
     this.moveIdle = 0;
     this.lastSentSafe = safe;
+    this.lastSentGear = gear.join();
     this.room.send({
       t: 'move',
       p: pos,
@@ -2625,6 +2643,7 @@ export class Game {
       ...(carts.length > 0 ? { carts } : {}),
       ...(mod.length > 0 ? { mod } : {}),
       ...(safe ? { safe: true } : {}),
+      ...(newGear ? { gear } : {}),
     });
   }
 
@@ -2641,6 +2660,8 @@ export class Game {
     switch (msg.t) {
       case 'welcome':
         this.myId = msg.you;
+        // A new connection: tell the others what you wear again.
+        this.lastSentGear = '';
         this.timeOffset = msg.timeOffset ?? 0;
         this.mods.set(msg.mods ?? []);
         this.mobs.myId = msg.you;
@@ -2683,6 +2704,7 @@ export class Game {
         return;
       case 'move':
         this.others.move(msg.id, msg.p, msg.yaw, msg.pitch, msg.safe === true);
+        if (msg.gear) this.others.setGear(msg.id, msg.gear);
         if (msg.mobs) this.mobs.receive(msg.id, msg.mobs);
         if (msg.carts) this.carts.receiveMoving(msg.id, msg.carts, this.cartWorld());
         if (msg.mod && msg.id === this.modHostId()) this.mods.receiveSync(msg.mod);
