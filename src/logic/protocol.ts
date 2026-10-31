@@ -23,7 +23,11 @@ export interface PlayerInfo {
   pitch: number;
   /** In creative: monsters leave this player alone. */
   safe?: boolean;
+  /** What they wear and hold: helmet, chestplate, leggings, boots, hand (item ids, 0 = nothing). */
+  gear?: Gear;
 }
+
+export type Gear = [number, number, number, number, number];
 
 /** An item lying on the ground. */
 export interface DroppedItem {
@@ -73,6 +77,8 @@ export type ClientMessage =
       carts?: CartNet[];
       /** The host's shared mods: what everyone should see (not stored). */
       mod?: ModSync[];
+      /** Sent only when your armor or held item changes. */
+      gear?: Gear;
     }
   | { t: 'set'; edits: Edit[] }
   | { t: 'chat'; text: string }
@@ -131,6 +137,7 @@ export type ServerMessage =
       safe?: boolean;
       carts?: CartNet[];
       mod?: ModSync[];
+      gear?: Gear;
     }
   | { t: 'set'; edits: Edit[] }
   | { t: 'hitMob'; id: string; damage: number; from: [number, number]; by: string }
@@ -288,6 +295,12 @@ const SOUNDS = new Set([
 
 const ACTS = new Set(['attack', 'hurt', 'cast']);
 
+/** Five item ids (0 = nothing); anything else is ignored. */
+export function parseGear(v: unknown): Gear | null {
+  if (!Array.isArray(v) || v.length !== 5) return null;
+  return v.every((n) => Number.isInteger(n) && n >= 0 && n < 4096) ? (v as Gear) : null;
+}
+
 function parseSyncEvent(v: unknown): SyncEvent | null {
   if (!Array.isArray(v) || !num(v[0], 1e12)) return null;
   const [, kind] = v as unknown[];
@@ -436,6 +449,8 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       if (!p || !isFiniteNumber(msg.yaw, 1000) || !isFiniteNumber(msg.pitch, 10)) return null;
       const move: ClientMessage = { t: 'move', p, yaw: msg.yaw, pitch: msg.pitch };
       if (msg.safe === true) move.safe = true;
+      const gear = parseGear(msg.gear);
+      if (gear) move.gear = gear;
       if (Array.isArray(msg.mod) && msg.mod.length <= MAX_MODS) {
         const syncs = msg.mod.map(parseModSync);
         if (syncs.every((x) => x !== null)) move.mod = syncs as ModSync[];

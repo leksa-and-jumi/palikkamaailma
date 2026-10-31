@@ -355,7 +355,15 @@ export class WorldRoom extends DurableObject<Env> {
       }
       case 'move': {
         if (!me.player) return;
-        me.player = { ...me.player, p: msg.p, yaw: msg.yaw, pitch: msg.pitch, safe: msg.safe };
+        me.player = {
+          ...me.player,
+          p: msg.p,
+          yaw: msg.yaw,
+          pitch: msg.pitch,
+          safe: msg.safe,
+          // Gear comes only when it changes: remember it for players who join later.
+          gear: msg.gear ?? me.player.gear,
+        };
         ws.serializeAttachment(me);
         this.broadcast(
           {
@@ -368,6 +376,7 @@ export class WorldRoom extends DurableObject<Env> {
             safe: msg.safe,
             carts: msg.carts,
             mod: msg.mod,
+            gear: msg.gear,
           },
           ws,
         );

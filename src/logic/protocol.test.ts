@@ -117,4 +117,15 @@ describe('protocol', () => {
     expect(parseClientMessage(JSON.stringify({ t: 'mods', enabled: ['Bad Id!'] }))).toBeNull();
     expect(parseClientMessage(JSON.stringify({ t: 'mods', enabled: 'moon-jump' }))).toBeNull();
   });
+
+  it('lets gear (armor and the held item) ride along with a move', () => {
+    const move = parseClientMessage(
+      JSON.stringify({ t: 'move', p: [1, 2, 3], yaw: 0, pitch: 0, gear: [300, 301, 0, 0, 320] }),
+    );
+    expect(move).toMatchObject({ gear: [300, 301, 0, 0, 320] });
+    const bad = parseClientMessage(
+      JSON.stringify({ t: 'move', p: [1, 2, 3], yaw: 0, pitch: 0, gear: [1, 2, 'x', 0, 0] }),
+    );
+    expect(bad && 'gear' in bad).toBe(false);
+  });
 });

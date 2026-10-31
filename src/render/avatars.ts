@@ -3,7 +3,17 @@
 import * as THREE from 'three';
 import { AVATARS, PLAYER } from '../config';
 import { shadowMesh } from './mobRenderer';
-import type { PlayerInfo } from '../logic/protocol';
+import type { Gear, PlayerInfo } from '../logic/protocol';
+import { getItem, type ArmorMaterial } from '../logic/items';
+import { thirdPerson } from './heldItem';
+
+/** Armor colours: the main colour and a darker edge. */
+const ARMOR_COLORS: Record<ArmorMaterial, [number, number]> = {
+  leather: [0x8b5a2b, 0x6b4220],
+  iron: [0xdcdcdc, 0xa8a8a8],
+  gold: [0xf6d045, 0xc99a1a],
+  diamond: [0x56e8e0, 0x2aa8a8],
+};
 
 const FACE_PIXELS = 64;
 /** How quickly a figure slides to its newest position (per second). */
@@ -25,6 +35,9 @@ interface Figure {
   leftArm: THREE.Mesh;
   rightArm: THREE.Mesh;
   head: THREE.Mesh;
+  /** Armor pieces and the held item (rebuilt when they change). */
+  gear: THREE.Object3D[];
+  gearKey: string;
   target: THREE.Vector3;
   /** Speed worked out from the last two updates, to guess where they are now. */
   velocity: THREE.Vector3;
@@ -163,6 +176,8 @@ export class OtherPlayers {
       leftArm,
       rightArm,
       head,
+      gear: [],
+      gearKey: '',
       target: new THREE.Vector3(...player.p),
       velocity: new THREE.Vector3(),
       lastUpdate: performance.now(),
@@ -172,6 +187,73 @@ export class OtherPlayers {
       targetPitch: player.pitch,
       walk: 0,
     });
+    if (player.gear) this.setGear(player.id, player.gear);
+  }
+
+  /** Puts their armor on them and the item in their right hand. */
+  setGear(id: string, gear: Gear): void {
+    const f = this.figures.get(id);
+    if (!f || gear.join() === f.gearKey) return;
+    f.gearKey = gear.join();
+    for (const part of f.gear) {
+      part.removeFromParent();
+      part.traverse((o) => {
+        if (o instanceof THREE.Mesh) {
+          o.geometry.dispose();
+          const materials = Array.isArray(o.material) ? o.material : [o.material];
+          for (const m of materials) (m as THREE.Material).dispose();
+        }
+      });
+    }
+    f.gear = [];
+    const add = (parent: THREE.Object3D, part: THREE.Object3D) => {
+      parent.add(part);
+      f.gear.push(part);
+    };
+    const piece = (
+      material: ArmorMaterial,
+      size: [number, number, number],
+      pos: [number, number, number],
+      trim = false,
+    ) => {
+      const [main, edge] = ARMOR_COLORS[material];
+      const mesh = new THREE.Mesh(
+        new THREE.BoxGeometry(...size),
+        new THREE.MeshLambertMaterial({ color: trim ? edge : main }),
+      );
+      mesh.position.set(...pos);
+      return mesh;
+    };
+    const materialOf = (itemId: number) => (itemId ? getItem(itemId)?.armor?.material : undefined);
+    const [helmet, chest, legs, boots] = gear.slice(0, 4).map(materialOf);
+    if (helmet) {
+      // An open face, so the animal still shows.
+      add(f.head, piece(helmet, [0.58, 0.14, 0.58], [0, 0.22, 0]));
+      add(f.head, piece(helmet, [0.58, 0.44, 0.06], [0, 0, 0.27], true));
+      add(f.head, piece(helmet, [0.06, 0.44, 0.58], [-0.28, 0, 0], true));
+      add(f.head, piece(helmet, [0.06, 0.44, 0.58], [0.28, 0, 0], true));
+      add(f.head, piece(helmet, [0.58, 0.07, 0.06], [0, 0.18, -0.27]));
+    }
+    if (chest) {
+      add(f.group, piece(chest, [0.56, 0.6, 0.34], [0, 0.7 + 0.34, 0]));
+      add(f.group, piece(chest, [0.12, 0.5, 0.36], [0, 0.7 + 0.34, 0], true));
+      add(f.leftArm, piece(chest, [0.23, 0.28, 0.23], [0, -0.12, 0]));
+      add(f.rightArm, piece(chest, [0.23, 0.28, 0.23], [0, -0.12, 0]));
+    }
+    if (legs) {
+      add(f.group, piece(legs, [0.54, 0.12, 0.32], [0, 0.74, 0], true));
+      add(f.leftLeg, piece(legs, [0.26, 0.48, 0.26], [0, -0.24, 0]));
+      add(f.rightLeg, piece(legs, [0.26, 0.48, 0.26], [0, -0.24, 0]));
+    }
+    if (boots) {
+      add(f.leftLeg, piece(boots, [0.27, 0.2, 0.29], [0, -0.6, -0.02]));
+      add(f.rightLeg, piece(boots, [0.27, 0.2, 0.29], [0, -0.6, -0.02]));
+    }
+    const item = gear[4] ? thirdPerson(gear[4]) : null;
+    if (item) {
+      item.position.y = -0.6;
+      add(f.rightArm, item);
+    }
   }
 
   move(id: string, p: [number, number, number], yaw: number, pitch: number, safe = false): void {
