@@ -30,8 +30,7 @@ const CAST = [
   { file: 'captain.ts', voice: 'bill', style: '[gruff, pirate]' },
   { file: 'spiderQueen.ts', voice: 'matilda', style: '[hissing]' },
   { file: 'silent.ts', voice: 'roger', style: '[very slow, deep whisper]' },
-  // Ikiyö: the voice is still to be chosen by the parent (samples sent).
-  { file: 'ikiyo.ts', voice: 'callum', style: '[raspy, monstrous, slow whisper]' },
+  { file: 'ikiyo.ts', voice: 'harry', style: '[raspy, monstrous, slow whisper]' },
 ];
 
 function apiKey() {
