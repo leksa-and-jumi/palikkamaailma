@@ -17,7 +17,8 @@ export interface Encounter {
   readonly escape: string;
   start(api: ModApi): void;
   update(api: ModApi, dt: number): Outcome;
-  hit(api: ModApi, id: string, damage: number): void;
+  /** `by` is the player who hit it. */
+  hit(api: ModApi, id: string, damage: number, by?: string): void;
   /** Takes its characters away. */
   end(api: ModApi): void;
   /** Where it is now (the nearest player gets its attention). */

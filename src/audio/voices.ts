@@ -15,8 +15,11 @@ const recorded: Readonly<Record<string, number>> = lines;
 let playing: HTMLAudioElement | null = null;
 let playingNodes: AudioScheduledSourceNode[] = [];
 
-/** monster: Ikiyö (rough, deep ghost voice). narrator: the diary (a little lower, echoing). */
-export type VoiceFx = 'monster' | 'narrator';
+/**
+ * monster: Ikiyö (rough, deep ghost voice). narrator: the diary (a little
+ * lower, echoing). ghost: the ones Ikiyö took, whispering (far away, shaky).
+ */
+export type VoiceFx = 'monster' | 'narrator' | 'ghost';
 
 const FX: Record<
   VoiceFx,
@@ -24,6 +27,15 @@ const FX: Record<
 > = {
   monster: { rate: 0.86, rough: 14, ghost: 0.5, echo: 0.42, shake: 0.22 },
   narrator: { rate: 0.95, rough: 0, ghost: 0, echo: 0.3, shake: 0 },
+  ghost: { rate: 0.97, rough: 0, ghost: 0, echo: 0.55, shake: 0.12 },
+};
+
+/** Which speakers' voices go through a filter (by the name in the speech box). */
+export const VOICE_FX: Readonly<Record<string, VoiceFx>> = {
+  Ikiyö: 'monster',
+  Päiväkirja: 'narrator',
+  'Pieni ääni': 'ghost',
+  'Vanha ääni': 'ghost',
 };
 
 /** How long the recorded line lasts (0 when it has no voice). */
