@@ -16,6 +16,16 @@ import type {
   PartMove,
 } from '../mods/types';
 import { shadowMesh } from './mobRenderer';
+import {
+  blobGeometry,
+  boneGeometry,
+  boneTexture,
+  clawGeometry,
+  cloakGeometry,
+  ribGeometry,
+  tendrilGeometry,
+  vertebraGeometry,
+} from './organicShapes';
 
 const SMOOTHING = 14;
 const SNAP = 4;
@@ -208,6 +218,7 @@ export class ModActors {
           depthWrite: !see,
         });
         tintable.push(material);
+        if (part.shape && BONY.has(part.shape)) material.map = boneTexture();
         if (part.face) {
           // The front (-z) side gets the face picture.
           const front = new THREE.MeshLambertMaterial({
@@ -627,19 +638,33 @@ function onTop(part: ActorPart, head: ActorPart): boolean {
   );
 }
 
+/** Shapes drawn with the old-bone picture. */
+const BONY = new Set<ActorPart['shape']>(['bone', 'claw', 'rib', 'vertebra']);
+
 /** A part's shape, made `size` big each way (boxes keep their sharp edges). */
 function shapeGeometry(part: ActorPart): THREE.BufferGeometry {
   const [w, h, d] = part.size;
+  // Each living shape is a little different (its place decides how).
+  const seed = part.pos[0] * 3.1 + part.pos[1] * 1.7 + part.pos[2] * 2.3 + (part.phase ?? 0);
   switch (part.shape) {
+    case 'bone':
+      return boneGeometry(w, h, d, seed);
+    case 'claw':
+      return clawGeometry(w, h, d);
+    case 'vertebra':
+      return vertebraGeometry(w, h, d, seed);
+    case 'blob':
+      return blobGeometry(w, h, d, seed);
+    case 'cloak':
+      return cloakGeometry(w, h, d, seed);
+    case 'tendril':
+      return tendrilGeometry(w, h, d, seed);
     case 'sphere':
       return new THREE.SphereGeometry(0.5, 28, 20).scale(w, h, d);
     case 'cylinder':
       return new THREE.CylinderGeometry(0.5, 0.5, 1, 24, 6).scale(w, h, d);
     case 'rib':
-      // A curved bone: half a ring, bent round the body.
-      return new THREE.TorusGeometry(0.5, 0.06, 8, 24, Math.PI)
-        .rotateX(-Math.PI / 2)
-        .scale(w, h / 0.12, d);
+      return ribGeometry(w, h, d, seed);
     case 'cone':
       return new THREE.ConeGeometry(0.5, 1, 24, 10, part.shader === 'smoke').scale(w, h, d);
     default:
