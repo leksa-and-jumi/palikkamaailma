@@ -310,7 +310,9 @@ export class ModActors {
       a.group.position.copy(a.target);
       a.last.copy(a.target);
     }
+    a.group.rotation.order = 'YXZ';
     a.group.rotation.y = state.yaw;
+    a.group.rotation.x = state.pitch ?? 0;
     a.group.visible = state.visible ?? true;
     a.group.scale.setScalar(state.scale ?? 1);
     const text = state.label ?? '';

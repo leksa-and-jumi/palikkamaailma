@@ -150,6 +150,8 @@ export interface ActorState {
   z: number;
   /** Facing (0 looks towards -z, like the player). */
   yaw: number;
+  /** Tips the front up (+) or down (−), e.g. a neck reaching for you. */
+  pitch?: number;
   visible?: boolean;
   scale?: number;
   /** Shows a name tag. */
@@ -242,7 +244,11 @@ export type ModSound =
   | 'drone'
   | 'glitch'
   | 'scream'
-  | 'rumble';
+  | 'rumble'
+  | 'stinger'
+  | 'bite'
+  | 'stretch'
+  | 'giggle';
 
 /** A chat command a mod adds (like /kauhu). */
 export interface ModCommand {

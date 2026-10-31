@@ -60,4 +60,20 @@ describe('Ikiyö', () => {
     expect(api.trophies).toContain('halloween-ikiyo');
     expect(api.actors.has('ikiyo')).toBe(false);
   });
+
+  it('goes quiet, then screams in your face, and its neck bites', () => {
+    const api = summon();
+    let wentQuiet = false;
+    for (let i = 0; i < 20 * 90; i++) {
+      halloween.tick!(api, 0.05);
+      if (api.mood && api.mood.music === undefined) wentQuiet = true;
+    }
+    expect(wentQuiet).toBe(true);
+    expect(api.lines.some((l) => /HHHAAA|KIIII|SINÄÄÄ|GRRRAAA/.test(l))).toBe(true);
+    expect(api.acts).toContainEqual(['head', 'attack']);
+    expect(api.hurts).toBeGreaterThan(0);
+    // The neck is a chain of pieces.
+    expect(api.actors.has('n0')).toBe(true);
+    expect(api.actors.has('head')).toBe(true);
+  });
 });

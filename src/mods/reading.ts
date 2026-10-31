@@ -8,9 +8,14 @@ export const LETTER_SECONDS = 0.028;
 const READ_BASE = 3;
 const READ_PER_LETTER = 0.07;
 
+/** The words as shown: {tags} only tell the recorded voice how to say them. */
+export function shownText(text: string): string {
+  return text.replace(/\{[^}]*\}\s*/g, '').trim();
+}
+
 /** Seconds a line is shown, typing included. */
 export function readingSeconds(text: string): number {
-  const letters = [...text].length;
+  const letters = [...shownText(text)].length;
   return letters * LETTER_SECONDS + READ_BASE + letters * READ_PER_LETTER;
 }
 

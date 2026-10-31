@@ -134,7 +134,7 @@ import { MOB_TYPES, PERSONALITY_NAMES } from './logic/mobs';
 import { HURT_REASONS, MobManager, villagerProfession } from './play/mobManager';
 import { MobRenderer } from './render/mobRenderer';
 import { ModManager } from './mods/manager';
-import { LETTER_SECONDS } from './mods/reading';
+import { LETTER_SECONDS, shownText } from './mods/reading';
 import { speak } from './audio/voices';
 import { materialOf } from './audio/materials';
 import { music, type Place } from './audio/music';
@@ -1322,8 +1322,9 @@ export class Game {
       toast: (text) => this.hud.toast(text),
       sparkle: (x, y, z, color) => this.effects.sparkle(x, y, z, color),
       say: (who, text) => {
-        const voice = speak(text);
-        this.hud.say(who.emoji, who.name, who.color ?? '#ffd66b', text, voice + 1);
+        // Ikiyö speaks through the monster filter; {tags} are not shown.
+        const voice = speak(text, who.name === 'Ikiyö' ? 'monster' : undefined);
+        this.hud.say(who.emoji, who.name, who.color ?? '#ffd66b', shownText(text), voice + 1);
         // The speaking character's mouth moves while it talks (or the words type out).
         this.modActors.talk(voice || [...text].length * LETTER_SECONDS + 0.4);
       },
