@@ -24,7 +24,7 @@ import {
   type Encounter,
   type Vec,
 } from './encounter';
-import { IKIYO, IKIYO_HEAD, MARK, NECK, WISP } from './ikiyoModel';
+import { EYES, IKIYO, IKIYO_HEAD, MARK, NECK, PUFF, WISP } from './ikiyoModel';
 
 const MAX_HP = 180;
 /** The last sliver: below this it leaves (or, with the secret, is beaten). */
@@ -35,7 +35,6 @@ const PHASE_3 = 0.33;
 const KEEP_AWAY = 15;
 /** About sixteen blocks tall. */
 const SIZE = 1.3;
-const DRIFT_SPEED = 2.2;
 const ATTACK_EVERY: [number, number] = [4.5, 7.5];
 const SLAM_WARNING = 1.5;
 const SLAM_RADIUS = 3.6;
@@ -64,6 +63,15 @@ const SCARE_EVERY: [number, number] = [24, 42];
 const SCARE_QUIET = 2.3;
 const SCARE_HOLD = 1.3;
 const FLICKER_TIME = 2.4;
+/** It doesn't walk or drift: it vanishes in smoke and is somewhere else. */
+const TELEPORT_EVERY: [number, number] = [3.2, 5.8];
+const STUTTER_GAP = 0.28;
+const PUFF_LIFE = 2.6;
+const MAX_PUFFS = 4;
+const STROBE_TIME = 0.4;
+/** Red eyes opening in the dark around you. */
+const EYES_EVERY: [number, number] = [2.5, 5];
+const MAX_EYES = 8;
 /** Where the neck starts on the body, and the head's middle, above their feet. */
 const SOCKET = (1.2 + 9.6) * SIZE;
 const HEAD_MIDDLE = 1.9 * SIZE;
@@ -173,6 +181,13 @@ export function ikiyo(): IkiyoEncounter {
   let quiet = -1;
   let peek = -1;
   let flicker = -1;
+  let teleportIn = 2.5;
+  let stutter: Vec[] = [];
+  let stutterIn = 0;
+  let strobe = 0;
+  let puffs: (Vec & { id: string; age: number })[] = [];
+  let eyesIn = 3;
+  let eyes: (Vec & { id: string; age: number; life: number; yaw: number })[] = [];
   const who = { emoji: '👁️', name: 'Ikiyö', color: '#ff3b2f' };
 
   const bodyY = () => {
@@ -183,21 +198,101 @@ export function ikiyo(): IkiyoEncounter {
   const socket = (): Vec => ({ x: at.x, y: bodyY() + SOCKET, z: at.z });
   const eye = (api: ModApi): Vec => ({ x: api.player.x, y: api.player.y + 1.6, z: api.player.z });
 
-  const mood = (): Atmosphere => {
+  const mood = (api: ModApi): Atmosphere => {
     const m = MOODS[phase];
-    // Before a scare everything goes quiet: no music, darker.
-    if (quiet >= 0)
-      return { ...m, music: undefined, darkness: Math.min(1, (m.darkness ?? 0) + 0.2) };
-    // The lights flicker off and on.
-    if (flicker >= 0) {
+    // Your eyelids feel heavy: they droop with each heartbeat, more when it is near.
+    const near = Math.max(0, 1 - distance(me(api), at) / 14);
+    let lids = 0.06 + Math.max(0, Math.sin(pulse)) * 0.08 + near * 0.25 + (phase - 1) * 0.05;
+    if (fading >= 0) lids = 0;
+    // Before a scare everything goes quiet, darker… and your eyes slowly close.
+    if (quiet >= 0) {
+      return {
+        ...m,
+        music: undefined,
+        darkness: Math.min(1, (m.darkness ?? 0) + 0.2),
+        eyelids: Math.min(0.88, 0.2 + (quiet / SCARE_QUIET) * 0.7),
+      };
+    }
+    // …and snap open when it is in your face.
+    if (peek >= 0) return { ...m, eyelids: 0 };
+    // The lights flicker off and on (long flicker, or a quick strobe when it teleports).
+    if (flicker >= 0 || strobe > 0) {
       const off = Math.random() < 0.55;
-      return { ...m, darkness: off ? 0.99 : 0.25, vignette: off ? 1 : m.vignette };
+      return {
+        ...m,
+        darkness: off ? 0.99 : 0.25,
+        vignette: off ? 1 : m.vignette,
+        eyelids: off ? 0.5 : lids,
+      };
     }
     // The dark edges beat like a heart.
     return {
       ...m,
       vignette: Math.min(1, (m.vignette ?? 0) + Math.max(0, Math.sin(pulse)) * 0.08),
+      eyelids: Math.min(0.6, lids),
     };
+  };
+
+  /** Gone in a puff of smoke… and somewhere else. */
+  const teleport = (api: ModApi, to: Vec) => {
+    puffs.push({ id: `puff${counter++}`, ...at, y: bodyY(), age: 0 });
+    while (puffs.length > MAX_PUFFS) api.removeActor(puffs.shift()!.id);
+    at = { ...to, y: api.groundY(to.x, to.z, me(api).y) };
+    head = { ...socket(), y: socket().y + NECK_REST };
+    strobe = STROBE_TIME;
+    api.sound('glitch');
+    if (Math.random() < 0.4) api.sound('whisper');
+    api.flash(Math.random() < 0.5 ? 'rgba(0,0,0,0.85)' : 'rgba(110,0,0,0.5)', 0.18);
+    api.shake(0.25, 0.2);
+  };
+
+  /** Where it goes next: round you, often behind; or it stutters closer. */
+  const nextPlace = (api: ModApi) => {
+    if (phase >= 2 ? Math.random() < 0.4 : Math.random() < 0.2) {
+      // Jump, jump, jump… closer, then away.
+      const side = (Math.random() - 0.5) * 1.2;
+      stutter = [11, 8, 5.5].map((d) => aroundPlayer(api, d, side + (Math.random() - 0.5) * 0.3));
+      stutter.push(aroundPlayer(api, KEEP_AWAY, Math.PI + side));
+      stutterIn = 0;
+      api.sound('giggle');
+      return;
+    }
+    const behind = Math.random() < 0.35;
+    const angle = behind ? Math.PI + (Math.random() - 0.5) * 1.2 : (Math.random() - 0.5) * 2.4;
+    teleport(api, aroundPlayer(api, 10 + Math.random() * 6, angle));
+  };
+
+  /** Smoke curtains thin out; red eyes open and close round you. */
+  const effects = (api: ModApi, dt: number) => {
+    strobe = Math.max(0, strobe - dt);
+    for (const puff of [...puffs]) {
+      puff.age += dt;
+      if (puff.age > PUFF_LIFE) {
+        api.removeActor(puff.id);
+        puffs = puffs.filter((x) => x !== puff);
+      }
+    }
+    eyesIn -= dt;
+    if (eyesIn <= 0 && eyes.length < MAX_EYES && quiet < 0) {
+      eyesIn = between(EYES_EVERY) / phase;
+      const spot = aroundPlayer(api, 7 + Math.random() * 7, Math.random() * Math.PI * 2);
+      eyes.push({
+        id: `eyes${counter++}`,
+        ...spot,
+        y: spot.y + 0.8 + Math.random() * 2,
+        age: 0,
+        life: 3 + Math.random() * 3,
+        yaw: 0,
+      });
+    }
+    for (const e of [...eyes]) {
+      e.age += dt;
+      e.yaw = yawTo(e, me(api));
+      if (e.age > e.life || quiet >= 0) {
+        api.removeActor(e.id);
+        eyes = eyes.filter((x) => x !== e);
+      }
+    }
   };
 
   const show = (api: ModApi) => {
@@ -242,6 +337,17 @@ export function ikiyo(): IkiyoEncounter {
       });
     }
     for (const w of wisps) api.actor(w.id, WISP, { ...w, yaw: yawTo(w, p) });
+    for (const puff of puffs) {
+      const k = puff.age / PUFF_LIFE;
+      api.actor(puff.id, PUFF, {
+        ...puff,
+        yaw: puff.age,
+        scale: SIZE * (0.9 + k * 0.8),
+        // It flickers away at the end.
+        visible: k < 0.7 || Math.random() < 0.5,
+      });
+    }
+    for (const e of eyes) api.actor(e.id, EYES, { ...e, scale: 1.4 });
     if (slam) api.actor('mark', MARK, { ...slam, yaw: slam.t * 2 });
     else api.removeActor('mark');
     api.bossBar(`👁️ Ikiyö`, Math.max(0.01, hp / MAX_HP));
@@ -268,6 +374,8 @@ export function ikiyo(): IkiyoEncounter {
   const doSlam = (api: ModApi) => {
     const p = me(api);
     slam = { x: p.x, y: api.groundY(p.x, p.z, p.y), z: p.z, t: 0 };
+    // It is suddenly right there, reaching for the red circle.
+    teleport(api, aroundPlayer(api, 6.5, (Math.random() - 0.5) * 1.6));
     api.sound('drone');
     api.sound('rumble');
   };
@@ -547,7 +655,7 @@ export function ikiyo(): IkiyoEncounter {
       // The last sliver: it sinks away to charge up (or the secret beats it).
       if (fading >= 0) {
         fading += dt;
-        api.atmosphere(mood());
+        api.atmosphere(mood(api));
         if (Math.random() < dt * 3) api.sound('glitch');
         api.shake(0.35, 0.2);
         moveHead(api, dt);
@@ -567,7 +675,7 @@ export function ikiyo(): IkiyoEncounter {
         }
         if (flicker >= FLICKER_TIME) flicker = -1;
       }
-      api.atmosphere(mood());
+      api.atmosphere(mood(api));
 
       const p = me(api);
       if (scare(api, dt)) {
@@ -575,15 +683,21 @@ export function ikiyo(): IkiyoEncounter {
         return 'fight';
       }
 
-      // Hover at a distance, drifting round you; come closer for a slam.
-      const goal = slam
-        ? { x: slam.x + (at.x - slam.x) * 0.35, y: slam.y, z: slam.z + (at.z - slam.z) * 0.35 }
-        : aroundPlayer(api, KEEP_AWAY, Math.sin(pulse * 0.05) * 0.8);
-      moveTowards(
-        at,
-        { ...goal, y: api.groundY(goal.x, goal.z, p.y) },
-        DRIFT_SPEED * (slam ? 2.5 : 1) * dt,
-      );
+      // It never walks: it vanishes in smoke and is somewhere else.
+      effects(api, dt);
+      if (stutter.length > 0) {
+        stutterIn -= dt;
+        if (stutterIn <= 0) {
+          stutterIn = STUTTER_GAP;
+          teleport(api, stutter.shift()!);
+        }
+      } else if (headMode === 'rest' && !slam) {
+        teleportIn -= dt;
+        if (teleportIn <= 0) {
+          teleportIn = between(TELEPORT_EVERY) - phase * 0.6;
+          nextPlace(api);
+        }
+      }
       moveHead(api, dt);
 
       if (slam) {
@@ -685,6 +799,10 @@ export function ikiyo(): IkiyoEncounter {
       api.removeActor('mark');
       for (const w of wisps) api.removeActor(w.id);
       wisps = [];
+      for (const puff of puffs) api.removeActor(puff.id);
+      puffs = [];
+      for (const e of eyes) api.removeActor(e.id);
+      eyes = [];
     },
     where() {
       return at;

@@ -470,6 +470,12 @@ export class ModActors {
           p.scale.set(s, s, s);
           break;
         }
+        case 'blink': {
+          // Mostly open, then shut for a moment (phase spreads them out).
+          const open = Math.min(1, Math.max(0.04, Math.sin(now * 0.9 + phase) * 3 + 2.2));
+          p.scale.set(1 + (1 - open) * 0.2, open, 1);
+          break;
+        }
         case 'crawlL':
         case 'crawlR': {
           const go = walking > 0 ? 1 : 0.15;
@@ -629,6 +635,11 @@ function shapeGeometry(part: ActorPart): THREE.BufferGeometry {
       return new THREE.SphereGeometry(0.5, 28, 20).scale(w, h, d);
     case 'cylinder':
       return new THREE.CylinderGeometry(0.5, 0.5, 1, 24, 6).scale(w, h, d);
+    case 'rib':
+      // A curved bone: half a ring, bent round the body.
+      return new THREE.TorusGeometry(0.5, 0.06, 8, 24, Math.PI)
+        .rotateX(-Math.PI / 2)
+        .scale(w, h / 0.12, d);
     case 'cone':
       return new THREE.ConeGeometry(0.5, 1, 24, 10, part.shader === 'smoke').scale(w, h, d);
     default:

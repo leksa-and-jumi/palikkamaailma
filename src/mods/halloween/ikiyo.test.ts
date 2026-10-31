@@ -111,4 +111,26 @@ describe('Ikiyö', () => {
     halloween.commands![0]!.run(api, '');
     expect(api.toasts.at(-1)).toContain('merkinnyt');
   });
+
+  it('vanishes in smoke instead of walking, with red eyes and heavy eyelids', () => {
+    const api = summon();
+    let puffs = 0;
+    let eyes = 0;
+    let lids = 0;
+    let jumps = 0;
+    let last = { ...api.actors.get('ikiyo')! };
+    for (let i = 0; i < 20 * 30; i++) {
+      halloween.tick!(api, 0.05);
+      const now = api.actors.get('ikiyo');
+      if (now && Math.hypot(now.x - last.x, now.z - last.z) > 2) jumps++;
+      if (now) last = { ...now };
+      if ([...api.actors.keys()].some((k) => k.startsWith('puff'))) puffs++;
+      if ([...api.actors.keys()].some((k) => k.startsWith('eyes'))) eyes++;
+      lids = Math.max(lids, api.mood?.eyelids ?? 0);
+    }
+    expect(jumps).toBeGreaterThan(3);
+    expect(puffs).toBeGreaterThan(0);
+    expect(eyes).toBeGreaterThan(0);
+    expect(lids).toBeGreaterThan(0.1);
+  });
 });

@@ -1556,3 +1556,32 @@ kbd {
     transform: scale(1.15);
   }
 }
+
+/* Eyelids: black from above and below, soft-edged, like your eyes closing. */
+.eyelids {
+  --lid: 0%;
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.eyelids > div {
+  position: absolute;
+  left: -5%;
+  right: -5%;
+  height: var(--lid);
+  background: #000;
+  transition: height 0.18s ease-out;
+}
+
+.eyelids > div:first-child {
+  top: 0;
+  border-radius: 0 0 50% 50% / 0 0 30% 30%;
+  box-shadow: 0 10px 30px 20px #000;
+}
+
+.eyelids > div:last-child {
+  bottom: 0;
+  border-radius: 50% 50% 0 0 / 30% 30% 0 0;
+  box-shadow: 0 -10px 30px 20px #000;
+}
