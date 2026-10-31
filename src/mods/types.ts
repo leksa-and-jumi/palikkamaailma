@@ -48,6 +48,8 @@ export interface Atmosphere {
   lightning?: boolean;
   /** A music track (public/music/<id>.m4a) that plays quietly while this mood lasts. */
   music?: string;
+  /** Your eyes closing (0 open – 1 shut): black lids from above and below. */
+  eyelids?: number;
 }
 
 /**
@@ -60,6 +62,7 @@ export interface Atmosphere {
  * - spin turns around all the time, pulse breathes in and out;
  * - crawlL/crawlR are spider legs that scuttle (use `phase` to take turns);
  * - attack swings forward when the character attacks (an arm with a sword).
+ * - blink: an eye that squeezes shut and opens again, each at its own pace.
  */
 export type PartMove =
   | 'legA'
@@ -75,7 +78,8 @@ export type PartMove =
   | 'pulse'
   | 'crawlL'
   | 'crawlR'
-  | 'attack';
+  | 'attack'
+  | 'blink';
 
 /** Expressions a face can have. */
 export type FaceMood = 'normal' | 'blink' | 'angry' | 'hurt' | 'talk';
@@ -111,7 +115,7 @@ export interface ActorPart {
   /** Tilts it a little (radians around x, z), e.g. arms held forward. */
   tilt?: [number, number];
   /** Not only boxes: round heads, long thin arms, sharp claws (size = how big each way). */
-  shape?: 'box' | 'sphere' | 'cylinder' | 'cone';
+  shape?: 'box' | 'sphere' | 'cylinder' | 'cone' | 'rib';
   /**
    * Drawn with a living shader instead of a plain colour: `smoke` is a
    * see-through, rippling shadow with a faint red glow at its edges.

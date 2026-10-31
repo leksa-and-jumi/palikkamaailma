@@ -288,6 +288,14 @@ export class Hud {
   private typing: ReturnType<typeof setInterval> | null = null;
 
   /** A colour and dark edges over the screen (mods' mood). */
+  /** Black lids closing over the screen from above and below (0 open – 1 shut). */
+  setEyelids(amount: number): void {
+    const v = `${(Math.max(0, Math.min(1, amount)) * 52).toFixed(1)}%`;
+    const lids = $('eyelids');
+    lids.hidden = amount <= 0.001;
+    if (lids.style.getPropertyValue('--lid') !== v) lids.style.setProperty('--lid', v);
+  }
+
   setAtmosphere(tint: string | null, vignette: number): void {
     const layers: string[] = [];
     if (vignette > 0) {

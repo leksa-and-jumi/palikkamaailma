@@ -1334,6 +1334,7 @@ export class Game {
       atmosphere: (a) => {
         this.renderer.atmosphere = a;
         this.hud.setAtmosphere(a?.tint ?? null, a?.vignette ?? 0);
+        this.hud.setEyelids(a?.eyelids ?? 0);
         this.lightningTimer = a?.lightning ? 2 : 0;
         music.setModTrack(a?.music ?? null);
       },

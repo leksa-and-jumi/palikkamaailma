@@ -279,6 +279,10 @@ function parseAtmosphere(v: unknown): Atmosphere | null | undefined {
   }
   if (a.rain !== undefined) out.rain = a.rain === true;
   if (a.lightning !== undefined) out.lightning = a.lightning === true;
+  if (a.eyelids !== undefined) {
+    if (!num(a.eyelids, 1) || a.eyelids < 0) return undefined;
+    out.eyelids = a.eyelids;
+  }
   if (a.music !== undefined) {
     if (typeof a.music !== 'string' || !MOD_ID.test(a.music)) return undefined;
     out.music = a.music;
